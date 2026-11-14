@@ -70,3 +70,13 @@ Recheck plan eligibility and API values when changing repository owner type or p
 - [GitHub push protection detection scope and limitations](https://docs.github.com/en/code-security/reference/secret-security/secret-scanning-scope)
 - [GitHub secure use of `pull_request_target`](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target)
 - [GitHub licensing a repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository)
+
+## Post-merge T-002 closeout and email privacy evidence — 2026-11-14
+
+- PR #2 merged as c98a1922dee2dedeaed6eeb528d72098beb3a128 after exact-head local gate, live verifier, hosted check, and Gemini 4 Argon APPROVE for the recorded head/base/merge-result tuple.
+- Read-only API classification found the author field of the new squash commit uses an external domain; the raw address was deliberately excluded from public project docs. The committer field and the author field are separate and must be checked separately.
+- The default-branch history contains a prior squash commit with the same redacted classification. Bootstrap and task-branch commits were classified as GitHub noreply. PR synthetic merge-result commits are PR refs, not commits on main.
+- GET /user вернул email = null. Это подтверждает только, что публичное поле профиля не раскрыто; это не подтверждает приватный commit email или account option, блокирующую CLI pushes. GET /user/emails не читался из-за отсутствия широкого scope user.
+- Before any future GitHub-generated merge, manually verify Keep my email addresses private and Block command-line pushes that expose my personal email in Settings > Emails. On squash, select/confirm the GitHub noreply author where the UI offers the selector; then verify the resulting commit author and committer via API without printing email values.
+- The owner chose to preserve public history. No rewrite, force-push, ref deletion, or Support request was performed. A separate redacted plan is stored outside this public repository in the owner's local audit folder.
+- The PR review artifact is external AI review, not GitHub-native approval. T-002 is closed; its task card and handoff now record the actual merge state.

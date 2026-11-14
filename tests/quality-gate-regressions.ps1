@@ -164,8 +164,34 @@ if ($taskCloseout -notmatch '(?m)^\*\*Статус:\*\* merged;' -or $taskCloseo
     throw 'T-001 closeout must record merge state and the review-evidence gap'
 }
 $handoff = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/handoff.md') -Raw
-if ($handoff -match 'После merge T-001' -or $handoff -notmatch 'task/T-002') {
-    throw 'Handoff must not leave the merged T-001 step open and must identify current T-002 work'
+if ($handoff -match 'После merge T-001' -or $handoff -notmatch 'T-003') {
+    throw 'Handoff must not leave the merged T-001 step open and must identify current T-003 work'
+}
+$taskTwoCloseout = Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-002-reconcile-github-settings-and-closeout.md') -Raw
+if (
+    $taskTwoCloseout -notmatch '(?m)^\*\*Статус:\*\* merged\s*$' -or
+    $taskTwoCloseout -notmatch 'Merge SHA:\*\* c98a1922dee2dedeaed6eeb528d72098beb3a128' -or
+    $taskTwoCloseout -notmatch 'head e9db06ad083d007d15e0674d195f16999fbfc93b' -or
+    $taskTwoCloseout -notmatch 'base 65b5ab35d46b81e5af1963c351d05ac5da0291dc' -or
+    $taskTwoCloseout -notmatch 'merge-result 04bf30fd6879f4d18abf3c270cd05e5428e55079'
+) {
+    throw 'T-002 closeout must record merged state and the exact reviewed revision tuple'
+}
+$handoff = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/handoff.md') -Raw
+if (
+    $handoff -match '(?i)draft.{0,20}PR #2|PR #2.{0,20}draft|до merge PR #2' -or
+    $handoff -notmatch 'c98a1922dee2dedeaed6eeb528d72098beb3a128' -or
+    $handoff -notmatch 'T-002 закрыта'
+) {
+    throw 'Handoff must reflect the merged T-002 state and current main SHA'
+}
+$githubResearch = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/github-research.md') -Raw
+if (
+    $githubResearch -notmatch 'GET /user вернул email = null' -or
+    $githubResearch -notmatch 'не подтверждает приватный commit email' -or
+    ($handoff + $githubResearch + $taskTwoCloseout + (Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-003-closeout-and-email-privacy-plan.md') -Raw) + (Get-Content -LiteralPath (Join-Path $repoRoot 'docs/roadmap.md') -Raw)) -match '[A-Za-z0-9._%+-]+@(?!users\.noreply\.github\.com)[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+) {
+    throw 'Privacy docs must distinguish profile email from commit email and must not publish external addresses'
 }
 
 $gateScript = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
