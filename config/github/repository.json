@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "repository": "g0ldenc0de2027/Development-folder-V.2",
+  "visibility": "public",
+  "defaultBranch": "main",
+  "mergeMethods": [
+    "squash"
+  ],
+  "deleteHeadBranchAfterMerge": true,
+  "issues": true,
+  "discussions": false,
+  "policyVerifiedAt": "2026-11-14",
+  "vulnerabilityAlerts": true,
+  "privateVulnerabilityReporting": true,
+  "dependabotSecurityUpdates": true,
+  "dependencyGraphVerification": "inferred-from-active-dependabot-alerts"
+}

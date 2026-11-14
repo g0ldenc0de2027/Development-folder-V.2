@@ -1,0 +1,54 @@
+name: quality-gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    name: quality-gate
+    runs-on: windows-2025
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact event revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify PowerShell
+        shell: pwsh
+        run: |
+          if ($PSVersionTable.PSVersion -lt [version]'7.4') { throw "PowerShell 7.4+ is required" }
+
+      - name: Run quality gate and record tested revisions
+        shell: pwsh
+        env:
+          PR_BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_TEST_SHA: ${{ github.sha }}
+        run: |
+          if ($env:PR_HEAD_SHA) {
+            $summary = @"
+          ## Pull request verification
+          - PR head SHA: $env:PR_HEAD_SHA
+          - PR base SHA: $env:PR_BASE_SHA
+          - Tested merge-result SHA: $env:EVENT_TEST_SHA
+          "@
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary
+          }
+          ./scripts/quality-gate.ps1

@@ -1,0 +1,25 @@
+{
+  "name": "V2 protect main",
+  "target": "branch",
+  "enforcement": "active",
+  "include": [
+    "refs/heads/main"
+  ],
+  "bypassActors": [],
+  "rules": {
+    "pullRequestRequired": true,
+    "requiredApprovingReviewCount": 0,
+    "requireResolvedReviewThreads": true,
+    "requireLinearHistory": true,
+    "blockDeletion": true,
+    "blockForcePush": true,
+    "requiredStatusChecks": {
+      "context": "quality-gate",
+      "strict": true,
+      "state": "pending-first-successful-workflow-run",
+      "integrationId": 15368
+    }
+  },
+  "mergeMethod": "squash",
+  "verifiedAt": "2026-11-14"
+}

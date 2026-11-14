@@ -1,0 +1,13 @@
+{
+  "defaultWorkflowTokenPermission": "read",
+  "canApprovePullRequestReviews": false,
+  "shaPinningRequired": true,
+  "allowedActions": "selected",
+  "allowlist": ["actions/checkout@*"],
+  "workflowPolicy": {
+    "pathFilters": "forbidden",
+    "pullRequestTarget": "forbidden-unless-separately-reviewed",
+    "thirdPartyActions": "pin-full-commit-sha"
+  },
+  "verifiedAt": "2026-11-14"
+}
