@@ -6,6 +6,10 @@ $workflowPath = Join-Path $repoRoot '.github/workflows/quality-gate.yml'
 $workflow = Get-Content -LiteralPath $workflowPath -Raw
 $actionsPolicy = Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/actions-policy.json') -Raw | ConvertFrom-Json
 $tools = Get-Content -LiteralPath (Join-Path $repoRoot 'config/security/tools.json') -Raw | ConvertFrom-Json
+$developmentGuide = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/development.md') -Raw
+if ($developmentGuide -notmatch '(?m)^\s+pwsh -NoProfile -File scripts/github/verify-settings\.ps1 -RequireStatusCheck\s*$') {
+    throw 'Developer guide must show the live verifier in required-status mode'
+}
 $ruleset = Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/main-ruleset.json') -Raw | ConvertFrom-Json
 $roadmap = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/roadmap.md') -Raw
 $foundationRoadmap = ($roadmap -split '(?m)^## Этап 1')[0]

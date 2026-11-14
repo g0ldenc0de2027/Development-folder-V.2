@@ -20,9 +20,9 @@ Linux/macOS и Windows PowerShell 5.1 пока не поддерживаются
 
 Read-only сверка live GitHub settings с versioned config (repository, ruleset, Actions, Dependabot и security):
 
-    pwsh -NoProfile -File scripts/github/verify-settings.ps1
+    pwsh -NoProfile -File scripts/github/verify-settings.ps1 -RequireStatusCheck
 
-Live ruleset уже требует `quality-gate` от GitHub Actions. Запускайте verifier с `-RequireStatusCheck`: он должен подтвердить точное имя check, GitHub Actions source, strict policy и соответствие live-конфигурации manifest. Отсутствующий, устаревший или чужой check блокирует readiness.
+Эта команда подтверждает, что live ruleset и manifest требуют точный `quality-gate` от GitHub Actions, strict policy включена, а check отсутствует на устаревшем или постороннем источнике.
 
 Проверка точного диапазона PR:
 
