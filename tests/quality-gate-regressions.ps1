@@ -7,6 +7,11 @@ $workflow = Get-Content -LiteralPath $workflowPath -Raw
 $actionsPolicy = Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/actions-policy.json') -Raw | ConvertFrom-Json
 $tools = Get-Content -LiteralPath (Join-Path $repoRoot 'config/security/tools.json') -Raw | ConvertFrom-Json
 $ruleset = Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/main-ruleset.json') -Raw | ConvertFrom-Json
+$roadmap = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/roadmap.md') -Raw
+$foundationRoadmap = ($roadmap -split '(?m)^## Этап 1')[0]
+if ($foundationRoadmap -match '(?m)^\s*-\s*\[\s\]') {
+    throw 'GitHub foundation roadmap still contains unchecked bootstrap steps'
+}
 $settingsVerifier = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/github/verify-settings.ps1') -Raw
 if ($settingsVerifier -notmatch "gh api user --jq .login" -or $settingsVerifier -notmatch 'dependencyGraphVerification' -or $settingsVerifier -notmatch 'INFERRED: Dependency graph') {
     throw 'Live GitHub verifier must fail closed on authentication gaps and verify the dependency graph'
@@ -93,9 +98,9 @@ if (
     $ruleset.rules.requiredStatusChecks.context -ne 'quality-gate' -or
     $ruleset.rules.requiredStatusChecks.strict -ne $true -or
     $ruleset.rules.requiredStatusChecks.integrationId -ne 15368 -or
-    $ruleset.rules.requiredStatusChecks.state -notin @('pending-first-successful-workflow-run', 'enforced')
+    $ruleset.rules.requiredStatusChecks.state -cne 'enforced'
 ) {
-    throw 'Required status check manifest must identify strict quality-gate and its rollout state'
+    throw 'Required status check manifest must require the enforced strict quality-gate'
 }
 
 $gateScript = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
@@ -117,11 +122,17 @@ foreach ($toolName in @('actionlint', 'gitleaks')) {
 
 $textExtensions = @('.md', '.json', '.yml', '.yaml', '.ps1')
 $specialTextNames = @('.gitignore', '.gitattributes', '.editorconfig', 'pre-push')
-$textFiles = Get-ChildItem -LiteralPath $repoRoot -File -Recurse -Force |
-    Where-Object {
-        ($_.Extension -in $textExtensions -or $_.Name -in $specialTextNames) -and
-        $_.FullName -notmatch '[\\/](\.git|\.worktrees|temp)[\\/]'
-    }
+$textFiles = @(
+    Get-ChildItem -LiteralPath $repoRoot -File -Recurse -Force |
+        Where-Object {
+            $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)
+            ($_.Extension -in $textExtensions -or $_.Name -in $specialTextNames) -and
+            $relativePath -notmatch '(^|[\\/])(\.git|\.worktrees|temp)([\\/]|$)'
+        }
+)
+if ($textFiles.Count -eq 0) {
+    throw 'Text hygiene scan found no repository files'
+}
 
 $trailing = [System.Collections.Generic.List[string]]::new()
 $missingFinalNewline = [System.Collections.Generic.List[string]]::new()

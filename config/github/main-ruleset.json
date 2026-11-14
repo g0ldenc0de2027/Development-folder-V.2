@@ -16,7 +16,7 @@
     "requiredStatusChecks": {
       "context": "quality-gate",
       "strict": true,
-      "state": "pending-first-successful-workflow-run",
+      "state": "enforced",
       "integrationId": 15368
     }
   },

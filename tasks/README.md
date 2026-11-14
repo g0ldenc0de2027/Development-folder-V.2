@@ -8,7 +8,7 @@
 4. Проверять tracked, staged, unstaged и untracked пути против scope.
 5. Не размещать параллельные задачи в одном worktree.
 6. Перед публикацией убедиться, что нет незакоммиченных файлов и SHA соответствует проверенному diff.
-7. Открыть PR; пока live ruleset не требует quality-gate, merge запрещен. После включения check провести CI на merge-result текущих head/base SHA и независимое review на текущем head SHA.
+7. Открыть PR. Merge разрешен только при live-enforced `quality-gate` для точных текущих head/base SHA, отсутствии unresolved threads, принятом scope и независимом review на текущем head SHA.
 8. После завершения убрать только свой чистый worktree.
 
 Автоматизация этих шагов предусмотрена roadmap.

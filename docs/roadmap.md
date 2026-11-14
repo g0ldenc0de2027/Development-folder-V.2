@@ -4,8 +4,8 @@
 - [x] Создать новый репозиторий без переноса истории и файлов V1.
 - [x] Активировать ruleset main и read-only Actions permissions.
 - [x] Включить GitHub secret scanning/push protection и Dependabot alerts/updates; dependency graph помечен как inference, так как REST repository response не предоставляет поле его статуса.
-- [ ] Успешный первый CI; затем установить exact required status check от GitHub Actions и проверить блокировку merge. Пока этого нет, PR в main не сливать.
-- [ ] Проверить полный initial diff и зафиксировать его одним проверяемым root commit.
+- [x] Первый hosted CI прошёл; exact `quality-gate` от GitHub Actions App `15368` установлен как strict required status check и подтверждён live verifier.
+- [x] Проверен полный initial diff; root commit `0641901e825fdede9e1fdabf3fa83078ce5ab8ad` опубликован в подтверждённо пустой remote.
 
 ## Этап 1 — specification readiness
 - [ ] Согласовать scope, матрицу ОС, стековые профили, локальную базу знаний, прогресс/ETA.

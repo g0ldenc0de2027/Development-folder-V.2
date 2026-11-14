@@ -3,13 +3,13 @@
 ## Решение и проверенные ограничения
 - Development-folder-V.2 намеренно public по выбору владельца для бесплатного плана.
 - Активен repository ruleset для main: PR required; deletion и non-fast-forward блокируются; linear history; review threads должны быть resolved; squash-only; bypass actors отсутствуют.
-- Required approval count равен 0: владелец работает один и не может сам дать независимое GitHub approval. Независимое AI review остается отдельным доказательством, привязанным к PR head SHA. Пока required status context не включен, quality gate еще не GitHub-enforced.
+- Required approval count равен 0: владелец работает один и не может сам дать независимое GitHub approval. Независимое AI review остается отдельным доказательством, привязанным к PR head SHA. Exact status context `quality-gate` включен в live ruleset, strict=true, expected source — GitHub Actions App `15368`.
 - Actions включены с read-only default token, обязательным pinning по SHA и allowlist только для checkout action. Workflow не использует стороннюю security action.
 - Локальная настройка repo устанавливает pre-push quality gate, GitHub CLI credential helper, noreply identity, fast-forward-only pulls и fetch pruning. AI provenance сохраняется trailer Assisted-by и полями PR; GitHub commit author остается владельцем для связки noreply и не идентифицирует агента сам по себе.
 - Secret scanning, push protection, Dependabot alerts/security updates и private vulnerability reporting подтверждены live API. Dependency graph не имеет status-поля в ответе repository REST API; его состояние явно помечается как inferred, поскольку официальный GitHub Docs указывает, что Dependabot alerts требуют включенного графа.
 - Live read-back показывает generic non-provider patterns и validity checks как disabled. GitHub документирует включение generic patterns для organization-owned repos on GitHub Team with Secret Protection; для этого personal Free репозитория считаем их недоступным покрытием. Gitleaks запускается локально и в CI, но не заменяет provider validation.
-- Live ruleset пока не содержит required status check; это подтверждено API. Слияние запрещено до первого успешного run, установки exact quality-gate context от GitHub Actions и повторного live read-back.
-- Актуальный read-only verifier прошёл все проверяемые repository, Actions, ruleset, Dependabot и secret-scanning настройки; завершился ожидаемым `INCOMPLETE` (exit 2), поскольку quality-gate status ещё не установлен до первого hosted run.
+- Bootstrap root SHA `0641901e825fdede9e1fdabf3fa83078ce5ab8ad` прошел hosted `quality-gate`; после этого status check включен в live ruleset и подтвержден API read-back. Следующие PR обязаны пройти этот check на актуальном merge-result SHA.
+- Актуальный read-only verifier подтвердил repository, Actions, ruleset, Dependabot и secret-scanning настройки с `-RequireStatusCheck`. Dependency graph остаётся inferred; generic secret patterns и validity checks явно не покрыты.
 
 ## Архитектурные выводы
 - Required workflow не должен иметь path filters: при фильтрации job может оказаться skipped.

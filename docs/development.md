@@ -22,7 +22,7 @@ Read-only сверка live GitHub settings с versioned config (repository, rul
 
     pwsh -NoProfile -File scripts/github/verify-settings.ps1
 
-Пока required status check не появился после первого CI, скрипт выведет INCOMPLETE и завершится с кодом 2. Для проверки merge-readiness используйте -RequireStatusCheck; режим завершится ошибкой при отсутствии check или при неверном его источнике.
+Live ruleset уже требует `quality-gate` от GitHub Actions. Запускайте verifier с `-RequireStatusCheck`: он должен подтвердить точное имя check, GitHub Actions source, strict policy и соответствие live-конфигурации manifest. Отсутствующий, устаревший или чужой check блокирует readiness.
 
 Проверка точного диапазона PR:
 
