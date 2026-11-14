@@ -17,8 +17,8 @@
 - [ ] Сверять base SHA и live origin/main до commit/publish.
 - [ ] Проверить реальные границы защиты GitHub Free.
 
-- [ ] T-003 remains open draft PR #3. Copilot and Antigravity reports target the stale head `65e7e382a1d0cd958c52661b811ac84aeba5f52c`; accepted findings were fixed after that head. Obtain updated independent reviews and hosted CI on the final head/base.
-- [ ] Implement the selected no-App CI model: repository owner is the trust root; document residual risk and require owner review for workflow/gate changes.
+- [ ] T-003 remains open draft PR #3. Copilot reviewed head 363cfdbc52343a66ea17fc34c66737b3c0d0f33d; Antigravity reviewed 9c486a3a653f423add97ee93b376ffde8a42154e and reported remaining P2/P3 privacy-detector/scanner gaps. Follow-up changes invalidate both reviews and prior hosted CI; obtain fresh independent reports and hosted CI for the final exact head/base pair.
+- [ ] Implement remaining no-App merge safeguards: owner remains the trust root; manual review and gate-change residual risk are documented in docs/github-workflow.md; evaluate any additional local-only controls separately.
 - [ ] Verify both account email safeguards before the next GitHub-generated merge.
 - [ ] Define total pushed-object limit separately from the existing per-file staged-blob limit.
 ## Этап 3 — reusable project profiles

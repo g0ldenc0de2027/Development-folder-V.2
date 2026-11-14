@@ -16,6 +16,7 @@ PR #2 слита после локального `QUALITY-GATE=PASS`, live verif
 - `docs/github-research.md`
 - `docs/roadmap.md`
 - `tests/quality-gate-regressions.ps1`
+- `docs/github-workflow.md`
 
 Полный privacy-cleanup plan хранится отдельным локальным audit-артефактом, не в публичном репозитории; абсолютный локальный путь в Git не записывать.
 
@@ -26,18 +27,20 @@ PR #2 слита после локального `QUALITY-GATE=PASS`, live verif
 3. В публичных docs записана только минимальная redacted информация об авторском email для предотвращения повторения; адрес и его локальная часть не публикуются.
 4. Документация отличает main-историю от синтетических merge-result refs PR и не называет все найденные объекты частью `main`.
 5. Зафиксировано решение владельца: опубликованную историю не переписывать; никаких force-push, filter-repo или Support-запросов в этой задаче.
-6. Regression checks обнаруживают stale T-002/handoff state и запрещают заявлять, что merge email privacy подтверждена только по `.email == null` в публичном профиле.
+6. Regression checks выявляют устаревший T-002/handoff state, отклоняют положительные выводы о приватности commit email на основании null-поля профиля (включая смешанные отрицательные/положительные фразы) и сохраняют безопасные формулировки ограничения.
 7. Полный local `quality-gate` проходит на проверенном HEAD. Перед merge PR публикуется с независимым review, точными SHA и зелёным CI.
-8. Privacy scanner охватывает все публичные Markdown-документы репозитория и исходник regression suite. Он разрешает только точный неперсональный GitHub web-committer адрес и блокирует пользовательские `users.noreply.github.com`, внешние адреса и домены-двойники.
-9. Regression cases покрывают внешние и lookalike email, common `[at]` / `%40` encodings, common Windows/POSIX/UNC absolute path patterns, false privacy claims на `.email == null` в любом Markdown, безопасные отрицательные формулировки и положительные выводы после отрицания, разделённые пунктуацией, тире или контрастными связками. Совпадения не выводят содержимое. Отдельный local-part не сохраняется и не считается проверяемым без безопасного reference.
-10. T-002 SHA tuple закреплён одной строкой ревизий в карточке и проверяется точечно в handoff; PR #2/review attribution/native-review distinction закреплены. Документация явно отделяет `main` history от synthetic PR refs; поля метаданных T-002 отделены пустой строкой от результата приёмки.
+8. Privacy scanner охватывает все публичные Markdown-документы репозитория и сам исходник regression suite, без исключения path findings для .ps1. Он разрешает только точный системный GitHub web-committer адрес и обнаруживает пользовательские users.noreply.github.com, внешние адреса, lookalike-домены, Unicode/punycode и obfuscated email.
+9. Regression cases покрывают внешние и lookalike email, точную allowlist boundary, Unicode/punycode, [at]/%40/at-dot/fullwidth-@ obfuscation, Windows/macOS/POSIX/MSYS и оба вида UNC путей. HTTP routes и URL не считаются локальными файлами. Claim fixtures проверяют quoted/backticked email=null, nil, английские/русские словоформы, and/while/although/тире/скобки/slash/soft line break, double negatives, safe not-yet/on-its-own/cannot-be-used-to/insufficient-to/neither-nor и отдельный API evidence. Совпадения не выводят содержимое; отдельный local-part не сохраняется. Detector is a bounded heuristic and does not guarantee recognition of arbitrary paraphrases.
+10. Полный T-002 SHA tuple находится только в карточке T-002; handoff ссылается на карточку и показывает текущий статус без дублирования старых SHA. Ревью и CI имеют provenance по SHA и считаются устаревшими после изменения head или base.
+11. Зафиксирован no-App выбор владельца: владелец остаётся корнем доверия, ручное owner review не enforced GitHub, PR может изменить собственный gate, а отсутствие технически независимого контроля записано как residual risk.
 
 ## Учёт внешнего ревью
 
-- Отчёт Gemini 4 Argon (Antigravity) привязан к head `65e7e382a1d0cd958c52661b811ac84aeba5f52c`; он не является review текущей ревизии. P2-1..P2-3 и P3-1 исправлены ранее.
-- Отчёт GitHub Copilot привязан к доисправительному head `363cfdbc52343a66ea17fc34c66737b3c0d0f33d`; подтверждён P2: положительный вывод о приватности после отрицания и em dash маскировался общей проверкой отрицания. Дефект воспроизведён failing fixture, исправлен разбиением утверждений и защищён тестами для em dash, contrastive `but` и безопасного отрицания. После нового commit нужны свежие независимые отзывы и hosted CI на точной паре SHA.
-- Для проверки допустимой системной личности GitHub web-committer используется точное исключение. Документация GitHub требует учитывать системный committer для web-based merges: https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets.
-- Само значение персонального email и его local-part не записывать в эту карточку или регрессионные выводы.
+- GitHub Copilot проверил head 363cfdbc52343a66ea17fc34c66737b3c0d0f33d и подтвердил P2: положительный вывод после отрицания и em dash маскировался общей проверкой отрицания. Исправление этой конкретной формы вошло в 9c486a3a653f423add97ee93b376ffde8a42154e; этот отчёт не покрывает более поздние изменения.
+- Antigravity (Gemini 4 Argon) выполнил READ-ONLY review exact head 9c486a3a653f423add97ee93b376ffde8a42154e, вердикт APPROVE с замечаниями P2-1..P2-3 и P3-1. Он воспроизвёл смешанные утверждения через and/while/although/и при этом/тире/скобки/slash/перенос строки, двойное отрицание, варианты null-сигнала и false positives not-yet, on-its-own, cannot-be-used-to, insufficient-to, neither-nor; отметил неполный path scan и подавление path результатов в test source.
+- Найденные сценарии закреплены синтетическими regression fixtures; Antigravity review и hosted run #43607337413 относятся к предыдущему head и больше не подтверждают изменённое состояние. Перед merge нужны свежие независимые отчёты и hosted CI на окончательной паре head/base SHA.
+- GitHub-native reviews на PR #3 в API не обнаружены; external AI reports не называются GitHub approval.
+- Для системного GitHub web-committer используется только точное allowlist исключение. Адрес и local-part персонального email в карточку и test output не включаются.
 
 ## Границы
 

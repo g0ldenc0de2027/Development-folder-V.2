@@ -41,7 +41,8 @@ $prePushHook = Get-Content -LiteralPath (Join-Path $repoRoot '.githooks/pre-push
 if ($prePushHook -notmatch 'read -r local_ref local_sha remote_ref remote_sha' -or -not $prePushHook.Contains('-PushRange')) {
     throw 'Pre-push hook must pass Git-provided ref update ranges to the secret scan'
 }
-$excludedRepositoryPathPattern = '(^|[\\/])(\.git|\.worktrees|temp)([\\/]|$)'
+$directorySeparatorClass = '[/\x5c]'
+$excludedRepositoryPathPattern = '(^|' + $directorySeparatorClass + ')(\.git|\.worktrees|temp)(' + $directorySeparatorClass + '|$)'
 $simulatedWorktreeRoot = Join-Path $repoRoot '.worktrees/T-SIMULATED'
 $expectedWorktreeScript = Join-Path $simulatedWorktreeRoot 'scripts/quality-gate.ps1'
 $nestedWorktreeScript = Join-Path $simulatedWorktreeRoot '.worktrees/T-OTHER/scripts/quality-gate.ps1'
@@ -51,7 +52,9 @@ if ($expectedRelativePath -match $excludedRepositoryPathPattern -or $nestedRelat
     throw 'Worktree path fixture must include files at the checkout root and exclude nested worktrees'
 }
 $qualityGate = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
-$expectedPathFilterSource = '$relativePath -notmatch ' + [char]39 + $excludedRepositoryPathPattern + [char]39
+$qualityGatePathSeparatorClass = '[' + ([string][char]92 * 2) + '/]'
+$qualityGateExclusionPattern = '(^|' + $qualityGatePathSeparatorClass + ')(\.git|\.worktrees|temp)(' + $qualityGatePathSeparatorClass + '|$)'
+$expectedPathFilterSource = '$relativePath -notmatch ' + [char]39 + $qualityGateExclusionPattern + [char]39
 if (
     -not $qualityGate.Contains('[System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)') -or
     -not $qualityGate.Contains($expectedPathFilterSource) -or
@@ -184,14 +187,13 @@ if (
 if (
     $handoff -match '(?i)draft.{0,20}PR #2|PR #2.{0,20}draft|до merge PR #2' -or
     $handoff -notmatch 'c98a1922dee2dedeaed6eeb528d72098beb3a128' -or
-    $handoff -notmatch 'PR head `e9db06ad083d007d15e0674d195f16999fbfc93b`' -or
-    $handoff -notmatch 'base `65b5ab35d46b81e5af1963c351d05ac5da0291dc`' -or
-    $handoff -notmatch 'run #43592810050' -or
-    $handoff -notmatch '04bf30fd6879f4d18abf3c270cd05e5428e55079' -or
-    $handoff -notmatch 'T-002 закрыта'
+    $handoff -match 'e9db06ad083d007d15e0674d195f16999fbfc93b|65b5ab35d46b81e5af1963c351d05ac5da0291dc|43592810050|04bf30fd6879f4d18abf3c270cd05e5428e55079' -or
+    $handoff -notmatch 'T-002-reconcile-github-settings-and-closeout\.md' -or
+    $handoff -notmatch 'T-002.*слита'
 ) {
-    throw 'Handoff must reflect the merged T-002 state and repeat its exact merge and CI revision evidence'
+    throw 'Handoff must summarize merged T-002, point to its immutable evidence card and avoid duplicating its stale revision tuple'
 }
+
 $githubResearch = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/github-research.md') -Raw
 $historicalResearchSection = [regex]::Match($githubResearch, '(?ms)^## Исторический срез до merge PR #2\b.*?(?=^## |\z)').Value
 $currentResearch = [regex]::Replace($githubResearch, '(?ms)^## Исторический срез до merge PR #2\b.*?(?=^## |\z)', '')
@@ -207,9 +209,38 @@ if (
     throw 'Research must preserve the historical boundary, email limitation, no-App decision and main-versus-synthetic-ref distinction'
 }
 $roadmap = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/roadmap.md') -Raw
-if ($roadmap -notmatch 'no-App CI model: repository owner is the trust root') {
+if ($roadmap -notmatch 'Implement remaining no-App merge safeguards: owner remains the trust root') {
     throw 'Roadmap must preserve the owner-approved no-App trust decision'
 }
+$githubWorkflowGuide = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/github-workflow.md') -Raw
+if (
+    $githubWorkflowGuide -notmatch 'корнем доверия' -or
+    $githubWorkflowGuide -notmatch 'организационный merge gate' -or
+    $githubWorkflowGuide -notmatch 'GitHub её не обеспечивает' -or
+    $githubWorkflowGuide -notmatch 'PR может изменить собственное определение workflow или quality gate' -or
+    $githubWorkflowGuide -notmatch 'Остаточный риск принят владельцем' -or
+    $handoff -notmatch 'организационный контроль'
+) {
+    throw 'No-App owner-root-of-trust decision and non-enforced gate residual risk must be explicit in workflow and handoff'
+}
+if (
+    $roadmap -notmatch 'Copilot reviewed head 363cfdbc' -or
+    $roadmap -notmatch 'Antigravity reviewed 9c486a3a' -or
+    $roadmap -notmatch 'invalidate both reviews and prior hosted CI'
+) {
+    throw 'Roadmap must attribute reviews to their actual heads and invalidate them after follow-up changes'
+}
+$taskThree = Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-003-closeout-and-email-privacy-plan.md') -Raw
+if (
+    $taskThree -notmatch 'Antigravity \(Gemini 4 Argon\).*9c486a3a' -or
+    $taskThree -notmatch 'GitHub Copilot проверил head 363cfdbc' -or
+    $taskThree -notmatch 'P2-1\.\.P2-3 и P3-1' -or
+    $taskThree -notmatch 'Перед merge нужны свежие независимые отчёты' -or
+    $taskThree -notmatch 'bounded heuristic and does not guarantee recognition of arbitrary paraphrases'
+) {
+    throw 'T-003 must preserve reviewer attribution, exact reviewed heads and stale-review status'
+}
+
 
 $gateScript = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
 if (
@@ -235,7 +266,7 @@ $textFiles = @(
         Where-Object {
             $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)
             ($_.Extension -in $textExtensions -or $_.Name -in $specialTextNames) -and
-            $relativePath -notmatch '(^|[\\/])(\.git|\.worktrees|temp)([\\/]|$)'
+            $relativePath -notmatch $excludedRepositoryPathPattern
         }
 )
 if ($textFiles.Count -eq 0) {
@@ -263,21 +294,30 @@ if ($privacyMarkdownFiles.Count -eq 0 -or $missingPrivacyPaths.Count -gt 0) {
     throw ('Privacy scan must cover every public Markdown document and all T-003 files; missing: ' + ($missingPrivacyPaths -join ', '))
 }
 
-$emailDomainLabel = '[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?'
-$emailDomainPattern = "(?:$emailDomainLabel\.)+[A-Z]{2,63}"
-$emailPattern = "(?i)(?<![A-Z0-9._%+-])[A-Z0-9._%+-]+@(?<domain>$emailDomainPattern)(?![A-Z0-9-])"
-$emailAtObfuscationPattern = '(?:\[at\]|\(at\)|\{at\}|%40|&#0*64;|&#x0*40;|&commat;)'
-$obfuscatedEmailPattern = "(?i)(?<![A-Z0-9._%+-])[A-Z0-9._%+-]+\s*$emailAtObfuscationPattern\s*$emailDomainPattern(?![A-Z0-9-])"
-# Keep POSIX roots explicit so REST routes such as /user and URL path segments are not misclassified as local files.
-$absoluteLocalPathPattern = '(?i)(?<![A-Z0-9])[A-Z]:[\\/][^\s\x60<>]+|(?<!\w)\\\\[^\\\s\x60<>]+\\[^\\\s\x60<>]+(?:\\[^\s\x60<>]+)*|(?<![\w:/])/(?:home|mnt|volumes|tmp|var|etc|opt|srv|root|private|workspace|workspaces)/[^\s\x60<>]+|(?<![\w:/])/(?-i:Users)/[^\s\x60<>]+'
+$emailLocalPartPattern = '[\p{L}\p{N}._%+-]+'
+$emailDomainLabel = '[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}-]{0,61}[\p{L}\p{M}\p{N}])?'
+$emailTldPattern = '(?:[A-Z]{2,63}|xn--[A-Z0-9-]{2,59}|[\p{L}]{2,63})'
+$emailDomainPattern = "(?:$emailDomainLabel\.)+$emailTldPattern"
+$emailPattern = "(?i)(?<![\p{L}\p{N}._%+-])(?<local>$emailLocalPartPattern)@(?<domain>$emailDomainPattern)(?![\p{L}\p{N}-])"
+$emailAtObfuscationPattern = '(?:\[at\]|\(at\)|\{at\}|%40|&#0*64;|&#x0*40;|&commat;|＠|[ \t]+at[ \t]+)'
+$emailDomainSeparator = '(?:[ \t]*\.[ \t]*|[ \t]+dot[ \t]+)'
+$emailObfuscatedTldPattern = '(?:[A-Z]{2,63}|xn--[A-Z0-9-]{2,59}|[\p{L}]{2,63})'
+$emailDomainObfuscationPattern = "(?:$emailDomainLabel(?:$emailDomainSeparator$emailDomainLabel)*$emailDomainSeparator$emailObfuscatedTldPattern)"
+$obfuscatedEmailPattern = "(?i)(?<![\p{L}\p{N}._%+-])$emailLocalPartPattern[ \t]*$emailAtObfuscationPattern[ \t]*$emailDomainObfuscationPattern(?![\p{L}\p{N}-])"
+$drivePathPattern = '(?<![A-Z0-9])[A-Z]:[/\x5c][^\s\x60<>]+'
+$uncPathPattern = '(?<!\w)\x5c{2}[^\x5c\s\x60<>]+\x5c[^\x5c\s\x60<>]+(?:\x5c[^\s\x60<>]+)*'
+$slash = [string][char]47
+$slashUncPattern = '(?<!\w)(?<!:)(?<!/)' + $slash + $slash + '[^/\s\x60<>]+/[^/\s\x60<>]+(?:/[^\s\x60<>]+)*'
+$posixPathPattern = '(?<!\w)(?<!:)(?<!/)/(?:home|users|mnt|media|volumes|tmp|var|etc|opt|srv|root|private|workspace|workspaces|applications|library|system|run)/[^\s\x60<>]+'
+$msysPathPattern = '(?<!\w)(?<!:)(?<!/)/[a-z]/(?:users|home|mnt|msys64|mingw64|program files)/[^\s\x60<>]+'
+$absoluteLocalPathPattern = "(?i)$drivePathPattern|$uncPathPattern|$slashUncPattern|$posixPathPattern|$msysPathPattern"
 $allowedSystemCommitterLocalPart = 'noreply'
 $allowedSystemCommitterDomain = 'github.com'
 $findPrivacyFindings = {
     param([string]$Text)
     $findings = [System.Collections.Generic.List[string]]::new()
     foreach ($match in [regex]::Matches($Text, $emailPattern)) {
-        $atIndex = $match.Value.LastIndexOf([char]64)
-        $localPart = $match.Value.Substring(0, $atIndex)
+        $localPart = $match.Groups['local'].Value
         $domain = $match.Groups['domain'].Value
         if ($localPart -ine $allowedSystemCommitterLocalPart -or $domain -ine $allowedSystemCommitterDomain) {
             $findings.Add('email')
@@ -286,27 +326,93 @@ $findPrivacyFindings = {
     if ([regex]::IsMatch($Text, $obfuscatedEmailPattern)) {
         $findings.Add('obfuscated-email')
     }
-    if ([regex]::IsMatch($Text, $absoluteLocalPathPattern)) {
-        $findings.Add('absolute-local-path')
+    foreach ($line in ($Text -split '\r?\n')) {
+        foreach ($match in [regex]::Matches($line, $absoluteLocalPathPattern)) {
+            $prefix = $line.Substring(0, $match.Index)
+            if ($prefix -match '(?i)\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*$') { continue }
+            $findings.Add('absolute-local-path')
+            break
+        }
     }
     return $findings.ToArray()
 }
+# Bounded English/Russian text heuristic, not a semantic parser; fixtures define supported claim patterns.
 $nullEmailInferenceIsUnsafe = {
     param([string]$Text)
-    $nullEmailSignal = '(?i)(?:/user[\s._/-]{0,20})?email\s*(?:==|=|:|is)\s*null|\bnull\s+email\b'
-    $positiveClaim = '(?i)(?:\b(?:prove|proves|confirm|confirms|demonstrate|demonstrates|show|shows|mean|means)\b|доказывает|подтверждает|показывает|свидетельствует)'
-    $privacyTarget = '(?i)(?:commit[\s-]*email|noreply|privacy|private|приватн\w*)'
-    $explicitNegation = '(?i)(?:\b(?:does\s+not|do\s+not|did\s+not|doesn''t|don''t|didn''t|cannot|can''t|never)\s+(?:\w+\s+){0,2}(?:prove|confirm|demonstrate|show|mean)\b|\bnot\s+(?:a|any)\s+(?:proof|evidence)\b|\bне\s+(?:доказывает|подтверждает|показывает|свидетельствует)\b|\bне\s+является\s+(?:доказательством|подтверждением)\b)'
-    foreach ($paragraph in ($Text -split '(?:\r?\n){2,}|(?m)(?=^\s*[-*]\s)')) {
-        if ($paragraph -notmatch $nullEmailSignal) { continue }
-        $claims = $paragraph -split '(?i)[,;:!?.]+|[\u2012-\u2015]|\b(?:but|however|yet|whereas|но|однако|зато)\b'
-        foreach ($claim in $claims) {
-            if (
-                $claim -match $positiveClaim -and
-                $claim -match $privacyTarget -and
-                $claim -notmatch $explicitNegation
-            ) {
-                return $true
+    $normalizedText = $Text.Replace([string][char]96, '').Replace('"', '')
+    $nullEmailSignal = '(?i)(?:/user[\s._/-]{0,20})?(?:email(?:\s+(?:field|property))?|\b(?:field|property)\s+email)\s*(?:==|=|:|\b(?:is|was|returned|equals?)\b|равен|равно)\s*(?:null|nil|none)\b|\bemail\s+(?:is\s+)?(?:null|nil|none)\b|\b(?:null|nil|none)\s+email\b'
+    $positiveVerbPattern = '(?:prove\w*|proven|confirm\w*|demonstrat\w*|show\w*|shown|mean\w*|indicat\w*|establish\w*|доказ\w*|подтвержд\w*|показ\w*|означа\w*|свидетельств\w*|установ\w*)'
+    $positiveClaim = "(?i)\b$positiveVerbPattern\b"
+    $privacyTarget = '(?i)(?:commit[\s-]*email|email[\s-]*(?:privacy|private|privat\w*)|(?:privacy|private|privat\w*)[\s-]+email|(?:email|почт\w*)[\s-]*(?:address|адрес)?\s*.{0,24}\b(?:private|privat\w*|приватн\w*)|noreply)'
+    $claimSeparators = '(?i),(?=\s*(?:it|this|that|these|those|the|a|an|we|you|they|he|she|i|поле|это|данн\w*)\b)|\s+(?:but|however|whereas|while|although|though|and|но|однако|зато|и\s+при\s+этом|а|и)\s+|\s+-\s+|[\u2012-\u2015]|\s+/\s+|[;()]'
+    $negativeBeforePredicate = '(?i)(?:\b(?:does\s+not|do\s+not|did\s+not|doesn''t|don''t|didn''t|cannot|can''t|never|не)\b|\bnot\b(?!\s+(?:only|just|insufficient|impossible)\b))(?:(?:[\s,;()]+)(?!(?:fail\w*|переста\w*)\b)[\p{L}\p{M}\p{N}_-]+){0,6}[\s,;()]*$|\b(?:is\s+)?insufficient\s+(?:to|for)\s*$|\bнедостаточн\w*\s+(?:чтобы|для)\s*$|\bno\s+(?:evidence|proof)\b.{0,40}$'
+    $doubleNegationPattern = '(?i)\b(?:does\s+not\s+fail\w*\s+to|never\s+fails?\s+to|not\s+(?:is\s+)?insufficient\b|not\s+impossible\b|не\s+(?:переста\w*|может\s+не)\b)'
+    $independentEvidencePattern = '(?i)\b(?:separate|independent|standalone|another|distinct)\b.{0,80}\b(?:api|check|verification|audit|source)\b|\b(?:отдельн\w*|независим\w*|друг\w*)\b.{0,80}\b(?:api|провер\w*|аудит|источник)\b'
+    foreach ($block in ($normalizedText -split '(?:\r?\n){2,}|(?m)(?=^\s*(?:[-*]|\d+[.)])\s)')) {
+        $previousSentenceHadSignal = $false
+        $sentences = $block -split '(?<=[.!?])[\t ]+(?=[\p{L}\p{N}])|(?<=[.!?])\r?\n+'
+        foreach ($sentence in $sentences) {
+            $sentenceHasSignal = $sentence -match $nullEmailSignal
+            $startsWithReference = $sentence -match '(?i)^\s*(?:it|this|that|these|those|therefore|thus|hence|consequently|это|поле|значение|результат|данн\w*\s+(?:поле|значение|результат)|поэтому|следовательно|значит)\b'
+            $shouldAnalyze = $sentenceHasSignal -or ($previousSentenceHadSignal -and $startsWithReference)
+            $previousSentenceHadSignal = $sentenceHasSignal
+            if (-not $shouldAnalyze) { continue }
+            $claims = @($sentence -split $claimSeparators)
+            $firstRelevantClaim = 0
+            if ($sentenceHasSignal) {
+                $firstRelevantClaim = -1
+                for ($index = 0; $index -lt $claims.Count; $index++) {
+                    if ($claims[$index] -match $nullEmailSignal) {
+                        $firstRelevantClaim = $index
+                        break
+                    }
+                }
+                if ($firstRelevantClaim -lt 0) { continue }
+            }
+            for ($index = $firstRelevantClaim; $index -lt $claims.Count; $index++) {
+                $claim = $claims[$index]
+                if ($claim -match $independentEvidencePattern) { continue }
+                $verbs = [regex]::Matches($claim, $positiveClaim)
+                $targets = [regex]::Matches($claim, $privacyTarget)
+                for ($verbIndex = 0; $verbIndex -lt $verbs.Count; $verbIndex++) {
+                    $verb = $verbs[$verbIndex]
+                    $localStart = 0
+                    if ($verbIndex -gt 0) {
+                        $previousVerb = $verbs[$verbIndex - 1]
+                        $localStart = $previousVerb.Index + $previousVerb.Length
+                    }
+                    $prefix = $claim.Substring($localStart, $verb.Index - $localStart)
+                    $isDoubleNegation = $prefix -match $doubleNegationPattern
+                    $isNegated = -not $isDoubleNegation -and $prefix -match $negativeBeforePredicate
+                    if ($isNegated) { continue }
+                    foreach ($target in $targets) {
+                        if ($target.Index -ge ($verb.Index + $verb.Length)) {
+                            $distance = $target.Index - ($verb.Index + $verb.Length)
+                        } elseif (($target.Index + $target.Length) -le $verb.Index) {
+                            $distance = $verb.Index - ($target.Index + $target.Length)
+                        } else {
+                            $distance = 0
+                        }
+                        if ($distance -gt 120) { continue }
+
+                        $negativePairStart = [regex]::Match($claim, '(?i)\bneither\b|\bни\b')
+                        if ($negativePairStart.Success) {
+                            if ($negativePairStart.Value -match '(?i)^neither$') {
+                                $negativePairEnd = [regex]::Match($claim, '(?i)\bnor\b', $negativePairStart.Index + $negativePairStart.Length)
+                            } else {
+                                $negativePairEnd = [regex]::Match($claim, '(?i)\bни\b', $negativePairStart.Index + $negativePairStart.Length)
+                            }
+                            if (
+                                $negativePairEnd.Success -and
+                                $verb.Index -ge $negativePairStart.Index -and
+                                $target.Index -ge $negativePairStart.Index
+                            ) {
+                                continue
+                            }
+                        }
+                        return $true
+                    }
+                }
             }
         }
     }
@@ -319,56 +425,132 @@ $allowedSystemAddressFixture = 'noreply' + [char]64 + 'github.com'
 $externalEmailFixture = 'owner' + [char]64 + 'example.invalid'
 $personalNoreplyFixture = 'owner' + [char]64 + 'users.noreply.github.com'
 $suffixLookalikeFixture = 'owner' + [char]64 + 'users.noreply.github.com.attacker.invalid'
+$underscoreNearAllowedFixture = 'x_' + 'noreply' + [char]64 + 'github.com'
+$unicodeDomainFixture = 'owner' + [char]64 + 'пример.рф'
+$punycodeDomainFixture = 'owner' + [char]64 + 'example.xn--p1ai'
 $obfuscatedAtFixture = 'owner [' + 'at] example.invalid'
 $encodedAtFixture = 'owner%' + '40example.invalid'
+$wordAtDotFixture = 'owner' + ' at ' + 'example' + ' dot ' + 'invalid'
+$tabAtDotFixture = 'owner' + [char]9 + 'at' + [char]9 + 'example' + [char]9 + 'dot' + [char]9 + 'invalid'
+$multilineAtFixture = 'owner' + [char]10 + 'at' + [char]10 + 'example dot invalid'
+$fullWidthAtFixture = 'owner' + [char]0xFF20 + 'example.invalid'
 $absoluteWindowsPathFixture = 'D:' + [char]92 + 'Owner' + [char]92 + 'private.md'
 $absolutePosixPathFixture = '/' + 'home/Owner/private.md'
 $absoluteUncPathFixture = ([string][char]92 + [string][char]92 + 'server' + [char]92 + 'share' + [char]92 + 'private.md')
+$absoluteSlashUncPathFixture = ([string][char]47 + [string][char]47 + 'server/share/private.md')
+$absoluteMsysPathFixture = '/' + 'c/Users/Owner/private.md'
+$absoluteMacPathFixture = '/' + 'Applications/Tool.app/Contents/Info.plist'
+$absoluteLowercaseUsersPathFixture = '/' + 'users/owner/private.md'
+$homeRouteFixture = 'GET /' + 'home/dashboard'
+$privateRouteFixture = 'GET /' + 'private/keys'
+$urlPathFixture = 'https://example.invalid/' + 'home/user/private.md'
 $allowedFindings = @(& $findPrivacyFindings $allowedSystemAddressFixture)
 $externalFindings = @(& $findPrivacyFindings $externalEmailFixture)
 $personalNoreplyFindings = @(& $findPrivacyFindings $personalNoreplyFixture)
 $suffixLookalikeFindings = @(& $findPrivacyFindings $suffixLookalikeFixture)
+$underscoreNearAllowedFindings = @(& $findPrivacyFindings $underscoreNearAllowedFixture)
+$unicodeDomainFindings = @(& $findPrivacyFindings $unicodeDomainFixture)
+$punycodeDomainFindings = @(& $findPrivacyFindings $punycodeDomainFixture)
 $obfuscatedAtFindings = @(& $findPrivacyFindings $obfuscatedAtFixture)
 $encodedAtFindings = @(& $findPrivacyFindings $encodedAtFixture)
+$wordAtDotFindings = @(& $findPrivacyFindings $wordAtDotFixture)
+$tabAtDotFindings = @(& $findPrivacyFindings $tabAtDotFixture)
+$multilineAtFindings = @(& $findPrivacyFindings $multilineAtFixture)
+$fullWidthAtFindings = @(& $findPrivacyFindings $fullWidthAtFixture)
 $absolutePathFindings = @(& $findPrivacyFindings $absoluteWindowsPathFixture)
 $absolutePosixPathFindings = @(& $findPrivacyFindings $absolutePosixPathFixture)
 $absoluteUncPathFindings = @(& $findPrivacyFindings $absoluteUncPathFixture)
-if (
-    $allowedFindings -contains 'email' -or
-    $externalFindings -notcontains 'email' -or
-    $personalNoreplyFindings -notcontains 'email' -or
-    $suffixLookalikeFindings -notcontains 'email' -or
-    $obfuscatedAtFindings -notcontains 'obfuscated-email' -or
-    $encodedAtFindings -notcontains 'obfuscated-email' -or
-    $absolutePathFindings -notcontains 'absolute-local-path' -or
-    $absolutePosixPathFindings -notcontains 'absolute-local-path' -or
-    $absoluteUncPathFindings -notcontains 'absolute-local-path'
-) {
-    throw 'Privacy scanner fixtures must allow only the exact GitHub system committer and reject external/lookalike addresses, obfuscation and absolute paths'
+$absoluteSlashUncPathFindings = @(& $findPrivacyFindings $absoluteSlashUncPathFixture)
+$absoluteMsysPathFindings = @(& $findPrivacyFindings $absoluteMsysPathFixture)
+$absoluteMacPathFindings = @(& $findPrivacyFindings $absoluteMacPathFixture)
+$absoluteLowercaseUsersPathFindings = @(& $findPrivacyFindings $absoluteLowercaseUsersPathFixture)
+$routeFindings = @(& $findPrivacyFindings ([string]::Join([Environment]::NewLine, @($homeRouteFixture, $privateRouteFixture, $urlPathFixture))))
+$scannerFailures = [System.Collections.Generic.List[string]]::new()
+$scannerExpectations = @(
+    @{ Name = 'exact-system-allowlist'; Findings = $allowedFindings; Expected = $null; Finding = 'email' },
+    @{ Name = 'external-email'; Findings = $externalFindings; Expected = 'email'; Finding = 'email' },
+    @{ Name = 'personal-noreply'; Findings = $personalNoreplyFindings; Expected = 'email'; Finding = 'email' },
+    @{ Name = 'domain-lookalike'; Findings = $suffixLookalikeFindings; Expected = 'email'; Finding = 'email' },
+    @{ Name = 'local-part-boundary'; Findings = $underscoreNearAllowedFindings; Expected = 'email'; Finding = 'email' },
+    @{ Name = 'unicode-domain'; Findings = $unicodeDomainFindings; Expected = 'email'; Finding = 'email' },
+    @{ Name = 'punycode-domain'; Findings = $punycodeDomainFindings; Expected = 'email'; Finding = 'email' },
+    @{ Name = 'at-obfuscation'; Findings = $obfuscatedAtFindings; Expected = 'obfuscated-email'; Finding = 'obfuscated-email' },
+    @{ Name = 'percent-encoding'; Findings = $encodedAtFindings; Expected = 'obfuscated-email'; Finding = 'obfuscated-email' },
+    @{ Name = 'word-at-dot'; Findings = $wordAtDotFindings; Expected = 'obfuscated-email'; Finding = 'obfuscated-email' },
+    @{ Name = 'horizontal-tab-obfuscation'; Findings = $tabAtDotFindings; Expected = 'obfuscated-email'; Finding = 'obfuscated-email' },
+    @{ Name = 'multiline-not-accepted'; Findings = $multilineAtFindings; Expected = $null; Finding = 'obfuscated-email' },
+    @{ Name = 'fullwidth-at'; Findings = $fullWidthAtFindings; Expected = 'obfuscated-email'; Finding = 'obfuscated-email' },
+    @{ Name = 'windows-path'; Findings = $absolutePathFindings; Expected = 'absolute-local-path'; Finding = 'absolute-local-path' },
+    @{ Name = 'posix-path'; Findings = $absolutePosixPathFindings; Expected = 'absolute-local-path'; Finding = 'absolute-local-path' },
+    @{ Name = 'backslash-unc'; Findings = $absoluteUncPathFindings; Expected = 'absolute-local-path'; Finding = 'absolute-local-path' },
+    @{ Name = 'slash-unc'; Findings = $absoluteSlashUncPathFindings; Expected = 'absolute-local-path'; Finding = 'absolute-local-path' },
+    @{ Name = 'msys-path'; Findings = $absoluteMsysPathFindings; Expected = 'absolute-local-path'; Finding = 'absolute-local-path' },
+    @{ Name = 'mac-app-path'; Findings = $absoluteMacPathFindings; Expected = 'absolute-local-path'; Finding = 'absolute-local-path' },
+    @{ Name = 'lowercase-users-path'; Findings = $absoluteLowercaseUsersPathFindings; Expected = 'absolute-local-path'; Finding = 'absolute-local-path' },
+    @{ Name = 'http-routes-and-url'; Findings = $routeFindings; Expected = $null; Finding = 'absolute-local-path' }
+)
+foreach ($expectation in $scannerExpectations) {
+    $hasFinding = $expectation.Finding -in $expectation.Findings
+    $shouldFind = $null -ne $expectation.Expected
+    if ($hasFinding -ne $shouldFind) {
+        $scannerFailures.Add($expectation.Name)
+    }
+}
+if ($scannerFailures.Count -gt 0) {
+    throw ('Privacy scanner fixture failures (labels only): ' + ($scannerFailures -join ', '))
 }
 $unsafePrivacyFixtures = @(
     'GET /user.email == null; This proves private commit email.',
     'GET /user email = null. Это подтверждает приватность commit email.',
-    'GET /user.email == null. This does not prove account email privacy — it proves commit email privacy.',
-    'GET /user.email == null. This does not prove account email privacy, but it proves commit email privacy.'
+    'GET /user.email == null. This does not prove account privacy — it proves commit email privacy.',
+    'GET /user.email == null. This does not prove account privacy, but it proves commit email privacy.',
+    'GET /user.email == null. This does not prove account privacy, it proves commit email privacy.',
+    'GET /user email = null and it proves commit email privacy.',
+    'GET /user email = null while it proves private commit email.',
+    'GET /user email = null. This does not prove account privacy - it proves commit email privacy.',
+    'GET /user email = null. This does not prove account privacy (it proves commit email privacy).',
+    'GET /user.email == null. This does not prove account privacy / it proves commit email privacy.',
+    'Although GET /user email = null does not prove account privacy it proves commit email privacy.',
+    'GET /user email = null. Поле не подтверждает приватность профиля и при этом доказывает приватность commit email.',
+    ('GET /user email = null. This does not prove account privacy' + [Environment]::NewLine + 'it proves commit email privacy.'),
+    'GET /user email = null. This does not fail to prove commit email privacy.',
+    'GET /user email = null. It never fails to confirm commit email privacy.',
+    'GET /user.email == null; приватность commit email подтверждена.',
+    'GET /user.email == null подтверждают приватный commit email.',
+    'GET /user.email == null означает приватный commit email.',
+    ('GET /user.' + [char]96 + 'email' + [char]96 + ' = ' + [char]96 + 'null' + [char]96 + '; it proved private commit email.'),
+    'The email field is null. This proves commit email privacy.',
+    'GET /user returned "email" = "null". This proves commit email privacy.',
+    'GET /user returned email is nil. This proves commit email privacy.',
+    'Поле email равно null. Это означает приватный commit email.',
+    'GET /user email равен null. Это подтверждает приватность commit email.'
 )
 $safePrivacyFixtures = @(
     'GET /user email = null. This does not prove private commit email.',
     'GET /user email = null. Публичное поле профиля не подтверждает приватный commit email.',
-    'GET /user.email == null. It does not prove commit email privacy — the public profile field is insufficient.'
+    'GET /user.email == null. It does not prove commit email privacy — the public profile field is insufficient.',
+    'GET /user email = null. It does not, on its own, prove commit email privacy.',
+    'GET /user email = null. It does not yet show commit email privacy.',
+    'GET /user email = null. This cannot be used to prove commit email privacy.',
+    'GET /user email = null. This is insufficient to prove commit email privacy.',
+    'GET /user email = null. It neither proves nor disproves commit email privacy.',
+    'GET /user email = null. It neither proves nor confirms commit email privacy.',
+    'GET /user email = null. Ни подтверждает, ни доказывает приватность commit email.',
+    'GET /user email = null. It does not prove commit email privacy but merely shows that profile privacy is enabled.',
+    'GET /user email = null; a separate API check confirms commit email privacy.'
 )
 $separateBulletFixture = [string]::Join([Environment]::NewLine, @(
     '- GET /user email = null.',
     '- A separate note confirms that the task records commit privacy decisions.'
 ))
-foreach ($fixture in $unsafePrivacyFixtures) {
-    if (-not (& $nullEmailInferenceIsUnsafe $fixture)) {
-        throw 'Privacy regression detector must reject positive claims based on the public profile email=null field'
+for ($fixtureIndex = 0; $fixtureIndex -lt $unsafePrivacyFixtures.Count; $fixtureIndex++) {
+    if (-not (& $nullEmailInferenceIsUnsafe $unsafePrivacyFixtures[$fixtureIndex])) {
+        throw ('Privacy regression detector missed unsafe fixture index ' + $fixtureIndex)
     }
 }
-foreach ($fixture in $safePrivacyFixtures) {
-    if (& $nullEmailInferenceIsUnsafe $fixture) {
-        throw 'Privacy regression detector must preserve explicit negative statements'
+for ($fixtureIndex = 0; $fixtureIndex -lt $safePrivacyFixtures.Count; $fixtureIndex++) {
+    if (& $nullEmailInferenceIsUnsafe $safePrivacyFixtures[$fixtureIndex]) {
+        throw ('Privacy regression detector flagged safe fixture index ' + $fixtureIndex)
     }
 }
 if (& $nullEmailInferenceIsUnsafe $separateBulletFixture) {
@@ -380,9 +562,7 @@ foreach ($file in $privacyScanFiles) {
     $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $file.FullName).Replace('\', '/')
     $content = [System.IO.File]::ReadAllText($file.FullName)
     $filePrivacyFindings = @(& $findPrivacyFindings $content)
-    if ($file.Extension -ine '.md') {
-        $filePrivacyFindings = @($filePrivacyFindings | Where-Object { $_ -ne 'absolute-local-path' })
-    }
+
     foreach ($finding in $filePrivacyFindings) {
         $privacyFindings.Add(('{0}:{1}' -f $relativePath, $finding))
     }
