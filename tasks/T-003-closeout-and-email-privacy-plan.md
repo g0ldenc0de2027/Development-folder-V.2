@@ -1,6 +1,6 @@
 # T-003 — Закрыть merge T-002 и закрепить план приватности email
 
-**Статус:** in progress
+**Статус:** ready for review
 **Тип:** maintenance / GitHub closeout and privacy documentation
 **База:** `c98a1922dee2dedeaed6eeb528d72098beb3a128` (`origin/main` после merge PR #2)
 
