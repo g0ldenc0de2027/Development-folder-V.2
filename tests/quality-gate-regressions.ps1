@@ -224,11 +224,13 @@ if (
     throw 'No-App owner-root-of-trust decision and non-enforced gate residual risk must be explicit in workflow and handoff'
 }
 if (
-    $roadmap -notmatch 'Copilot and Antigravity both reviewed head b272622' -or
-    $roadmap -notmatch 'Copilot APPROVE.*Antigravity CHANGES REQUIRED' -or
-    $roadmap -notmatch 'Copilot and Antigravity both reviewed head b272622.*Antigravity CHANGES REQUIRED.*QUALITY-GATE=PASS against origin/main.*reviews and run #43614751907 are stale after the next commit'
+    $roadmap -notmatch 'Copilot reviewed exact PR #3 head bbd8abc223099b368407cd7082f6cec409d5c6e6 against base c98a1922dee2dedeaed6eeb528d72098beb3a128' -or
+    $roadmap -notmatch 'run 43618469816' -or
+    $roadmap -notmatch 'merge-result 4592797ecefdf767903ae37d37522f52fa1a3146' -or
+    $roadmap -notmatch 'targeted regression suite and full quality gate pass locally against origin/main' -or
+    $roadmap -notmatch 'fresh independent review and hosted CI remain required'
 ) {
-    throw 'Roadmap must attribute reviews to their actual heads and invalidate them after follow-up changes'
+    throw 'Roadmap must bind Copilot findings and CI to exact revisions and state current validation accurately'
 }
 $taskThree = Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-003-closeout-and-email-privacy-plan.md') -Raw
 if (
@@ -237,12 +239,13 @@ if (
     $taskThree -notmatch 'GitHub Copilot проверил head 363cfdbc' -or
     $taskThree -notmatch 'P2-1\.\.P2-3 и P3-1' -or
     $taskThree -notmatch 'head b272622eb93d1881960a164671fcb30836e99b6f GitHub Copilot вынес APPROVE' -or
-    $taskThree -notmatch 'На том же head Antigravity вынес CHANGES REQUIRED' -or
-    $taskThree -notmatch 'QUALITY-GATE=PASS на рабочем дереве против origin/main' -or
-    $taskThree -notmatch 'Перед merge нужны свежие независимые отчёты' -or
+    $taskThree -notmatch 'Copilot checked exact PR #3 head bbd8abc223099b368407cd7082f6cec409d5c6e6' -or
+    $taskThree -notmatch 'run 43618469816.*merge-result 4592797ecefdf767903ae37d37522f52fa1a3146' -or
+    $taskThree -notmatch 'P2:.*copular privacy predicate' -or
+    $taskThree -notmatch 'targeted regression suite and full quality gate pass on the current diff against origin/main' -or
     $taskThree -notmatch 'bounded heuristic and does not guarantee recognition of arbitrary paraphrases'
 ) {
-    throw 'T-003 must preserve reviewer attribution, exact reviewed heads and stale-review status'
+    throw 'T-003 must preserve reviewer attribution, exact reviewed heads, Copilot finding and stale-review status'
 }
 
 
@@ -355,7 +358,8 @@ $nullEmailInferenceIsUnsafe = {
     $normalizedText = $Text.Replace([string][char]96, '').Replace('"', '')
     $nullEmailSignal = '(?i)(?:/user[\s._/-]{0,20})?(?:email(?:\s+(?:field|property))?|\b(?:field|property)\s+email)\s*(?:==|=|:|\b(?:is|was|returned|equals?)\b|равен|равно)\s*(?:null|nil|none)\b|\bemail\s+(?:is\s+)?(?:null|nil|none)\b|\b(?:null|nil|none)\s+email\b'
     $positiveVerbPattern = '(?:prove\w*|proven|confirm\w*|demonstrat\w*|show\w*|shown|mean\w*|indicat\w*|establish\w*|доказ\w*|подтвержд\w*|показ\w*|означа\w*|свидетельств\w*|установ\w*)'
-    $positiveClaim = "(?i)\b$positiveVerbPattern\b"
+    $copularPrivacyPredicate = '(?:\b(?:is|are|was|were|remain(?:s|ed)?|stay(?:s|ed)?|become(?:s|d)?)(?:\s+(?:not|never|no\s+longer))?\s+(?:private|privat\w*|приватн\w*))'
+    $positiveClaim = "(?i)\b(?:$positiveVerbPattern|$copularPrivacyPredicate)\b"
     $pairedPredicatePattern = "(?i)\b(?:$positiveVerbPattern|disprove\w*|refute\w*|опроверг\w*)\b"
     $privacyTarget = '(?i)(?:commit[\s-]*email|email[\s-]*(?:privacy|private|privat\w*)|(?:privacy|private|privat\w*)[\s-]+email|(?:email|почт\w*)[\s-]*(?:address|адрес)?\s*.{0,24}\b(?:private|privat\w*|приватн\w*)|noreply)'
     $claimSeparators = '(?i)[,:](?=\s*(?:it|this|that|these|those|the|a|an|we|you|they|he|she|i|поле|это|данн\w*)\b)|\s+(?:but|however|whereas|while|although|though|но|однако|зато|и\s+при\s+этом|а)\s+|\s+(?:because|since|потому\s+что|так\s+как|поскольку)\s+|\s+(?:and|и)\s+(?=(?:it|this|that|these|those|we|you|they|he|she|i|поле|это|данн\w*)\b)|\s+-\s+|[\u2012-\u2015]|\s+/\s+|[;()]'
@@ -396,9 +400,12 @@ $nullEmailInferenceIsUnsafe = {
                         $previousVerb = $verbs[$verbIndex - 1]
                         $localStart = $previousVerb.Index + $previousVerb.Length
                     }
-                    $prefix = $claim.Substring($localStart, $verb.Index - $localStart)
+                    $prefixStart = $localStart
+                    if ($verb.Value -match '(?i)^(?:is|are|was|were|remain|remains|remained|stay|stays|stayed|become|becomes|became)\b') { $prefixStart = 0 }
+                    $prefix = $claim.Substring($prefixStart, $verb.Index - $prefixStart)
                     $isDoubleNegation = $prefix -match $doubleNegationPattern
-                    $isNegated = -not $isDoubleNegation -and $prefix -match $negativeBeforePredicate
+                    $isCopularNegation = $verb.Value -match '(?i)\b(?:not|never|no\s+longer)\b'
+                    $isNegated = $isCopularNegation -or (-not $isDoubleNegation -and $prefix -match $negativeBeforePredicate)
                     if ($verbIndex -gt 0 -and $predicateNegations[$verbIndex - 1]) {
                         $previousVerb = $verbs[$verbIndex - 1]
                         $betweenVerbs = $claim.Substring(
@@ -609,10 +616,14 @@ $unsafePrivacyFixtures = @(
     'GET /user email = null. Neither here nor there, this proves commit email privacy.',
     'GET /user email = null. Ни на секунду не сомневаюсь, ни капли: это доказывает приватность commit email.',
     'GET /user email = null. A separate check is not needed because this proves commit email privacy.',
-    'GET /user email равен null. Это подтверждает приватность commit email.'
+    'GET /user email равен null. Это подтверждает приватность commit email.',
+    'GET /user email = null. A separate check is not needed because commit email is private.',
+    'GET /user email = null. The commit email is private.'
 )
 $safePrivacyFixtures = @(
     'GET /user email = null. This does not prove private commit email.',
+    'GET /user email = null. This does not prove that the commit email is private.',
+    'GET /user email = null. The commit email is not private.',
     'GET /user email = null. Публичное поле профиля не подтверждает приватный commit email.',
     'GET /user.email == null. It does not prove commit email privacy — the public profile field is insufficient.',
     'GET /user email = null. It does not, on its own, prove commit email privacy.',
