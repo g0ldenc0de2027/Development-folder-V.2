@@ -224,17 +224,21 @@ if (
     throw 'No-App owner-root-of-trust decision and non-enforced gate residual risk must be explicit in workflow and handoff'
 }
 if (
-    $roadmap -notmatch 'Copilot reviewed head 363cfdbc' -or
-    $roadmap -notmatch 'Antigravity reviewed 9c486a3a' -or
-    $roadmap -notmatch 'invalidate both reviews and prior hosted CI'
+    $roadmap -notmatch 'Copilot and Antigravity both reviewed head b272622' -or
+    $roadmap -notmatch 'Copilot APPROVE.*Antigravity CHANGES REQUIRED' -or
+    $roadmap -notmatch 'Copilot and Antigravity both reviewed head b272622.*Antigravity CHANGES REQUIRED.*QUALITY-GATE=PASS against origin/main.*reviews and run #43614751907 are stale after the next commit'
 ) {
     throw 'Roadmap must attribute reviews to their actual heads and invalidate them after follow-up changes'
 }
 $taskThree = Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-003-closeout-and-email-privacy-plan.md') -Raw
 if (
-    $taskThree -notmatch 'Antigravity \(Gemini 4 Argon\).*9c486a3a' -or
+    $taskThree -notmatch 'Antigravity \(Gemini 4 Argon\)' -or
+    $taskThree -notmatch '9c486a3a653f423add97ee93b376ffde8a42154e' -or
     $taskThree -notmatch 'GitHub Copilot проверил head 363cfdbc' -or
     $taskThree -notmatch 'P2-1\.\.P2-3 и P3-1' -or
+    $taskThree -notmatch 'head b272622eb93d1881960a164671fcb30836e99b6f GitHub Copilot вынес APPROVE' -or
+    $taskThree -notmatch 'На том же head Antigravity вынес CHANGES REQUIRED' -or
+    $taskThree -notmatch 'QUALITY-GATE=PASS на рабочем дереве против origin/main' -or
     $taskThree -notmatch 'Перед merge нужны свежие независимые отчёты' -or
     $taskThree -notmatch 'bounded heuristic and does not guarantee recognition of arbitrary paraphrases'
 ) {
@@ -300,7 +304,7 @@ $emailTldPattern = '(?:[A-Z]{2,63}|xn--[A-Z0-9-]{2,59}|[\p{L}]{2,63})'
 $emailDomainPattern = "(?:$emailDomainLabel\.)+$emailTldPattern"
 $emailPattern = "(?i)(?<![\p{L}\p{N}._%+-])(?<local>$emailLocalPartPattern)@(?<domain>$emailDomainPattern)(?![\p{L}\p{N}-])"
 $emailAtObfuscationPattern = '(?:\[at\]|\(at\)|\{at\}|%40|&#0*64;|&#x0*40;|&commat;|＠|[ \t]+at[ \t]+)'
-$emailDomainSeparator = '(?:[ \t]*\.[ \t]*|[ \t]+dot[ \t]+)'
+$emailDomainSeparator = '(?:[ \t]*\.[ \t]*|[ \t]+dot[ \t]+|[ \t]*\[(?:dot)\][ \t]*|[ \t]*\(dot\)[ \t]*|[ \t]*\{dot\}[ \t]*)'
 $emailObfuscatedTldPattern = '(?:[A-Z]{2,63}|xn--[A-Z0-9-]{2,59}|[\p{L}]{2,63})'
 $emailDomainObfuscationPattern = "(?:$emailDomainLabel(?:$emailDomainSeparator$emailDomainLabel)*$emailDomainSeparator$emailObfuscatedTldPattern)"
 $obfuscatedEmailPattern = "(?i)(?<![\p{L}\p{N}._%+-])$emailLocalPartPattern[ \t]*$emailAtObfuscationPattern[ \t]*$emailDomainObfuscationPattern(?![\p{L}\p{N}-])"
@@ -327,7 +331,16 @@ $findPrivacyFindings = {
         $findings.Add('obfuscated-email')
     }
     foreach ($line in ($Text -split '\r?\n')) {
+        $urls = [regex]::Matches($line, '(?i)\bhttps?://[^\s\x60<>]+')
         foreach ($match in [regex]::Matches($line, $absoluteLocalPathPattern)) {
+            $insideUrl = $false
+            foreach ($url in $urls) {
+                if ($match.Index -ge $url.Index -and $match.Index -lt ($url.Index + $url.Length)) {
+                    $insideUrl = $true
+                    break
+                }
+            }
+            if ($insideUrl) { continue }
             $prefix = $line.Substring(0, $match.Index)
             if ($prefix -match '(?i)\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*$') { continue }
             $findings.Add('absolute-local-path')
@@ -343,17 +356,18 @@ $nullEmailInferenceIsUnsafe = {
     $nullEmailSignal = '(?i)(?:/user[\s._/-]{0,20})?(?:email(?:\s+(?:field|property))?|\b(?:field|property)\s+email)\s*(?:==|=|:|\b(?:is|was|returned|equals?)\b|равен|равно)\s*(?:null|nil|none)\b|\bemail\s+(?:is\s+)?(?:null|nil|none)\b|\b(?:null|nil|none)\s+email\b'
     $positiveVerbPattern = '(?:prove\w*|proven|confirm\w*|demonstrat\w*|show\w*|shown|mean\w*|indicat\w*|establish\w*|доказ\w*|подтвержд\w*|показ\w*|означа\w*|свидетельств\w*|установ\w*)'
     $positiveClaim = "(?i)\b$positiveVerbPattern\b"
+    $pairedPredicatePattern = "(?i)\b(?:$positiveVerbPattern|disprove\w*|refute\w*|опроверг\w*)\b"
     $privacyTarget = '(?i)(?:commit[\s-]*email|email[\s-]*(?:privacy|private|privat\w*)|(?:privacy|private|privat\w*)[\s-]+email|(?:email|почт\w*)[\s-]*(?:address|адрес)?\s*.{0,24}\b(?:private|privat\w*|приватн\w*)|noreply)'
-    $claimSeparators = '(?i),(?=\s*(?:it|this|that|these|those|the|a|an|we|you|they|he|she|i|поле|это|данн\w*)\b)|\s+(?:but|however|whereas|while|although|though|and|но|однако|зато|и\s+при\s+этом|а|и)\s+|\s+-\s+|[\u2012-\u2015]|\s+/\s+|[;()]'
+    $claimSeparators = '(?i)[,:](?=\s*(?:it|this|that|these|those|the|a|an|we|you|they|he|she|i|поле|это|данн\w*)\b)|\s+(?:but|however|whereas|while|although|though|но|однако|зато|и\s+при\s+этом|а)\s+|\s+(?:because|since|потому\s+что|так\s+как|поскольку)\s+|\s+(?:and|и)\s+(?=(?:it|this|that|these|those|we|you|they|he|she|i|поле|это|данн\w*)\b)|\s+-\s+|[\u2012-\u2015]|\s+/\s+|[;()]'
     $negativeBeforePredicate = '(?i)(?:\b(?:does\s+not|do\s+not|did\s+not|doesn''t|don''t|didn''t|cannot|can''t|never|не)\b|\bnot\b(?!\s+(?:only|just|insufficient|impossible)\b))(?:(?:[\s,;()]+)(?!(?:fail\w*|переста\w*)\b)[\p{L}\p{M}\p{N}_-]+){0,6}[\s,;()]*$|\b(?:is\s+)?insufficient\s+(?:to|for)\s*$|\bнедостаточн\w*\s+(?:чтобы|для)\s*$|\bno\s+(?:evidence|proof)\b.{0,40}$'
     $doubleNegationPattern = '(?i)\b(?:does\s+not\s+fail\w*\s+to|never\s+fails?\s+to|not\s+(?:is\s+)?insufficient\b|not\s+impossible\b|не\s+(?:переста\w*|может\s+не)\b)'
-    $independentEvidencePattern = '(?i)\b(?:separate|independent|standalone|another|distinct)\b.{0,80}\b(?:api|check|verification|audit|source)\b|\b(?:отдельн\w*|независим\w*|друг\w*)\b.{0,80}\b(?:api|провер\w*|аудит|источник)\b'
+    $independentEvidenceSourcePattern = '(?i)\b(?:separate|independent|standalone|another|distinct)\b.{0,80}\b(?:api|check|verification|audit|source)\b|\b(?:отдельн\w*|независим\w*|друг\w*)\b.{0,80}\b(?:api|провер\w*|аудит|источник)\b'
     foreach ($block in ($normalizedText -split '(?:\r?\n){2,}|(?m)(?=^\s*(?:[-*]|\d+[.)])\s)')) {
         $previousSentenceHadSignal = $false
         $sentences = $block -split '(?<=[.!?])[\t ]+(?=[\p{L}\p{N}])|(?<=[.!?])\r?\n+'
         foreach ($sentence in $sentences) {
             $sentenceHasSignal = $sentence -match $nullEmailSignal
-            $startsWithReference = $sentence -match '(?i)^\s*(?:it|this|that|these|those|therefore|thus|hence|consequently|это|поле|значение|результат|данн\w*\s+(?:поле|значение|результат)|поэтому|следовательно|значит)\b'
+            $startsWithReference = $sentence -match '(?i)^\s*(?:it|this|that|these|those|therefore|thus|hence|consequently|while|although|though|whereas|neither|ни|a|an|the|это|поле|значение|результат|данн\w*\s+(?:поле|значение|результат)|поэтому|следовательно|значит|хотя|несмотря\s+на|впрочем)\b'
             $shouldAnalyze = $sentenceHasSignal -or ($previousSentenceHadSignal -and $startsWithReference)
             $previousSentenceHadSignal = $sentenceHasSignal
             if (-not $shouldAnalyze) { continue }
@@ -371,9 +385,10 @@ $nullEmailInferenceIsUnsafe = {
             }
             for ($index = $firstRelevantClaim; $index -lt $claims.Count; $index++) {
                 $claim = $claims[$index]
-                if ($claim -match $independentEvidencePattern) { continue }
+                $independentEvidenceSources = [regex]::Matches($claim, $independentEvidenceSourcePattern)
                 $verbs = [regex]::Matches($claim, $positiveClaim)
                 $targets = [regex]::Matches($claim, $privacyTarget)
+                $predicateNegations = [System.Collections.Generic.List[bool]]::new()
                 for ($verbIndex = 0; $verbIndex -lt $verbs.Count; $verbIndex++) {
                     $verb = $verbs[$verbIndex]
                     $localStart = 0
@@ -384,7 +399,33 @@ $nullEmailInferenceIsUnsafe = {
                     $prefix = $claim.Substring($localStart, $verb.Index - $localStart)
                     $isDoubleNegation = $prefix -match $doubleNegationPattern
                     $isNegated = -not $isDoubleNegation -and $prefix -match $negativeBeforePredicate
+                    if ($verbIndex -gt 0 -and $predicateNegations[$verbIndex - 1]) {
+                        $previousVerb = $verbs[$verbIndex - 1]
+                        $betweenVerbs = $claim.Substring(
+                            $previousVerb.Index + $previousVerb.Length,
+                            $verb.Index - ($previousVerb.Index + $previousVerb.Length)
+                        )
+                        if ($betweenVerbs -match '(?i)^\s*(?:,\s*)?(?:(?:and|or|nor|и|или|либо|ни)\s*)?$') {
+                            $isNegated = $true
+                        }
+                    }
+                    $predicateNegations.Add([bool]$isNegated)
                     if ($isNegated) { continue }
+
+                    $hasDirectIndependentEvidence = $false
+                    foreach ($source in $independentEvidenceSources) {
+                        $sourceEnd = $source.Index + $source.Length
+                        if ($verb.Index -lt $sourceEnd) { continue }
+                        $evidenceGapLength = $verb.Index - $sourceEnd
+                        if ($evidenceGapLength -gt 40) { continue }
+                        $evidenceGap = $claim.Substring($sourceEnd, $evidenceGapLength)
+                        if ($evidenceGap -match '(?i)^\s*(?:(?:directly|independently|separately|also|прямо|независимо|отдельно|также)\s+){0,2}$') {
+                            $hasDirectIndependentEvidence = $true
+                            break
+                        }
+                    }
+                    if ($hasDirectIndependentEvidence) { continue }
+
                     foreach ($target in $targets) {
                         if ($target.Index -ge ($verb.Index + $verb.Length)) {
                             $distance = $target.Index - ($verb.Index + $verb.Length)
@@ -398,16 +439,48 @@ $nullEmailInferenceIsUnsafe = {
                         $negativePairStart = [regex]::Match($claim, '(?i)\bneither\b|\bни\b')
                         if ($negativePairStart.Success) {
                             if ($negativePairStart.Value -match '(?i)^neither$') {
-                                $negativePairEnd = [regex]::Match($claim, '(?i)\bnor\b', $negativePairStart.Index + $negativePairStart.Length)
+                                $negativePairEndPattern = '(?i)\bnor\b'
                             } else {
-                                $negativePairEnd = [regex]::Match($claim, '(?i)\bни\b', $negativePairStart.Index + $negativePairStart.Length)
+                                $negativePairEndPattern = '(?i)\bни\b'
                             }
-                            if (
-                                $negativePairEnd.Success -and
-                                $verb.Index -ge $negativePairStart.Index -and
-                                $target.Index -ge $negativePairStart.Index
-                            ) {
-                                continue
+                            $negativePairEndMatcher = [regex]::new($negativePairEndPattern)
+                            $negativePairEnd = $negativePairEndMatcher.Match(
+                                $claim,
+                                $negativePairStart.Index + $negativePairStart.Length
+                            )
+                            if ($negativePairEnd.Success) {
+                                $pairEnd = $negativePairEnd.Index + $negativePairEnd.Length
+                                $beforePairEnd = $claim.Substring(
+                                    $negativePairStart.Index + $negativePairStart.Length,
+                                    $negativePairEnd.Index - ($negativePairStart.Index + $negativePairStart.Length)
+                                )
+                                $afterPairEnd = $claim.Substring($pairEnd)
+                                $firstPairedVerb = [regex]::Match($beforePairEnd, $pairedPredicatePattern)
+                                $secondPairedVerb = [regex]::Match($afterPairEnd, $pairedPredicatePattern)
+                                $pairedPredicateClaim = $false
+                                if ($firstPairedVerb.Success -and $secondPairedVerb.Success) {
+                                    $firstPairedVerbIndex = $negativePairStart.Index + $negativePairStart.Length + $firstPairedVerb.Index
+                                    $secondPairedVerbIndex = $pairEnd + $secondPairedVerb.Index
+                                    $verbIsInPair = $verb.Index -eq $firstPairedVerbIndex -or $verb.Index -eq $secondPairedVerbIndex
+                                    $targetFollowsBothPredicates = $target.Index -ge ($secondPairedVerbIndex + $secondPairedVerb.Length)
+                                    $pairedPredicateClaim = $verbIsInPair -and $targetFollowsBothPredicates
+                                }
+                                $nominalPairPrefix = $claim.Substring(0, $verb.Index)
+                                $afterPairBeforeVerb = ''
+                                if ($verb.Index -ge $pairEnd) {
+                                    $afterPairBeforeVerb = $claim.Substring($pairEnd, $verb.Index - $pairEnd)
+                                }
+                                $nominalPairStartsWithNeither = $nominalPairPrefix -match '(?is)^\s*(?:it\s+)?neither\b(?:(?!\bnor\b)[\s\S]){1,80}\bnor\b.{1,32}$'
+                                $nominalPairStartsWithRussianNi = $nominalPairPrefix -match '(?is)^\s*ни\b(?:(?!\bни\b)[\s\S]){1,80}\bни\b.{1,32}$'
+                                $containsNewSubjectAfterPair = $afterPairBeforeVerb -match '(?i)\b(?:this|that|it|these|those|therefore|thus|hence|while|although|though|whereas|это|этот|эта|эти|он|она|они|поэтому|следовательно)\b'
+                                $nominalPairSubject = (
+                                    -not $firstPairedVerb.Success -and
+                                    $verb.Index -ge $pairEnd -and
+                                    $target.Index -ge ($verb.Index + $verb.Length) -and
+                                    -not $containsNewSubjectAfterPair -and
+                                    ($nominalPairStartsWithNeither -or $nominalPairStartsWithRussianNi)
+                                )
+                                if ($pairedPredicateClaim -or $nominalPairSubject) { continue }
                             }
                         }
                         return $true
@@ -432,6 +505,8 @@ $obfuscatedAtFixture = 'owner [' + 'at] example.invalid'
 $encodedAtFixture = 'owner%' + '40example.invalid'
 $wordAtDotFixture = 'owner' + ' at ' + 'example' + ' dot ' + 'invalid'
 $tabAtDotFixture = 'owner' + [char]9 + 'at' + [char]9 + 'example' + [char]9 + 'dot' + [char]9 + 'invalid'
+$bracketDotFixture = 'owner [at] example [' + 'dot] invalid'
+$parentheticalDotFixture = 'owner (at) example (' + 'dot) invalid'
 $multilineAtFixture = 'owner' + [char]10 + 'at' + [char]10 + 'example dot invalid'
 $fullWidthAtFixture = 'owner' + [char]0xFF20 + 'example.invalid'
 $absoluteWindowsPathFixture = 'D:' + [char]92 + 'Owner' + [char]92 + 'private.md'
@@ -444,6 +519,8 @@ $absoluteLowercaseUsersPathFixture = '/' + 'users/owner/private.md'
 $homeRouteFixture = 'GET /' + 'home/dashboard'
 $privateRouteFixture = 'GET /' + 'private/keys'
 $urlPathFixture = 'https://example.invalid/' + 'home/user/private.md'
+$hyphenUsersUrlFixture = 'https://gitlab.example.invalid/group/proj/-' + '/' + 'users/me'
+$hyphenHomeUrlFixture = 'https://example.invalid/api-' + '/' + 'home/dashboard'
 $allowedFindings = @(& $findPrivacyFindings $allowedSystemAddressFixture)
 $externalFindings = @(& $findPrivacyFindings $externalEmailFixture)
 $personalNoreplyFindings = @(& $findPrivacyFindings $personalNoreplyFixture)
@@ -455,6 +532,8 @@ $obfuscatedAtFindings = @(& $findPrivacyFindings $obfuscatedAtFixture)
 $encodedAtFindings = @(& $findPrivacyFindings $encodedAtFixture)
 $wordAtDotFindings = @(& $findPrivacyFindings $wordAtDotFixture)
 $tabAtDotFindings = @(& $findPrivacyFindings $tabAtDotFixture)
+$bracketDotFindings = @(& $findPrivacyFindings $bracketDotFixture)
+$parentheticalDotFindings = @(& $findPrivacyFindings $parentheticalDotFixture)
 $multilineAtFindings = @(& $findPrivacyFindings $multilineAtFixture)
 $fullWidthAtFindings = @(& $findPrivacyFindings $fullWidthAtFixture)
 $absolutePathFindings = @(& $findPrivacyFindings $absoluteWindowsPathFixture)
@@ -464,7 +543,7 @@ $absoluteSlashUncPathFindings = @(& $findPrivacyFindings $absoluteSlashUncPathFi
 $absoluteMsysPathFindings = @(& $findPrivacyFindings $absoluteMsysPathFixture)
 $absoluteMacPathFindings = @(& $findPrivacyFindings $absoluteMacPathFixture)
 $absoluteLowercaseUsersPathFindings = @(& $findPrivacyFindings $absoluteLowercaseUsersPathFixture)
-$routeFindings = @(& $findPrivacyFindings ([string]::Join([Environment]::NewLine, @($homeRouteFixture, $privateRouteFixture, $urlPathFixture))))
+$routeFindings = @(& $findPrivacyFindings ([string]::Join([Environment]::NewLine, @($homeRouteFixture, $privateRouteFixture, $urlPathFixture, $hyphenUsersUrlFixture, $hyphenHomeUrlFixture))))
 $scannerFailures = [System.Collections.Generic.List[string]]::new()
 $scannerExpectations = @(
     @{ Name = 'exact-system-allowlist'; Findings = $allowedFindings; Expected = $null; Finding = 'email' },
@@ -478,6 +557,8 @@ $scannerExpectations = @(
     @{ Name = 'percent-encoding'; Findings = $encodedAtFindings; Expected = 'obfuscated-email'; Finding = 'obfuscated-email' },
     @{ Name = 'word-at-dot'; Findings = $wordAtDotFindings; Expected = 'obfuscated-email'; Finding = 'obfuscated-email' },
     @{ Name = 'horizontal-tab-obfuscation'; Findings = $tabAtDotFindings; Expected = 'obfuscated-email'; Finding = 'obfuscated-email' },
+    @{ Name = 'bracket-dot-obfuscation'; Findings = $bracketDotFindings; Expected = 'obfuscated-email'; Finding = 'obfuscated-email' },
+    @{ Name = 'parenthetical-dot-obfuscation'; Findings = $parentheticalDotFindings; Expected = 'obfuscated-email'; Finding = 'obfuscated-email' },
     @{ Name = 'multiline-not-accepted'; Findings = $multilineAtFindings; Expected = $null; Finding = 'obfuscated-email' },
     @{ Name = 'fullwidth-at'; Findings = $fullWidthAtFindings; Expected = 'obfuscated-email'; Finding = 'obfuscated-email' },
     @{ Name = 'windows-path'; Findings = $absolutePathFindings; Expected = 'absolute-local-path'; Finding = 'absolute-local-path' },
@@ -523,6 +604,11 @@ $unsafePrivacyFixtures = @(
     'GET /user returned "email" = "null". This proves commit email privacy.',
     'GET /user returned email is nil. This proves commit email privacy.',
     'Поле email равно null. Это означает приватный commit email.',
+    'GET /user email = null. While this does not prove account privacy, it proves commit email privacy.',
+    'GET /user email = null. Although this does not prove account privacy, it proves commit email privacy.',
+    'GET /user email = null. Neither here nor there, this proves commit email privacy.',
+    'GET /user email = null. Ни на секунду не сомневаюсь, ни капли: это доказывает приватность commit email.',
+    'GET /user email = null. A separate check is not needed because this proves commit email privacy.',
     'GET /user email равен null. Это подтверждает приватность commit email.'
 )
 $safePrivacyFixtures = @(
@@ -531,10 +617,15 @@ $safePrivacyFixtures = @(
     'GET /user.email == null. It does not prove commit email privacy — the public profile field is insufficient.',
     'GET /user email = null. It does not, on its own, prove commit email privacy.',
     'GET /user email = null. It does not yet show commit email privacy.',
+    'GET /user email = null. This does not show or prove commit email privacy.',
+    'GET /user email = null. It does not prove, confirm, or show commit email privacy.',
+    'GET /user email = null. This cannot prove and confirm commit email privacy.',
     'GET /user email = null. This cannot be used to prove commit email privacy.',
     'GET /user email = null. This is insufficient to prove commit email privacy.',
     'GET /user email = null. It neither proves nor disproves commit email privacy.',
     'GET /user email = null. It neither proves nor confirms commit email privacy.',
+    'GET /user email = null. Neither account nor profile proves commit email privacy.',
+    'GET /user email = null. Ни аккаунт, ни профиль подтверждают приватность commit email.',
     'GET /user email = null. Ни подтверждает, ни доказывает приватность commit email.',
     'GET /user email = null. It does not prove commit email privacy but merely shows that profile privacy is enabled.',
     'GET /user email = null; a separate API check confirms commit email privacy.'

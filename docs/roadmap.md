@@ -17,7 +17,7 @@
 - [ ] Сверять base SHA и live origin/main до commit/publish.
 - [ ] Проверить реальные границы защиты GitHub Free.
 
-- [ ] T-003 remains open draft PR #3. Copilot reviewed head 363cfdbc52343a66ea17fc34c66737b3c0d0f33d; Antigravity reviewed 9c486a3a653f423add97ee93b376ffde8a42154e and reported remaining P2/P3 privacy-detector/scanner gaps. Follow-up changes invalidate both reviews and prior hosted CI; obtain fresh independent reports and hosted CI for the final exact head/base pair.
+- [ ] T-003 remains open draft PR #3. Copilot and Antigravity both reviewed head b272622eb93d1881960a164671fcb30836e99b6f: Copilot APPROVE (metadata/docs/hosted CI; no targeted scanner probes), Antigravity CHANGES REQUIRED (reproduced privacy-claim and path/email-scanner gaps). Codex added adversarial fixtures and fixes; targeted suite and full quality gate pass locally (QUALITY-GATE=PASS against origin/main). Re-run gate after publishing the final SHA. The reviews and run #43614751907 are stale after the next commit; obtain fresh independent reports and hosted CI for the final exact head/base pair.
 - [ ] Implement remaining no-App merge safeguards: owner remains the trust root; manual review and gate-change residual risk are documented in docs/github-workflow.md; evaluate any additional local-only controls separately.
 - [ ] Verify both account email safeguards before the next GitHub-generated merge.
 - [ ] Define total pushed-object limit separately from the existing per-file staged-blob limit.
