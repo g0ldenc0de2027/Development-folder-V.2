@@ -17,8 +17,8 @@
 - [ ] Сверять base SHA и live origin/main до commit/publish.
 - [ ] Проверить реальные границы защиты GitHub Free.
 
-- [ ] T-003 post-merge closeout of T-002 and redacted email privacy plan are in progress.
-- [ ] Decide a GitHub Free-compatible trust model for workflow/gate changes; required status from Actions alone is not an independent trust root.
+- [ ] T-003 closeout and redacted email plan are in draft PR #3; hosted gate passed, independent review is pending.
+- [ ] Implement the selected no-App CI model: repository owner is the trust root; document residual risk and require owner review for workflow/gate changes.
 - [ ] Verify both account email safeguards before the next GitHub-generated merge.
 - [ ] Define total pushed-object limit separately from the existing per-file staged-blob limit.
 ## Этап 3 — reusable project profiles

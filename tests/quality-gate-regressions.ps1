@@ -171,27 +171,75 @@ $taskTwoCloseout = Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-002-re
 if (
     $taskTwoCloseout -notmatch '(?m)^\*\*Статус:\*\* merged\s*$' -or
     $taskTwoCloseout -notmatch 'Merge SHA:\*\* c98a1922dee2dedeaed6eeb528d72098beb3a128' -or
-    $taskTwoCloseout -notmatch 'head e9db06ad083d007d15e0674d195f16999fbfc93b' -or
-    $taskTwoCloseout -notmatch 'base 65b5ab35d46b81e5af1963c351d05ac5da0291dc' -or
-    $taskTwoCloseout -notmatch 'merge-result 04bf30fd6879f4d18abf3c270cd05e5428e55079'
+    $taskTwoCloseout -notmatch 'PR head `e9db06ad083d007d15e0674d195f16999fbfc93b`' -or
+    $taskTwoCloseout -notmatch 'base `65b5ab35d46b81e5af1963c351d05ac5da0291dc`' -or
+    $taskTwoCloseout -notmatch 'hosted run `43592810050` — `SUCCESS`' -or
+    $taskTwoCloseout -notmatch 'event merge-result `04bf30fd6879f4d18abf3c270cd05e5428e55079`' -or
+    $taskTwoCloseout -notmatch 'GitHub прикрепил check к PR head' -or
+    $taskTwoCloseout -notmatch 'workflow проверил `github.sha`'
 ) {
-    throw 'T-002 closeout must record merged state and the exact reviewed revision tuple'
+    throw 'T-002 closeout must distinguish the check association SHA from the tested event SHA'
 }
 $handoff = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/handoff.md') -Raw
 if (
     $handoff -match '(?i)draft.{0,20}PR #2|PR #2.{0,20}draft|до merge PR #2' -or
     $handoff -notmatch 'c98a1922dee2dedeaed6eeb528d72098beb3a128' -or
-    $handoff -notmatch 'T-002 закрыта'
+    $handoff -notmatch 'T-002 закрыта' -or
+    $handoff -notmatch 'run #43592810050' -or
+    $handoff -notmatch '04bf30fd6879f4d18abf3c270cd05e5428e55079'
 ) {
-    throw 'Handoff must reflect the merged T-002 state and current main SHA'
+    throw 'Handoff must reflect the merged T-002 state and its exact CI SHA roles'
 }
 $githubResearch = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/github-research.md') -Raw
+$historicalResearchSection = [regex]::Match($githubResearch, '(?ms)^## Исторический срез до merge PR #2\b.*?(?=^## |\z)').Value
+$currentResearch = [regex]::Replace($githubResearch, '(?ms)^## Исторический срез до merge PR #2\b.*?(?=^## |\z)', '')
 if (
+    [string]::IsNullOrWhiteSpace($historicalResearchSection) -or
+    $historicalResearchSection -notmatch 'T-002 остаётся отдельной draft PR' -or
+    $currentResearch -match '(?i)T-002 остаётся отдельной draft PR|Завершить T-002 после независимого review' -or
     $githubResearch -notmatch 'GET /user вернул email = null' -or
     $githubResearch -notmatch 'не подтверждает приватный commit email' -or
-    ($handoff + $githubResearch + $taskTwoCloseout + (Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-003-closeout-and-email-privacy-plan.md') -Raw) + (Get-Content -LiteralPath (Join-Path $repoRoot 'docs/roadmap.md') -Raw)) -match '[A-Za-z0-9._%+-]+@(?!users\.noreply\.github\.com)[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+    $githubResearch -notmatch 'Owner decision for the next CI-trust stage: do not add an external GitHub App'
 ) {
-    throw 'Privacy docs must distinguish profile email from commit email and must not publish external addresses'
+    throw 'Research must label pre-merge T-002 state as historical and preserve the current closeout/owner decision'
+}
+$nullEmailInferenceIsUnsafe = {
+    param([string]$Text)
+    foreach ($paragraph in ($Text -split '(?:\r?\n){2,}|(?m)(?=^\s*[-*]\s)')) {
+        if ($paragraph -notmatch '(?i)(?:email\s*=\s*null|null\s+email)') { continue }
+        $claims = $paragraph -split '(?i)[;.!?]+|\b(?:but|however|но|однако)\b'
+        foreach ($claim in $claims) {
+            if (
+                $claim -match '(?i)(?:\b(?:prove|proves|confirm|confirms|demonstrate|demonstrates)\b|доказывает|подтверждает)' -and
+                $claim -match '(?i)(?:commit[\s-]*email|noreply|privacy|private|приватн\w*)' -and
+                $claim -notmatch '(?i)(?:\bnot\b|\bnever\b|\bcannot\b|doesn''t|isn''t|\bне\b|\bнельзя\b)'
+            ) { return $true }
+        }
+    }
+    return $false
+}
+$unsafePrivacyFixture = 'GET /user email = null. This proves private commit email.'
+$safePrivacyFixture = 'GET /user email = null. This does not prove private commit email.'
+$separateBulletFixture = [string]::Join([Environment]::NewLine, @('- GET /user email = null.', '- A separate note confirms that the task records commit privacy decisions.'))
+if (-not (& $nullEmailInferenceIsUnsafe $unsafePrivacyFixture) -or (& $nullEmailInferenceIsUnsafe $safePrivacyFixture) -or (& $nullEmailInferenceIsUnsafe $separateBulletFixture)) {
+    throw 'Privacy regression detector must reject an unnegated false claim and accept a negated one'
+}
+$privacyDocs = @(
+    $handoff
+    $githubResearch
+    $taskTwoCloseout
+    (Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-003-closeout-and-email-privacy-plan.md') -Raw)
+    (Get-Content -LiteralPath (Join-Path $repoRoot 'docs/roadmap.md') -Raw)
+) -join [Environment]::NewLine
+if (
+    $privacyDocs -match '[A-Za-z0-9._%+-]+@(?!users\.noreply\.github\.com)[A-Za-z0-9.-]+\.[A-Za-z]{2,}' -or
+    (& $nullEmailInferenceIsUnsafe $privacyDocs)
+) {
+    throw 'Public T-003 docs must not publish external email addresses or infer commit privacy from profile email=null'
+}
+$roadmap = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/roadmap.md') -Raw
+if ($roadmap -notmatch 'no-App CI model: repository owner is the trust root') {
+    throw 'Roadmap must preserve the owner-approved no-App trust decision'
 }
 
 $gateScript = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
