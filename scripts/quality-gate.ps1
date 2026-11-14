@@ -69,8 +69,16 @@ try {
         $null = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
     }
 
-    $scriptFiles = Get-ChildItem -LiteralPath $repoRoot -File -Recurse -Force -Filter '*.ps1' |
-        Where-Object { $_.FullName -notmatch '[\\/](\.git|\.worktrees|temp)[\\/]' }
+    $scriptFiles = @(
+        Get-ChildItem -LiteralPath $repoRoot -File -Recurse -Force -Filter '*.ps1' |
+            Where-Object {
+                $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)
+                $relativePath -notmatch '(^|[\\/])(\.git|\.worktrees|temp)([\\/]|$)'
+            }
+    )
+    if ($scriptFiles.Count -eq 0) {
+        throw 'PowerShell syntax scan found no repository scripts'
+    }
     foreach ($file in $scriptFiles) {
         $tokens = $null
         $parseErrors = $null
