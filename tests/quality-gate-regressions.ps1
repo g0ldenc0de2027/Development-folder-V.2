@@ -224,13 +224,16 @@ if (
     throw 'No-App owner-root-of-trust decision and non-enforced gate residual risk must be explicit in workflow and handoff'
 }
 if (
-    $roadmap -notmatch 'Copilot reviewed exact PR #3 head bbd8abc223099b368407cd7082f6cec409d5c6e6 against base c98a1922dee2dedeaed6eeb528d72098beb3a128' -or
-    $roadmap -notmatch 'run 43618469816' -or
-    $roadmap -notmatch 'merge-result 4592797ecefdf767903ae37d37522f52fa1a3146' -or
-    $roadmap -notmatch 'targeted regression suite and full quality gate pass locally against origin/main' -or
-    $roadmap -notmatch 'fresh independent review and hosted CI remain required'
+    $roadmap -notmatch 'Code-fix verification tuple: head 5c3eaf06dd5ee9a518659db015e4ffbc54b8a982, base c98a1922dee2dedeaed6eeb528d72098beb3a128' -or
+    $roadmap -notmatch 'hosted run 43622066954 SUCCESS' -or
+    $roadmap -notmatch 'event/test merge-result 5fb052c8094ceb3f530b306d8ba164416411d63f' -or
+    $roadmap -notmatch 'GitHub Actions validates every later PR revision separately' -or
+    $roadmap -notmatch 'fresh independent review on the latest PR head remains required' -or
+    $handoff -notmatch 'code-fix commit 5c3eaf06dd5ee9a518659db015e4ffbc54b8a982' -or
+    $handoff -notmatch 'hosted run 43622066954 SUCCESS' -or
+    $handoff -notmatch 'актуальный статус смотреть в PR #3'
 ) {
-    throw 'Roadmap must bind Copilot findings and CI to exact revisions and state current validation accurately'
+    throw 'Roadmap and handoff must retain code-fix provenance without claiming stale live PR status'
 }
 $taskThree = Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-003-closeout-and-email-privacy-plan.md') -Raw
 if (
@@ -238,14 +241,16 @@ if (
     $taskThree -notmatch '9c486a3a653f423add97ee93b376ffde8a42154e' -or
     $taskThree -notmatch 'GitHub Copilot проверил head 363cfdbc' -or
     $taskThree -notmatch 'P2-1\.\.P2-3 и P3-1' -or
-    $taskThree -notmatch 'head b272622eb93d1881960a164671fcb30836e99b6f GitHub Copilot вынес APPROVE' -or
     $taskThree -notmatch 'Copilot checked exact PR #3 head bbd8abc223099b368407cd7082f6cec409d5c6e6' -or
-    $taskThree -notmatch 'run 43618469816.*merge-result 4592797ecefdf767903ae37d37522f52fa1a3146' -or
+    $taskThree -notmatch 'Run 43618469816 succeeded.*merge-result 4592797ecefdf767903ae37d37522f52fa1a3146' -or
     $taskThree -notmatch 'P2:.*copular privacy predicate' -or
-    $taskThree -notmatch 'targeted regression suite and full quality gate pass on the current diff against origin/main' -or
+    $taskThree -notmatch 'code-fix commit 5c3eaf06dd5ee9a518659db015e4ffbc54b8a982' -or
+    $taskThree -notmatch 'hosted run 43622066954 SUCCESS.*event/test merge-result 5fb052c8094ceb3f530b306d8ba164416411d63f' -or
+    $taskThree -notmatch 'This tuple records that code-fix revision only' -or
+    $taskThree -notmatch 'GitHub API showed no native review submissions' -or
     $taskThree -notmatch 'bounded heuristic and does not guarantee recognition of arbitrary paraphrases'
 ) {
-    throw 'T-003 must preserve reviewer attribution, exact reviewed heads, Copilot finding and stale-review status'
+    throw 'T-003 must preserve review provenance and distinguish historical code-fix evidence from later PR revisions'
 }
 
 
