@@ -24,7 +24,24 @@ $prePushHook = Get-Content -LiteralPath (Join-Path $repoRoot '.githooks/pre-push
 if ($prePushHook -notmatch 'read -r local_ref local_sha remote_ref remote_sha' -or -not $prePushHook.Contains('-PushRange')) {
     throw 'Pre-push hook must pass Git-provided ref update ranges to the secret scan'
 }
+$excludedRepositoryPathPattern = '(^|[\\/])(\.git|\.worktrees|temp)([\\/]|$)'
+$simulatedWorktreeRoot = Join-Path $repoRoot '.worktrees/T-SIMULATED'
+$expectedWorktreeScript = Join-Path $simulatedWorktreeRoot 'scripts/quality-gate.ps1'
+$nestedWorktreeScript = Join-Path $simulatedWorktreeRoot '.worktrees/T-OTHER/scripts/quality-gate.ps1'
+$expectedRelativePath = [System.IO.Path]::GetRelativePath($simulatedWorktreeRoot, $expectedWorktreeScript)
+$nestedRelativePath = [System.IO.Path]::GetRelativePath($simulatedWorktreeRoot, $nestedWorktreeScript)
+if ($expectedRelativePath -match $excludedRepositoryPathPattern -or $nestedRelativePath -notmatch $excludedRepositoryPathPattern) {
+    throw 'Worktree path fixture must include files at the checkout root and exclude nested worktrees'
+}
 $qualityGate = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
+$expectedPathFilterSource = '$relativePath -notmatch ' + [char]39 + $excludedRepositoryPathPattern + [char]39
+if (
+    -not $qualityGate.Contains('[System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)') -or
+    -not $qualityGate.Contains($expectedPathFilterSource) -or
+    $qualityGate -notmatch 'if \(\$scriptFiles\.Count -eq 0\)'
+) {
+    throw 'Quality gate must use relative worktree path exclusions and fail when no scripts are scanned'
+}
 if ($qualityGate -notmatch '\[string\[\]\]\$PushRange' -or -not $qualityGate.Contains('--log-opts=')) {
     throw 'Quality gate must scan exact incoming push history ranges'
 }

@@ -29,6 +29,7 @@
 - Live verifier с `-RequireStatusCheck` подтверждает live ruleset и manifest.
 - Regression guard требует именно `enforced` и ожидаемый integration ID.
 - Quality gate и regression scan перечисляют файлы относительно root worktree, не теряют покрытие при расположении checkout в `.worktrees/T-NNN`, и fail closed при нулевом охвате.
+- Regression использует synthetic path fixture: файл в worktree-root включается, nested .worktrees исключается; production gate связан с тем же относительным path filter.
 - Полный локальный quality gate проходит; hosted CI зелёный на точном PR merge-result до merge.
 
 ## Вне объёма
