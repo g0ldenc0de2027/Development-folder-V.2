@@ -13,5 +13,9 @@
   "vulnerabilityAlerts": true,
   "privateVulnerabilityReporting": true,
   "dependabotSecurityUpdates": true,
-  "dependencyGraphVerification": "inferred-from-active-dependabot-alerts"
+  "dependencyGraphVerification": {
+    "method": "github-sbom-api",
+    "spdxVersion": "SPDX-2.3",
+    "requiresRepositoryPackage": true
+  }
 }

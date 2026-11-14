@@ -1,6 +1,9 @@
 # T-001 — Синхронизировать manifest обязательного GitHub status check
 
-**Статус:** ready for review
+**Статус:** merged; closeout записан с историческим пробелом review-доказательства
+**PR:** #1 — https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/1
+**Ревизии:** PR head `890a52b73d98f686128ae02b94fee8b5f4e226bf`; base `0641901e825fdede9e1fdabf3fa83078ce5ab8ad`; CI merge-result `f04e83c16c82659d4b8ac2ee2df489a2a2dc6bc1`; merge commit `65b5ab35d46b81e5af1963c351d05ac5da0291dc`
+**Review:** в GitHub PR record и доступных локальных материалах не найден независимый отчёт, привязанный к этому head SHA. Факт выполнения такого review не подтверждён; это исторический пробел доказательств, не утверждение о том, что review точно не было.
 **Тип:** maintenance / GitHub configuration documentation
 **Основание:** initial root commit `0641901e825fdede9e1fdabf3fa83078ce5ab8ad` прошёл hosted `quality-gate`; live ruleset `27253655` уже требует `quality-gate` от GitHub Actions App `15368` с strict актуальностью.
 

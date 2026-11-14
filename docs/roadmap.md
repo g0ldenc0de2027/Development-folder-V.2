@@ -3,7 +3,7 @@
 ## Этап 0 — чистый GitHub foundation
 - [x] Создать новый репозиторий без переноса истории и файлов V1.
 - [x] Активировать ruleset main и read-only Actions permissions.
-- [x] Включить GitHub secret scanning/push protection и Dependabot alerts/updates; dependency graph помечен как inference, так как REST repository response не предоставляет поле его статуса.
+- [x] Включить GitHub secret scanning/push protection и Dependabot alerts/updates; dependency graph прямо проверяется через SBOM endpoint (SPDX-2.3), а не inferred из Dependabot.
 - [x] Первый hosted CI прошёл; exact `quality-gate` от GitHub Actions App `15368` установлен как strict required status check и подтверждён live verifier.
 - [x] Проверен полный initial diff; root commit `0641901e825fdede9e1fdabf3fa83078ce5ab8ad` опубликован в подтверждённо пустой remote.
 
