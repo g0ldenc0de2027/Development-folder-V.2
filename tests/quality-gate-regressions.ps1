@@ -228,6 +228,8 @@ if (
     $roadmap -notmatch 'hosted run 43622066954 SUCCESS' -or
     $roadmap -notmatch 'event/test merge-result 5fb052c8094ceb3f530b306d8ba164416411d63f' -or
     $roadmap -notmatch 'GitHub Actions validates every later PR revision separately' -or
+    $roadmap -notmatch 'No per-file blob or aggregate push-size gate exists yet' -or
+    $roadmap -match 'existing per-file staged-blob limit' -or
     $roadmap -notmatch 'fresh independent review on the latest PR head remains required' -or
     $handoff -notmatch 'code-fix commit 5c3eaf06dd5ee9a518659db015e4ffbc54b8a982' -or
     $handoff -notmatch 'hosted run 43622066954 SUCCESS' -or
