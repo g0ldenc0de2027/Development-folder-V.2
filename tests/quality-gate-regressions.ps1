@@ -299,7 +299,7 @@ $nullEmailInferenceIsUnsafe = {
     $explicitNegation = '(?i)(?:\b(?:does\s+not|do\s+not|did\s+not|doesn''t|don''t|didn''t|cannot|can''t|never)\s+(?:\w+\s+){0,2}(?:prove|confirm|demonstrate|show|mean)\b|\bnot\s+(?:a|any)\s+(?:proof|evidence)\b|\bне\s+(?:доказывает|подтверждает|показывает|свидетельствует)\b|\bне\s+является\s+(?:доказательством|подтверждением)\b)'
     foreach ($paragraph in ($Text -split '(?:\r?\n){2,}|(?m)(?=^\s*[-*]\s)')) {
         if ($paragraph -notmatch $nullEmailSignal) { continue }
-        $claims = $paragraph -split '(?i)[;.!?]+|\b(?:but|however|но|однако)\b'
+        $claims = $paragraph -split '(?i)[,;:!?.]+|[\u2012-\u2015]|\b(?:but|however|yet|whereas|но|однако|зато)\b'
         foreach ($claim in $claims) {
             if (
                 $claim -match $positiveClaim -and
@@ -348,11 +348,14 @@ if (
 }
 $unsafePrivacyFixtures = @(
     'GET /user.email == null; This proves private commit email.',
-    'GET /user email = null. Это подтверждает приватность commit email.'
+    'GET /user email = null. Это подтверждает приватность commit email.',
+    'GET /user.email == null. This does not prove account email privacy — it proves commit email privacy.',
+    'GET /user.email == null. This does not prove account email privacy, but it proves commit email privacy.'
 )
 $safePrivacyFixtures = @(
     'GET /user email = null. This does not prove private commit email.',
-    'GET /user email = null. Публичное поле профиля не подтверждает приватный commit email.'
+    'GET /user email = null. Публичное поле профиля не подтверждает приватный commit email.',
+    'GET /user.email == null. It does not prove commit email privacy — the public profile field is insufficient.'
 )
 $separateBulletFixture = [string]::Join([Environment]::NewLine, @(
     '- GET /user email = null.',
