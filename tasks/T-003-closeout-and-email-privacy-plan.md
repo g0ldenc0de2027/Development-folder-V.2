@@ -28,6 +28,15 @@ PR #2 слита после локального `QUALITY-GATE=PASS`, live verif
 5. Зафиксировано решение владельца: опубликованную историю не переписывать; никаких force-push, filter-repo или Support-запросов в этой задаче.
 6. Regression checks обнаруживают stale T-002/handoff state и запрещают заявлять, что merge email privacy подтверждена только по `.email == null` в публичном профиле.
 7. Полный local `quality-gate` проходит на проверенном HEAD. Перед merge PR публикуется с независимым review, точными SHA и зелёным CI.
+8. Privacy scanner охватывает все публичные Markdown-документы репозитория и исходник regression suite. Он разрешает только точный неперсональный GitHub web-committer адрес и блокирует пользовательские `users.noreply.github.com`, внешние адреса и домены-двойники.
+9. Regression cases покрывают внешние и lookalike email, common `[at]` / `%40` encodings, common Windows/POSIX/UNC absolute path patterns, false privacy claims на `.email == null` в любом Markdown и безопасные отрицательные формулировки. Совпадения не выводят содержимое. Отдельный local-part не сохраняется и не считается проверяемым без безопасного reference.
+10. T-002 SHA tuple закреплён одной строкой ревизий в карточке и проверяется точечно в handoff; PR #2/review attribution/native-review distinction закреплены. Документация явно отделяет `main` history от synthetic PR refs; поля метаданных T-002 отделены пустой строкой от результата приёмки.
+
+## Учёт внешнего ревью
+
+- Отчёт Gemini 4 Argon (Antigravity) привязан к устаревшему head `65e7e382a1d0cd958c52661b811ac84aeba5f52c`; он не является review текущего head. P2-1..P2-3 и P3-1 приняты к исправлению в текущей задаче, после нового commit нужны обновлённые независимые отзывы и CI на итоговой паре SHA.
+- Для проверки допустимой системной личности GitHub web-committer используется точное исключение. Документация GitHub требует учитывать системный committer для web-based merges: https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets.
+- Само значение персонального email и его local-part не записывать в эту карточку или регрессионные выводы.
 
 ## Границы
 

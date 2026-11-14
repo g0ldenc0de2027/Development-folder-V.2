@@ -168,27 +168,29 @@ if ($handoff -match 'После merge T-001' -or $handoff -notmatch 'T-003') {
     throw 'Handoff must not leave the merged T-001 step open and must identify current T-003 work'
 }
 $taskTwoCloseout = Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-002-reconcile-github-settings-and-closeout.md') -Raw
+$revisionMetadata = @([regex]::Matches($taskTwoCloseout, '(?m)^\*\*Проверенные ревизии:\*\*.*$'))
+$expectedRevisionMetadata = '^\*\*Проверенные ревизии:\*\* PR head `e9db06ad083d007d15e0674d195f16999fbfc93b`; base `65b5ab35d46b81e5af1963c351d05ac5da0291dc`; hosted run `43592810050` — `SUCCESS`; тестовый event merge-result `04bf30fd6879f4d18abf3c270cd05e5428e55079`\.$'
 if (
     $taskTwoCloseout -notmatch '(?m)^\*\*Статус:\*\* merged\s*$' -or
-    $taskTwoCloseout -notmatch 'Merge SHA:\*\* c98a1922dee2dedeaed6eeb528d72098beb3a128' -or
-    $taskTwoCloseout -notmatch 'PR head `e9db06ad083d007d15e0674d195f16999fbfc93b`' -or
-    $taskTwoCloseout -notmatch 'base `65b5ab35d46b81e5af1963c351d05ac5da0291dc`' -or
-    $taskTwoCloseout -notmatch 'hosted run `43592810050` — `SUCCESS`' -or
-    $taskTwoCloseout -notmatch 'event merge-result `04bf30fd6879f4d18abf3c270cd05e5428e55079`' -or
-    $taskTwoCloseout -notmatch 'GitHub прикрепил check к PR head' -or
-    $taskTwoCloseout -notmatch 'workflow проверил `github.sha`'
+    $taskTwoCloseout -notmatch '(?m)^\*\*PR:\*\* #2 — https://github\.com/g0ldenc0de2027/Development-folder-V\.2/pull/2$' -or
+    $revisionMetadata.Count -ne 1 -or
+    $revisionMetadata[0].Value -notmatch $expectedRevisionMetadata -or
+    $taskTwoCloseout -notmatch '(?m)^\*\*Merge SHA:\*\* c98a1922dee2dedeaed6eeb528d72098beb3a128$' -or
+    $taskTwoCloseout -notmatch '(?m)^\*\*Review:\*\* Gemini 4 Argon \(Antigravity\) вынес APPROVE для точной указанной тройки SHA\. Отчёт не является GitHub-native approval; GitHub API не содержит review submission\.$' -or
+    $taskTwoCloseout -notmatch '(?ms)^### Результат приёмки\r?\nВсе шесть критериев выполнены\.[^\r\n]*\r?\n\r?\n\*\*Тип:\*\* .+\r?\n\*\*База:\*\*'
 ) {
-    throw 'T-002 closeout must distinguish the check association SHA from the tested event SHA'
+    throw 'T-002 must bind its exact PR/review/revision tuple and keep task metadata separate from the acceptance paragraph'
 }
-$handoff = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/handoff.md') -Raw
 if (
     $handoff -match '(?i)draft.{0,20}PR #2|PR #2.{0,20}draft|до merge PR #2' -or
     $handoff -notmatch 'c98a1922dee2dedeaed6eeb528d72098beb3a128' -or
-    $handoff -notmatch 'T-002 закрыта' -or
+    $handoff -notmatch 'PR head `e9db06ad083d007d15e0674d195f16999fbfc93b`' -or
+    $handoff -notmatch 'base `65b5ab35d46b81e5af1963c351d05ac5da0291dc`' -or
     $handoff -notmatch 'run #43592810050' -or
-    $handoff -notmatch '04bf30fd6879f4d18abf3c270cd05e5428e55079'
+    $handoff -notmatch '04bf30fd6879f4d18abf3c270cd05e5428e55079' -or
+    $handoff -notmatch 'T-002 закрыта'
 ) {
-    throw 'Handoff must reflect the merged T-002 state and its exact CI SHA roles'
+    throw 'Handoff must reflect the merged T-002 state and repeat its exact merge and CI revision evidence'
 }
 $githubResearch = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/github-research.md') -Raw
 $historicalResearchSection = [regex]::Match($githubResearch, '(?ms)^## Исторический срез до merge PR #2\b.*?(?=^## |\z)').Value
@@ -199,43 +201,10 @@ if (
     $currentResearch -match '(?i)T-002 остаётся отдельной draft PR|Завершить T-002 после независимого review' -or
     $githubResearch -notmatch 'GET /user вернул email = null' -or
     $githubResearch -notmatch 'не подтверждает приватный commit email' -or
-    $githubResearch -notmatch 'Owner decision for the next CI-trust stage: do not add an external GitHub App'
+    $githubResearch -notmatch 'Owner decision for the next CI-trust stage: do not add an external GitHub App' -or
+    $currentResearch -notmatch 'PR synthetic merge-result commits are PR refs, not commits on main\.'
 ) {
-    throw 'Research must label pre-merge T-002 state as historical and preserve the current closeout/owner decision'
-}
-$nullEmailInferenceIsUnsafe = {
-    param([string]$Text)
-    foreach ($paragraph in ($Text -split '(?:\r?\n){2,}|(?m)(?=^\s*[-*]\s)')) {
-        if ($paragraph -notmatch '(?i)(?:email\s*=\s*null|null\s+email)') { continue }
-        $claims = $paragraph -split '(?i)[;.!?]+|\b(?:but|however|но|однако)\b'
-        foreach ($claim in $claims) {
-            if (
-                $claim -match '(?i)(?:\b(?:prove|proves|confirm|confirms|demonstrate|demonstrates)\b|доказывает|подтверждает)' -and
-                $claim -match '(?i)(?:commit[\s-]*email|noreply|privacy|private|приватн\w*)' -and
-                $claim -notmatch '(?i)(?:\bnot\b|\bnever\b|\bcannot\b|doesn''t|isn''t|\bне\b|\bнельзя\b)'
-            ) { return $true }
-        }
-    }
-    return $false
-}
-$unsafePrivacyFixture = 'GET /user email = null. This proves private commit email.'
-$safePrivacyFixture = 'GET /user email = null. This does not prove private commit email.'
-$separateBulletFixture = [string]::Join([Environment]::NewLine, @('- GET /user email = null.', '- A separate note confirms that the task records commit privacy decisions.'))
-if (-not (& $nullEmailInferenceIsUnsafe $unsafePrivacyFixture) -or (& $nullEmailInferenceIsUnsafe $safePrivacyFixture) -or (& $nullEmailInferenceIsUnsafe $separateBulletFixture)) {
-    throw 'Privacy regression detector must reject an unnegated false claim and accept a negated one'
-}
-$privacyDocs = @(
-    $handoff
-    $githubResearch
-    $taskTwoCloseout
-    (Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-003-closeout-and-email-privacy-plan.md') -Raw)
-    (Get-Content -LiteralPath (Join-Path $repoRoot 'docs/roadmap.md') -Raw)
-) -join [Environment]::NewLine
-if (
-    $privacyDocs -match '[A-Za-z0-9._%+-]+@(?!users\.noreply\.github\.com)[A-Za-z0-9.-]+\.[A-Za-z]{2,}' -or
-    (& $nullEmailInferenceIsUnsafe $privacyDocs)
-) {
-    throw 'Public T-003 docs must not publish external email addresses or infer commit privacy from profile email=null'
+    throw 'Research must preserve the historical boundary, email limitation, no-App decision and main-versus-synthetic-ref distinction'
 }
 $roadmap = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/roadmap.md') -Raw
 if ($roadmap -notmatch 'no-App CI model: repository owner is the trust root') {
@@ -273,6 +242,155 @@ if ($textFiles.Count -eq 0) {
     throw 'Text hygiene scan found no repository files'
 }
 
+$privacyMarkdownFiles = @($textFiles | Where-Object { $_.Extension -ieq '.md' })
+$privacyTestSource = Get-Item -LiteralPath (Join-Path $repoRoot 'tests/quality-gate-regressions.ps1')
+$privacyScanFiles = @($privacyMarkdownFiles) + @($privacyTestSource)
+$privacyScanRelativePaths = @(
+    $privacyScanFiles | ForEach-Object {
+        [System.IO.Path]::GetRelativePath($repoRoot, $_.FullName).Replace('\', '/')
+    }
+)
+$requiredPrivacyPaths = @(
+    'docs/handoff.md',
+    'docs/github-research.md',
+    'docs/roadmap.md',
+    'tasks/T-002-reconcile-github-settings-and-closeout.md',
+    'tasks/T-003-closeout-and-email-privacy-plan.md',
+    'tests/quality-gate-regressions.ps1'
+)
+$missingPrivacyPaths = @($requiredPrivacyPaths | Where-Object { $_ -notin $privacyScanRelativePaths })
+if ($privacyMarkdownFiles.Count -eq 0 -or $missingPrivacyPaths.Count -gt 0) {
+    throw ('Privacy scan must cover every public Markdown document and all T-003 files; missing: ' + ($missingPrivacyPaths -join ', '))
+}
+
+$emailDomainLabel = '[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?'
+$emailDomainPattern = "(?:$emailDomainLabel\.)+[A-Z]{2,63}"
+$emailPattern = "(?i)(?<![A-Z0-9._%+-])[A-Z0-9._%+-]+@(?<domain>$emailDomainPattern)(?![A-Z0-9-])"
+$emailAtObfuscationPattern = '(?:\[at\]|\(at\)|\{at\}|%40|&#0*64;|&#x0*40;|&commat;)'
+$obfuscatedEmailPattern = "(?i)(?<![A-Z0-9._%+-])[A-Z0-9._%+-]+\s*$emailAtObfuscationPattern\s*$emailDomainPattern(?![A-Z0-9-])"
+# Keep POSIX roots explicit so REST routes such as /user and URL path segments are not misclassified as local files.
+$absoluteLocalPathPattern = '(?i)(?<![A-Z0-9])[A-Z]:[\\/][^\s\x60<>]+|(?<!\w)\\\\[^\\\s\x60<>]+\\[^\\\s\x60<>]+(?:\\[^\s\x60<>]+)*|(?<![\w:/])/(?:home|mnt|volumes|tmp|var|etc|opt|srv|root|private|workspace|workspaces)/[^\s\x60<>]+|(?<![\w:/])/(?-i:Users)/[^\s\x60<>]+'
+$allowedSystemCommitterLocalPart = 'noreply'
+$allowedSystemCommitterDomain = 'github.com'
+$findPrivacyFindings = {
+    param([string]$Text)
+    $findings = [System.Collections.Generic.List[string]]::new()
+    foreach ($match in [regex]::Matches($Text, $emailPattern)) {
+        $atIndex = $match.Value.LastIndexOf([char]64)
+        $localPart = $match.Value.Substring(0, $atIndex)
+        $domain = $match.Groups['domain'].Value
+        if ($localPart -ine $allowedSystemCommitterLocalPart -or $domain -ine $allowedSystemCommitterDomain) {
+            $findings.Add('email')
+        }
+    }
+    if ([regex]::IsMatch($Text, $obfuscatedEmailPattern)) {
+        $findings.Add('obfuscated-email')
+    }
+    if ([regex]::IsMatch($Text, $absoluteLocalPathPattern)) {
+        $findings.Add('absolute-local-path')
+    }
+    return $findings.ToArray()
+}
+$nullEmailInferenceIsUnsafe = {
+    param([string]$Text)
+    $nullEmailSignal = '(?i)(?:/user[\s._/-]{0,20})?email\s*(?:==|=|:|is)\s*null|\bnull\s+email\b'
+    $positiveClaim = '(?i)(?:\b(?:prove|proves|confirm|confirms|demonstrate|demonstrates|show|shows|mean|means)\b|доказывает|подтверждает|показывает|свидетельствует)'
+    $privacyTarget = '(?i)(?:commit[\s-]*email|noreply|privacy|private|приватн\w*)'
+    $explicitNegation = '(?i)(?:\b(?:does\s+not|do\s+not|did\s+not|doesn''t|don''t|didn''t|cannot|can''t|never)\s+(?:\w+\s+){0,2}(?:prove|confirm|demonstrate|show|mean)\b|\bnot\s+(?:a|any)\s+(?:proof|evidence)\b|\bне\s+(?:доказывает|подтверждает|показывает|свидетельствует)\b|\bне\s+является\s+(?:доказательством|подтверждением)\b)'
+    foreach ($paragraph in ($Text -split '(?:\r?\n){2,}|(?m)(?=^\s*[-*]\s)')) {
+        if ($paragraph -notmatch $nullEmailSignal) { continue }
+        $claims = $paragraph -split '(?i)[;.!?]+|\b(?:but|however|но|однако)\b'
+        foreach ($claim in $claims) {
+            if (
+                $claim -match $positiveClaim -and
+                $claim -match $privacyTarget -and
+                $claim -notmatch $explicitNegation
+            ) {
+                return $true
+            }
+        }
+    }
+    return $false
+}
+
+# GitHub documents the required system committer identity for web-based merges:
+# https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
+$allowedSystemAddressFixture = 'noreply' + [char]64 + 'github.com'
+$externalEmailFixture = 'owner' + [char]64 + 'example.invalid'
+$personalNoreplyFixture = 'owner' + [char]64 + 'users.noreply.github.com'
+$suffixLookalikeFixture = 'owner' + [char]64 + 'users.noreply.github.com.attacker.invalid'
+$obfuscatedAtFixture = 'owner [' + 'at] example.invalid'
+$encodedAtFixture = 'owner%' + '40example.invalid'
+$absoluteWindowsPathFixture = 'D:' + [char]92 + 'Owner' + [char]92 + 'private.md'
+$absolutePosixPathFixture = '/' + 'home/Owner/private.md'
+$absoluteUncPathFixture = ([string][char]92 + [string][char]92 + 'server' + [char]92 + 'share' + [char]92 + 'private.md')
+$allowedFindings = @(& $findPrivacyFindings $allowedSystemAddressFixture)
+$externalFindings = @(& $findPrivacyFindings $externalEmailFixture)
+$personalNoreplyFindings = @(& $findPrivacyFindings $personalNoreplyFixture)
+$suffixLookalikeFindings = @(& $findPrivacyFindings $suffixLookalikeFixture)
+$obfuscatedAtFindings = @(& $findPrivacyFindings $obfuscatedAtFixture)
+$encodedAtFindings = @(& $findPrivacyFindings $encodedAtFixture)
+$absolutePathFindings = @(& $findPrivacyFindings $absoluteWindowsPathFixture)
+$absolutePosixPathFindings = @(& $findPrivacyFindings $absolutePosixPathFixture)
+$absoluteUncPathFindings = @(& $findPrivacyFindings $absoluteUncPathFixture)
+if (
+    $allowedFindings -contains 'email' -or
+    $externalFindings -notcontains 'email' -or
+    $personalNoreplyFindings -notcontains 'email' -or
+    $suffixLookalikeFindings -notcontains 'email' -or
+    $obfuscatedAtFindings -notcontains 'obfuscated-email' -or
+    $encodedAtFindings -notcontains 'obfuscated-email' -or
+    $absolutePathFindings -notcontains 'absolute-local-path' -or
+    $absolutePosixPathFindings -notcontains 'absolute-local-path' -or
+    $absoluteUncPathFindings -notcontains 'absolute-local-path'
+) {
+    throw 'Privacy scanner fixtures must allow only the exact GitHub system committer and reject external/lookalike addresses, obfuscation and absolute paths'
+}
+$unsafePrivacyFixtures = @(
+    'GET /user.email == null; This proves private commit email.',
+    'GET /user email = null. Это подтверждает приватность commit email.'
+)
+$safePrivacyFixtures = @(
+    'GET /user email = null. This does not prove private commit email.',
+    'GET /user email = null. Публичное поле профиля не подтверждает приватный commit email.'
+)
+$separateBulletFixture = [string]::Join([Environment]::NewLine, @(
+    '- GET /user email = null.',
+    '- A separate note confirms that the task records commit privacy decisions.'
+))
+foreach ($fixture in $unsafePrivacyFixtures) {
+    if (-not (& $nullEmailInferenceIsUnsafe $fixture)) {
+        throw 'Privacy regression detector must reject positive claims based on the public profile email=null field'
+    }
+}
+foreach ($fixture in $safePrivacyFixtures) {
+    if (& $nullEmailInferenceIsUnsafe $fixture) {
+        throw 'Privacy regression detector must preserve explicit negative statements'
+    }
+}
+if (& $nullEmailInferenceIsUnsafe $separateBulletFixture) {
+    throw 'Privacy regression detector must not combine unrelated claims from separate bullets'
+}
+
+$privacyFindings = [System.Collections.Generic.List[string]]::new()
+foreach ($file in $privacyScanFiles) {
+    $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $file.FullName).Replace('\', '/')
+    $content = [System.IO.File]::ReadAllText($file.FullName)
+    $filePrivacyFindings = @(& $findPrivacyFindings $content)
+    if ($file.Extension -ine '.md') {
+        $filePrivacyFindings = @($filePrivacyFindings | Where-Object { $_ -ne 'absolute-local-path' })
+    }
+    foreach ($finding in $filePrivacyFindings) {
+        $privacyFindings.Add(('{0}:{1}' -f $relativePath, $finding))
+    }
+    if ($file.Extension -ieq '.md' -and (& $nullEmailInferenceIsUnsafe $content)) {
+        $privacyFindings.Add(('{0}:unsupported-email-privacy-inference' -f $relativePath))
+    }
+}
+if ($privacyFindings.Count -gt 0) {
+    throw ('Public documentation privacy checks found sensitive patterns without printing their contents: ' + ($privacyFindings -join ', '))
+}
+
 $trailing = [System.Collections.Generic.List[string]]::new()
 $missingFinalNewline = [System.Collections.Generic.List[string]]::new()
 foreach ($file in $textFiles) {
@@ -297,4 +415,4 @@ if ($missingFinalNewline.Count -gt 0) {
     throw ('Missing final newline: ' + ($missingFinalNewline -join ', '))
 }
 
-Write-Output ('PASS: GitHub gate invariants; checked {0} text files for whitespace and final newline' -f $textFiles.Count)
+Write-Output ('PASS: GitHub gate invariants; privacy checks covered {0} Markdown documents and the regression source; hygiene checked {1} text files' -f $privacyMarkdownFiles.Count, $textFiles.Count)

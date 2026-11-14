@@ -8,6 +8,7 @@
 
 ### Результат приёмки
 Все шесть критериев выполнены. Local quality gate и live settings verifier прошли на PR head. Hosted run #43592810050 завершился success: GitHub прикрепил check к PR head, а workflow проверил `github.sha` события `pull_request` — синтетический merge-result SHA из точной пары base/head. После merge PR #2 локальная main синхронизирована до `c98a1922dee2dedeaed6eeb528d72098beb3a128`. Для author email squash-коммита выявлен отдельный privacy follow-up; адрес намеренно не копируется.
+
 **Тип:** maintenance / GitHub configuration and closeout
 **База:** `65b5ab35d46b81e5af1963c351d05ac5da0291dc` (`origin/main`)
 

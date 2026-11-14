@@ -17,7 +17,7 @@
 - [ ] Сверять base SHA и live origin/main до commit/publish.
 - [ ] Проверить реальные границы защиты GitHub Free.
 
-- [ ] T-003 closeout and redacted email plan are in draft PR #3; hosted gate passed, independent review is pending.
+- [ ] T-003 remains open draft PR #3. Copilot and Antigravity reports target the stale head `65e7e382a1d0cd958c52661b811ac84aeba5f52c`; accepted findings were fixed after that head. Obtain updated independent reviews and hosted CI on the final head/base.
 - [ ] Implement the selected no-App CI model: repository owner is the trust root; document residual risk and require owner review for workflow/gate changes.
 - [ ] Verify both account email safeguards before the next GitHub-generated merge.
 - [ ] Define total pushed-object limit separately from the existing per-file staged-blob limit.
