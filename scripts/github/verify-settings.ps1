@@ -71,8 +71,16 @@ try {
     $privateReporting = Get-GitHubJson "repos/$slug/private-vulnerability-reporting"
     Assert-Value 'private vulnerability reporting' $privateReporting.enabled $repositoryConfig.privateVulnerabilityReporting
     Assert-Value 'Dependabot security updates' $repo.security_and_analysis.dependabot_security_updates.status 'enabled'
-    if ($repositoryConfig.dependencyGraphVerification -ne 'inferred-from-active-dependabot-alerts') { throw 'Dependency graph verification policy is invalid' }
-    Write-Output 'INFERRED: Dependency graph is a prerequisite of the verified enabled Dependabot alerts; GitHub repository API does not expose its toggle in this response.'
+    $dependencyGraphPolicy = $repositoryConfig.dependencyGraphVerification
+    if ($dependencyGraphPolicy.method -ne 'github-sbom-api') { throw 'Dependency graph verification policy is invalid' }
+    $sbom = Get-GitHubJson "repos/$slug/dependency-graph/sbom"
+    if ($sbom.sbom.spdxVersion -ne $dependencyGraphPolicy.spdxVersion) { throw 'Dependency graph SBOM is missing or has an unexpected SPDX version' }
+    $sbomPackages = @($sbom.sbom.packages)
+    if ($sbomPackages.Count -eq 0) { throw 'Dependency graph SBOM contains no package records' }
+    $repositoryPackageName = "com.github.$slug"
+    if (@($sbomPackages | Where-Object name -eq $repositoryPackageName).Count -ne 1) { throw 'Dependency graph SBOM does not identify the expected repository package' }
+    if ($dependencyGraphPolicy.requiresRepositoryPackage -ne $true) { throw 'Dependency graph repository-package policy is invalid' }
+    Write-Output ('PASS: dependency graph SBOM ({0}; packages={1})' -f $sbom.sbom.spdxVersion, $sbomPackages.Count)
 
     $actions = Get-GitHubJson "repos/$slug/actions/permissions"
     $workflowPermissions = Get-GitHubJson "repos/$slug/actions/permissions/workflow"
@@ -107,6 +115,13 @@ try {
     }
     $prRule = $ruleset.rules | Where-Object type -eq 'pull_request' | Select-Object -First 1
     Assert-Value 'main ruleset review count' $prRule.parameters.required_approving_review_count $rulesConfig.rules.requiredApprovingReviewCount
+    Assert-Value 'main ruleset stale review dismissal' $prRule.parameters.dismiss_stale_reviews_on_push $rulesConfig.rules.dismissStaleReviewsOnPush
+    $actualRequiredReviewers = @($prRule.parameters.required_reviewers | Sort-Object) -join ','
+    $expectedRequiredReviewers = @($rulesConfig.rules.requiredReviewers | Sort-Object) -join ','
+    Assert-Value 'main ruleset required reviewers' $actualRequiredReviewers $expectedRequiredReviewers
+    Assert-Value 'main ruleset code-owner review' $prRule.parameters.require_code_owner_review $rulesConfig.rules.requireCodeOwnerReview
+    Assert-Value 'main ruleset last-push approval' $prRule.parameters.require_last_push_approval $rulesConfig.rules.requireLastPushApproval
+    Assert-Value 'main ruleset unattributed-change approval' $prRule.parameters.require_extra_approval_for_unattributed_changes $rulesConfig.rules.requireExtraApprovalForUnattributedChanges
     Assert-Value 'main ruleset review thread resolution' $prRule.parameters.required_review_thread_resolution $rulesConfig.rules.requireResolvedReviewThreads
     Assert-Value 'main ruleset merge method' (@($prRule.parameters.allowed_merge_methods) -join ',') $rulesConfig.mergeMethod
 

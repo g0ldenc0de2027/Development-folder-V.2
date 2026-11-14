@@ -17,8 +17,25 @@ if ($foundationRoadmap -match '(?m)^\s*-\s*\[\s\]') {
     throw 'GitHub foundation roadmap still contains unchecked bootstrap steps'
 }
 $settingsVerifier = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/github/verify-settings.ps1') -Raw
-if ($settingsVerifier -notmatch "gh api user --jq .login" -or $settingsVerifier -notmatch 'dependencyGraphVerification' -or $settingsVerifier -notmatch 'INFERRED: Dependency graph') {
-    throw 'Live GitHub verifier must fail closed on authentication gaps and verify the dependency graph'
+if (
+    $settingsVerifier -notmatch "gh api user --jq .login" -or
+    $settingsVerifier -notmatch 'dependencyGraphVerification' -or
+    $settingsVerifier -notmatch 'dependency-graph/sbom' -or
+    $settingsVerifier -notmatch 'sbom\.spdxVersion' -or
+    $settingsVerifier -notmatch 'requiresRepositoryPackage'
+) {
+    throw 'Live GitHub verifier must fail closed on authentication gaps and directly verify the dependency graph SBOM'
+}
+foreach ($ruleParameter in @(
+    'dismiss_stale_reviews_on_push',
+    'required_reviewers',
+    'require_code_owner_review',
+    'require_last_push_approval',
+    'require_extra_approval_for_unattributed_changes'
+)) {
+    if ($settingsVerifier -notmatch [regex]::Escape($ruleParameter)) {
+        throw "Live GitHub verifier does not compare pull-request parameter $ruleParameter"
+    }
 }
 $prePushHook = Get-Content -LiteralPath (Join-Path $repoRoot '.githooks/pre-push') -Raw
 if ($prePushHook -notmatch 'read -r local_ref local_sha remote_ref remote_sha' -or -not $prePushHook.Contains('-PushRange')) {
@@ -122,6 +139,33 @@ if (
     $ruleset.rules.requiredStatusChecks.state -cne 'enforced'
 ) {
     throw 'Required status check manifest must require the enforced strict quality-gate'
+}
+$expectedPullRequestRule = @{
+    dismissStaleReviewsOnPush = $true
+    requiredReviewers = @()
+    requireCodeOwnerReview = $false
+    requireLastPushApproval = $false
+    requireExtraApprovalForUnattributedChanges = $true
+}
+foreach ($propertyName in $expectedPullRequestRule.Keys) {
+    if (-not $ruleset.rules.PSObject.Properties[$propertyName]) {
+        throw "Ruleset manifest is missing live pull-request setting $propertyName"
+    }
+    if ($propertyName -eq 'requiredReviewers') {
+        if (@($ruleset.rules.$propertyName).Count -ne 0) {
+            throw 'Ruleset manifest unexpectedly requires named reviewers'
+        }
+    } elseif ($ruleset.rules.$propertyName -ne $expectedPullRequestRule[$propertyName]) {
+        throw "Ruleset manifest has unexpected value for $propertyName"
+    }
+}
+$taskCloseout = Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-001-sync-required-status-check.md') -Raw
+if ($taskCloseout -notmatch '(?m)^\*\*Статус:\*\* merged;' -or $taskCloseout -notmatch 'review-доказательства') {
+    throw 'T-001 closeout must record merge state and the review-evidence gap'
+}
+$handoff = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/handoff.md') -Raw
+if ($handoff -match 'После merge T-001' -or $handoff -notmatch 'task/T-002') {
+    throw 'Handoff must not leave the merged T-001 step open and must identify current T-002 work'
 }
 
 $gateScript = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw

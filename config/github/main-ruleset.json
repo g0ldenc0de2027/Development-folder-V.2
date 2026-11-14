@@ -18,7 +18,12 @@
       "strict": true,
       "state": "enforced",
       "integrationId": 15368
-    }
+    },
+    "dismissStaleReviewsOnPush": true,
+    "requiredReviewers": [],
+    "requireCodeOwnerReview": false,
+    "requireLastPushApproval": false,
+    "requireExtraApprovalForUnattributedChanges": true
   },
   "mergeMethod": "squash",
   "verifiedAt": "2026-11-14"
