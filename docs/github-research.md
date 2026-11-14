@@ -39,3 +39,34 @@
 - [actionlint v1.7.12](https://github.com/rhysd/actionlint/releases/tag/v1.7.12)
 
 Recheck plan eligibility and API values when changing repository owner type or policy.
+
+## Повторная проверка связки разработки и GitHub — R2, 2026-11-14
+
+### Подтверждено live
+- Публичный репозиторий использует активный ruleset только для `main`: PR обязателен, `quality-gate` обязателен от GitHub Actions App `15368`, строгая актуальность включена, bypass actors отсутствуют. Review approvals — 0 по выбранному режиму одиночного владельца.
+- T-002 остаётся отдельной draft PR; перед merge точные head/base/test merge-result и CI сверяются повторно. AI-review — организационный контроль, не GitHub approval.
+- Локальный pre-push gate сканирует Gitleaks по pushed history range, но не содержит byte-size порога; удаление ref отклоняется локально, non-fast-forward для task refs не проверяется.
+- GitHub provider secret scanning и push protection включены; generic/non-provider patterns и validity checks live verifier отмечает как `NOT COVERED`.
+- Репозиторию не назначен LICENSE-файл. Решение о лицензии оставлено владельцу.
+
+### Ограничения платформы и последствия
+- GitHub rulesets доступны публичным репозиториям на Free, но GitHub документирует push rulesets только для Team в internal/private репозиториях. Следовательно, на public Free нельзя полагаться на серверное правило размера push.
+- Push protection пропускает проверку public-repository push свыше 50 MB. До определения отдельной лимитирующей политики такой push нельзя считать защищённым от утечки секретов.
+- Вывод по текущему workflow: `quality-gate` на `pull_request` выполняет gate из PR merge checkout. Required check от того же Actions App не является независимым доверенным корнем для изменений workflow или самого gate: такие изменения могут менять код, который формирует требуемый результат. Это риск будущих PR, не дефект T-002: T-002 не меняет workflow и `scripts/quality-gate.ps1`.
+- Сохранить `pull_request` с read-only token, SHA-pinned checkout и `persist-credentials: false`. Если появится trusted-base policy workflow, он должен читать PR-файлы как данные через API и не checkout/build/execute untrusted PR content. GitHub отдельно предупреждает, что `pull_request_target` нельзя использовать для запуска кода из PR.
+- Текущий main ruleset защищает только `main`. Для task refs возможен отдельный branch ruleset `task/*`, блокирующий non-fast-forward и оставляющий удаление разрешённым для настроенного удаления ветки после merge.
+- Для public Free нужен локальный fail-closed push-size gate и PR-проверка как компенсирующий контроль. Они не равны серверной блокировке; порог и метрика размера требуют отдельного определения и тестов.
+- Отсутствие LICENSE означает действие default copyright; GitHub ToS разрешает пользователям просматривать и fork публичный репозиторий. До решения владельца не подразумевать открытое разрешение на переиспользование.
+
+### Следующие действия
+1. Завершить T-002 после независимого review на текущем PR head и зелёного CI на текущей паре head/base.
+2. Отдельной sequential task добавить trust policy для изменений workflow/gate, remote non-fast-forward protection для `task/*`, author identity guard и ограничение размера push с негативными regression cases.
+3. До первого release установить tag policy; сейчас опубликованные tags отсутствуют.
+4. До существенного роста публичного репозитория зафиксировать решение владельца о лицензии и приватности email в уже опубликованной истории. Не переписывать published history без отдельного решения владельца.
+
+### Официальные источники
+- [GitHub repository rulesets and plan availability](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/managing-rulesets-for-a-repository)
+- [GitHub rules available to rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
+- [GitHub push protection detection scope and limitations](https://docs.github.com/en/code-security/reference/secret-security/secret-scanning-scope)
+- [GitHub secure use of `pull_request_target`](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target)
+- [GitHub licensing a repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository)
