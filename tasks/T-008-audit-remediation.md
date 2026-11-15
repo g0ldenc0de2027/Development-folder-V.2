@@ -1,6 +1,6 @@
 # T-008 — Исправления аудита и понятная передача следующему агенту
 
-**Статус:** draft PR #8 открыт. До изменений support matrix последний проверенный head — `d2935887d13277754cfc84280e9eca56c5ca671a` (hosted run #43735139082 SUCCESS); это не доказывает текущую рабочую ревизию. После commit/push нового состояния нужно заново сверить live head/base, hosted CI и независимое review в PR #8.
+**Evidence checkpoint (2026-11-15):** Перед этой записью PR #8 был OPEN/Draft, head 337de0d48f8edfeb521167270306516ac3cdb476, base f577dc70e58d75ab5fd61d0c2e712c27b590713a. Hosted quality-gate run 43753125152 SUCCESS на merge-result 184666c6328cd68da399746804217cf30b91bb0c с точными родителями base/head; локальный и pre-push gate прошли. На том head GitHub-native reviews/comments отсутствовали; независимый review PENDING. Эта карточка — контрольная точка: актуальный head/base/checks после её изменения следует брать из live PR #8.
 **PR:** https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/8
 **База при старте:** `f577dc70e58d75ab5fd61d0c2e712c27b590713a` (origin/main).
 **Head при первой публикации:** `e4d580304333d15b80b7327bc559ab309ec12f56`. После обновления этой карточки head изменится; всегда сверяйте live head/base в PR #8.
@@ -33,7 +33,7 @@
 
 ## Изменения этой ветки
 
-- Матрица среды вынесена в `config/runtime-support.json`: проверенная Windows 11 x64 GA 26H2/build 26300 на `ge_release`; PowerShell 7.6 LTS 7.6.10+; CI — точный Windows Server 2025 build 26100. `quality-gate`, scope guard и KB CLI используют общий fail-closed runtime verifier.
+- Матрица среды вынесена в config/runtime-support.json: проверенная Windows 11 x64 GA 26H2/build 26300 на ge_release; PowerShell 7.6 LTS не ниже 7.6.10; CI — Windows Server 2025 base build 26100. Hosted runner фактически запускал 7.6.9, поэтому workflow каждый run скачивает официальный PowerShell 7.6.10 win-x64 ZIP, проверяет pinned SHA-256, версию и CI baseline, затем запускает gate явным бинарником. quality-gate, scope guard и KB CLI используют общий fail-closed runtime verifier.
 - Hook разрешает публикацию только с текущей ветки `task/T-NNN` в одноимённую remote branch; detached HEAD, tags, deletion, сторонний ref и non-fast-forward отклоняются.
 - Диапазоны refs передаются одним CSV аргументом и повторно разбираются quality gate. Записи hook ограничены 20 на вызов.
 - До quality gate hook вызывает scope guard. Точная зона берётся из единственной карточки `tasks/T-NNN-*.md`; dedicated linked worktree и task branch `origin/main...HEAD` проверяются с учётом rename как delete+add, дерево должно быть чистым.
@@ -58,7 +58,7 @@
 | F08 | P2 | Исправление в T-008 | Context fail-closed на ограничении числа записей; search сообщает полную метаинформацию truncation. Локальный/hosted evidence ещё надо зафиксировать. |
 | F09 | P2 | Частично | В quality gate добавлены поведенческие сценарии scope verifier: несколько изменённых путей, Unicode path, dirty worktree, отказ на посторонний файл и изоляция унаследованного Git hook environment с проверкой неизменности HEAD исходного репозитория. Поведенческие сценарии самого pre-push hook и хрупкие старые текст/SHA проверки остаются открыты. |
 | F10 | P2 | Другая открытая ветка | PR #7/T-007 обновляет handoff и closeout T-004. Проверить свежий base/head/CI/review; не считать исправленным до merge. |
-| F11 | P1 | Исправление в T-008 | Runtime policy перечисляет только фактически проверенную Windows 11 x64 GA 26H2/build 26300 на release branch; PowerShell минимум повышен до текущего LTS patch 7.6.10. CI отдельно — Windows Server 2025 build 26100. Неизвестные/preview builds блокируются; остальные версии Windows не заявляются до отдельной compatibility-проверки. Hash-verified cache и timeout/retry остаются открытыми другими пунктами аудита. |
+| F11 | P1 | Реализовано и проверено на 337de0d | Host matrix ограничена подтверждённой Windows 11 x64 GA 26H2/build 26300/ge_release; неподтверждённые и preview builds блокируются. CI отделён: Windows Server 2025 base build 26100; встроенный runner pwsh может быть старее, поэтому официальный PowerShell 7.6.10 win-x64 архив загружается на каждом hosted run, SHA-256 сверяется с manifest, заданы timeout и 3 попытки. Локальный/hosted gate и run #43753125152 прошли. Кэш архива не включён: текущая allowlist разрешает только actions/checkout; добавление cache action требует отдельного изменения политики. Timeout/retry/cache загрузок actionlint/Gitleaks в локальном gate остаются открытыми. |
 | F12 | P2 | Другая открытая ветка | PR #6/T-006 обрабатывает `.vs` и tracked cache; проверить свежий diff и интеграцию после обновления base. |
 | F13 | P2 | Открыто | Определить размеры уникальных Git blobs и предел push для всех ref updates; сначала утвердить метрики, проектные пороги и отрицательные сценарии. |
 | F14 | P2 | Открыто | Добавить redacted identity preflight и проверку author/committer после GitHub squash; не печатать адреса и не переписывать историю автоматически. |
@@ -79,19 +79,21 @@
 
 ## Проверки
 
-На последнем проверенном head до исправления runtime-матрицы `d2935887d13277754cfc84280e9eca56c5ca671a`:
-- Scope/чистота worktree: PASS (1 изменённый путь из 11 разрешённых; дерево чистое).
-- Локальный quality gate: PASS — GitHub gate/regressions, KB integrity, 44 KB regressions, actionlint, Gitleaks рабочей копии/истории/push ranges; утечек не обнаружено.
-- Hosted `quality-gate`: PASS, run `43735139082`. Эти результаты относятся только к указанному head; повторить на новой ревизии.
-- Live settings verifier: не запускался; конфигурация GitHub в этой задаче не менялась.
-- Независимое review: PENDING; PR остаётся draft.
+Последний проверенный кодовый head перед ledger-only обновлением: 337de0d48f8edfeb521167270306516ac3cdb476; base f577dc70e58d75ab5fd61d0c2e712c27b590713a:
+- Task-scope pre-push: PASS, 21 changed paths / 21 allowed paths; branch task/T-008, worktree clean.
+- Локальный pwsh -NoLogo -NoProfile -File scripts/quality-gate.ps1 -BaseRef origin/main: PASS; 44 KB-регрессии, 3 task-scope регрессии, actionlint, Gitleaks working tree/history/push range.
+- Pre-push gate перед публикацией: PASS на commit 337de0d; проверил scope, полный quality gate и incoming range.
+- Hosted quality-gate: run [#43753125152](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/43753125152) SUCCESS (pull_request); checkout/test merge-result 184666c6328cd68da399746804217cf30b91bb0c, родители — точные base/head выше.
+- В hosted log подтверждено: bootstrap PowerShell 7.6.9, официальный архив PowerShell 7.6.10 скачан и SHA-256 проверен; CI runtime и quality gate работали под 7.6.10.
+- Live PR #8: OPEN, Draft; GitHub-native reviews/comments отсутствуют на текущем head. Независимое review текущего head PENDING; merge не разрешён до его получения и принятия.
+- Stack build/dependency audit: NOT COVERED; эталон не содержит выбранного прикладного стека.
 
-Этот tracking-коммит продвигает branch head. Pre-push повторяет локальный gate; hosted CI и review привязаны к SHA. После push обязательно проверьте текущий head/base и checks в PR #8; не считайте результаты выше доказательством для более нового SHA.
+Результаты до 337de0d и hosted run #43753125152 — исторические и не доказывают проверки последующих ревизий.
 
 ## Итоговые SHA и приёмка
 
-- Base SHA при создании PR: `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; сверяйте live PR base.
-- Head первой публикации: `e4d580304333d15b80b7327bc559ab309ec12f56`.
-- Последний полностью проверенный head до исправления runtime-матрицы: `d2935887d13277754cfc84280e9eca56c5ca671a`.
-- Эта карточка создаёт новый head; актуальные head/base и CI: PR #8 — единственный источник истины для текущей ревизии.
-- Merge-result и merge SHA: pending; ничего не считать слитым до фактического merge.
+- Base SHA PR #8: f577dc70e58d75ab5fd61d0c2e712c27b590713a.
+- Последний проверенный кодовый head перед обновлением этой карточки: 337de0d48f8edfeb521167270306516ac3cdb476.
+- Hosted CI merge-result: 184666c6328cd68da399746804217cf30b91bb0c; parents совпадают с base и head.
+- Hosted run: 43753125152, SUCCESS; прямой URL указан в разделе «Проверки».
+- Карточка обновлена после указанного code head и сама продвигает PR head; live PR #8 — источник текущего статуса CI/review. PR остаётся OPEN/Draft; independent review и merge SHA: PENDING.
