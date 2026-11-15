@@ -13,8 +13,7 @@ function Invoke-Git([string[]]$Arguments) {
     return ,$output
 }
 
-$scriptDirectory = (Resolve-Path $PSScriptRoot).Path
-$repoRoot = ((Invoke-Git @('-C',$scriptDirectory,'rev-parse','--show-toplevel')) -join '').Trim()
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $branch = ((Invoke-Git @('-C',$repoRoot,'symbolic-ref','--quiet','--short','HEAD')) -join '').Trim()
 if ($branch -cne "task/$TaskId") { throw 'Current branch does not match the task ID' }
 $null = Invoke-Git @('-C',$repoRoot,'merge-base',$BaseRef,'HEAD')
