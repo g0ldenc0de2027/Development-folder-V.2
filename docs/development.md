@@ -15,9 +15,9 @@
 
 Не входят в матрицу разработчика: Windows 10 (включая LTSC/ESU, которые отдельно не квалифицировались), Windows 11 25H2, 24H2, 26H1 и preview/prerelease builds, прочие неподтверждённые Windows client releases, Windows 11 ARM64, Windows Server, Windows PowerShell 5.1, Linux и macOS. ОС/архитектура будущего создаваемого приложения выбирается отдельно в его ТЗ и не ограничивается этой матрицей эталона.
 
-**CI:** GitHub Actions использует `windows-2025` — Windows Server 2025 x64 (build 26100). Runtime gate требует этот точный build и PowerShell 7.6.10 или более новый стабильный patch ветки 7.6. Workflow печатает фактическую версию каждого запуска. Это изолированная среда CI, она не означает поддержку Windows Server как пользовательского хоста. [Состав runner image](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md) проверен 2026-11-15; версия PowerShell меняется вместе с образом.
+**CI:** GitHub Actions использует `windows-2025` — Windows Server 2025 x64 (base build 26100). Runner может содержать устаревший встроенный pwsh; workflow скачивает официальный PowerShell 7.6.10 win-x64 ZIP, сверяет SHA-256 из config/runtime-support.json, затем проверяет точный runtime и запускает gate этим бинарником. На 2026-11-15 runner фактически запускал 7.6.9, поэтому встроенной версии образа доверять как удовлетворяющей минимуму нельзя. Образ ОС остаётся плавающим, проверяется точный base build; архив PowerShell загружается по сети при каждом CI run с timeout/retry. Это изолированная среда CI, не поддержка Windows Server как пользовательского хоста. [Состав runner image](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md) проверен 2026-11-15.
 
-Git for Windows и GitHub CLI нужны для GitHub workflow. Интернет нужен для получения pinned actionlint и Gitleaks во временную папку gate.
+Git for Windows и GitHub CLI нужны для GitHub workflow. Интернет нужен для загрузки SHA-256-проверенного PowerShell в CI и pinned actionlint/Gitleaks во временную папку локального gate.
 ## Проверки
 Настройте локальные безопасные Git defaults и pre-push quality gate один раз после clone:
 

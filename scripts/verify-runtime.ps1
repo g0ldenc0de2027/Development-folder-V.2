@@ -45,16 +45,16 @@ if ($Mode -eq 'auto') {
     }
 }
 
-$osVersion = Get-ItemProperty -LiteralPath 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name DisplayVersion, CurrentBuildNumber, UBR, BuildBranch, InstallationType -ErrorAction Stop
-$displayVersion = [string]$osVersion.DisplayVersion
-$build = [int]$osVersion.CurrentBuildNumber
-$updateBuildRevision = [int]$osVersion.UBR
-$buildBranch = [string]$osVersion.BuildBranch
-$installationType = [string]$osVersion.InstallationType
 $productOptions = Get-ItemProperty -LiteralPath 'Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\ProductOptions' -Name ProductType -ErrorAction Stop
 $productType = [string]$productOptions.ProductType
 switch ($Mode) {
     'developer' {
+        $osVersion = Get-ItemProperty -LiteralPath 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name DisplayVersion, CurrentBuildNumber, UBR, BuildBranch, InstallationType -ErrorAction Stop
+        $displayVersion = [string]$osVersion.DisplayVersion
+        $build = [int]$osVersion.CurrentBuildNumber
+        $updateBuildRevision = [int]$osVersion.UBR
+        $buildBranch = [string]$osVersion.BuildBranch
+        $installationType = [string]$osVersion.InstallationType
         $supportedRelease = @($policy.developerHost.supportedWindowsReleases | Where-Object {
             [string]$_.displayVersion -eq $displayVersion -and [int]$_.build -eq $build
         })
@@ -69,6 +69,8 @@ switch ($Mode) {
         }
     }
     'ci' {
+        $osVersion = Get-ItemProperty -LiteralPath 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name CurrentBuildNumber -ErrorAction Stop
+        $build = [int]$osVersion.CurrentBuildNumber
         if (
             $env:GITHUB_ACTIONS -ne 'true' -or
             $productType -ne [string]$policy.ci.productType -or
@@ -80,6 +82,9 @@ switch ($Mode) {
 }
 
 if (-not $Quiet) {
-    $windowsLabel = if ($Mode -eq 'developer') { "Windows 11 $displayVersion" } else { 'Windows Server 2025' }
-    Write-Output ("PASS: runtime mode={0}; PowerShell={1}; OS={2}; build={3}.{4}; branch={5}; architecture={6}" -f $Mode, $version, $windowsLabel, $build, $updateBuildRevision, $buildBranch, $runtime::OSArchitecture)
+    if ($Mode -eq 'developer') {
+        Write-Output ("PASS: runtime mode={0}; PowerShell={1}; OS=Windows 11 {2}; build={3}.{4}; branch={5}; architecture={6}" -f $Mode, $version, $displayVersion, $build, $updateBuildRevision, $buildBranch, $runtime::OSArchitecture)
+    } else {
+        Write-Output ("PASS: runtime mode={0}; PowerShell={1}; OS=Windows Server 2025; build={2}; architecture={3}" -f $Mode, $version, $build, $runtime::OSArchitecture)
+    }
 }

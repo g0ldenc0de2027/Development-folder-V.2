@@ -29,10 +29,68 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify PowerShell
+      - name: Install and verify pinned PowerShell
         shell: pwsh
         run: |
-          ./scripts/verify-runtime.ps1 -Mode ci
+          $runtimePolicy = Get-Content -LiteralPath config/runtime-support.json -Raw | ConvertFrom-Json
+          $ciPowerShell = $runtimePolicy.ci.powerShell
+          Write-Output ("Runner bootstrap PowerShell={0}" -f $PSVersionTable.PSVersion)
+          $minimumVersion = [version]$runtimePolicy.powerShell.minimumVersion
+          $requiredVersion = [version]$ciPowerShell.version
+          $expectedAsset = "PowerShell-$($ciPowerShell.version)-win-x64.zip"
+          $expectedUrl = "https://github.com/PowerShell/PowerShell/releases/download/v$($ciPowerShell.version)/$expectedAsset"
+          if (
+            $requiredVersion -lt $minimumVersion -or
+            $requiredVersion.Major -ne [int]$runtimePolicy.powerShell.major -or
+            $requiredVersion.Minor -ne [int]$runtimePolicy.powerShell.minor -or
+            $ciPowerShell.asset -ne $expectedAsset -or
+            $ciPowerShell.downloadUrl -ne $expectedUrl -or
+            $ciPowerShell.sha256 -notmatch '^[0-9A-Fa-f]{64}$'
+          ) {
+            throw 'Pinned CI PowerShell policy is invalid or below the project minimum'
+          }
+
+          $archivePath = Join-Path $env:RUNNER_TEMP $ciPowerShell.asset
+          $installPath = Join-Path $env:RUNNER_TEMP "pwsh-$($ciPowerShell.version)-x64"
+          $downloaded = $false
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri $ciPowerShell.downloadUrl -OutFile $archivePath -TimeoutSec 180
+              $downloaded = $true
+              break
+            } catch {
+              Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
+              if ($attempt -eq 3) {
+                throw "Official PowerShell download failed after three attempts: $($_.Exception.Message)"
+              }
+              Start-Sleep -Seconds (5 * $attempt)
+            }
+          }
+          if (-not $downloaded) {
+            throw 'Official PowerShell download did not complete'
+          }
+
+          $actualHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash
+          if ($actualHash -ne $ciPowerShell.sha256) {
+            throw 'Official PowerShell archive SHA-256 did not match the repository pin'
+          }
+          Expand-Archive -LiteralPath $archivePath -DestinationPath $installPath -Force
+          $pwshExecutable = Join-Path $installPath 'pwsh.exe'
+          if (-not (Test-Path -LiteralPath $pwshExecutable -PathType Leaf)) {
+            throw 'Pinned PowerShell executable was not found in the verified archive'
+          }
+
+          $installedVersionText = (& $pwshExecutable -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' | Out-String).Trim()
+          $versionCheckExitCode = $LASTEXITCODE
+          if ($versionCheckExitCode -ne 0 -or [version]$installedVersionText -ne $requiredVersion) {
+            throw "Pinned PowerShell version verification failed; expected $requiredVersion, found $installedVersionText"
+          }
+          Write-Output ("Pinned CI PowerShell={0}; archive SHA-256 verified" -f $installedVersionText)
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $installPath -Encoding utf8
+          & $pwshExecutable -NoLogo -NoProfile -File ./scripts/verify-runtime.ps1 -Mode ci
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
 
       - name: Run quality gate and record tested revisions
         shell: pwsh
@@ -42,6 +100,17 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT_TEST_SHA: ${{ github.sha }}
         run: |
+          $runtimePolicy = Get-Content -LiteralPath config/runtime-support.json -Raw | ConvertFrom-Json
+          $pwshExecutable = Join-Path $env:RUNNER_TEMP "pwsh-$($runtimePolicy.ci.powerShell.version)-x64/pwsh.exe"
+          if (-not (Test-Path -LiteralPath $pwshExecutable -PathType Leaf)) {
+            throw 'Pinned PowerShell executable is missing from RUNNER_TEMP'
+          }
+          $env:PATH = (Split-Path -Parent $pwshExecutable) + ';' + $env:PATH
+          $runtimeVersion = (& $pwshExecutable -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or [version]$runtimeVersion -lt [version]$runtimePolicy.powerShell.minimumVersion) {
+            throw "Quality gate runtime is below policy minimum: $runtimeVersion"
+          }
+          Write-Output ("Quality gate PowerShell={0}" -f $runtimeVersion)
           if ($env:PR_HEAD_SHA) {
             $summary = @"
           ## Pull request verification
@@ -51,4 +120,5 @@ jobs:
           "@
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary
           }
-          ./scripts/quality-gate.ps1
+          & $pwshExecutable -NoLogo -NoProfile -File ./scripts/quality-gate.ps1
+          exit $LASTEXITCODE

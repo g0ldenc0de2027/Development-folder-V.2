@@ -29,6 +29,12 @@
     "provider": "GitHub Actions",
     "runner": "windows-2025",
     "productType": "ServerNT",
-    "build": 26100
+    "build": 26100,
+    "powerShell": {
+      "version": "7.6.10",
+      "asset": "PowerShell-7.6.10-win-x64.zip",
+      "downloadUrl": "https://github.com/PowerShell/PowerShell/releases/download/v7.6.10/PowerShell-7.6.10-win-x64.zip",
+      "sha256": "7D871531806EB1646264E4BBABD9F0C30C23355591BC756BB9909448C29AE166"
+    }
   }
 }

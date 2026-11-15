@@ -37,6 +37,10 @@ if (
     $runtimePolicy.powerShell.minor -ne 6 -or
     $runtimePolicy.powerShell.minimumVersion -ne '7.6.10' -or
     ($releasePairs -join ',') -ne '26H2:26300' -or
+    $runtimePolicy.ci.powerShell.version -ne $runtimePolicy.powerShell.minimumVersion -or
+    $runtimePolicy.ci.powerShell.asset -ne 'PowerShell-7.6.10-win-x64.zip' -or
+    $runtimePolicy.ci.powerShell.downloadUrl -ne 'https://github.com/PowerShell/PowerShell/releases/download/v7.6.10/PowerShell-7.6.10-win-x64.zip' -or
+    $runtimePolicy.ci.powerShell.sha256 -ne '7D871531806EB1646264E4BBABD9F0C30C23355591BC756BB9909448C29AE166' -or
     $runtimePolicy.ci.provider -ne 'GitHub Actions' -or
     $runtimePolicy.ci.runner -ne 'windows-2025' -or
     $runtimePolicy.ci.productType -ne 'ServerNT' -or
@@ -55,11 +59,36 @@ if (
 ) {
     throw 'Runtime verifier must enforce the shared PowerShell, OS release, branch, architecture, and exact CI baseline'
 }
+$developerModeOffset = $runtimeVerifier.IndexOf("    'developer' {", [StringComparison]::Ordinal)
+$ciModeOffset = $runtimeVerifier.IndexOf("    'ci' {", [StringComparison]::Ordinal)
+if ($developerModeOffset -lt 0 -or $ciModeOffset -le $developerModeOffset) {
+    throw 'Runtime verifier must keep developer and CI platform probes separate'
+}
+$developerModeSource = $runtimeVerifier.Substring($developerModeOffset, $ciModeOffset - $developerModeOffset)
+$ciCaseMatch = [regex]::Match($runtimeVerifier, "(?ms)^    'ci' \{(?<body>.*?)^    \}\r?\n\}")
+if (-not $ciCaseMatch.Success) {
+    throw 'Runtime verifier must contain a bounded CI mode case'
+}
+$ciModeSource = $ciCaseMatch.Groups['body'].Value
+if (
+    $developerModeSource -notmatch 'DisplayVersion, CurrentBuildNumber, UBR, BuildBranch, InstallationType' -or
+    $ciModeSource -notmatch 'CurrentBuildNumber' -or
+    $ciModeSource -match 'DisplayVersion|UBR|BuildBranch|InstallationType'
+) {
+    throw 'CI runtime probe must not require Windows client-only registry fields'
+}
 if ($qualityGateSource -notmatch 'verify-runtime\.ps1' -or $kbCliSource -notmatch '(?m)^#Requires -Version 7\.6$' -or $kbCliSource -notmatch 'verify-runtime\.ps1') {
     throw 'Quality gate and KB CLI must share the runtime verifier and require PowerShell 7.6'
 }
-if ($workflow -notmatch 'runs-on: windows-2025' -or $workflow -notmatch 'verify-runtime\.ps1 -Mode ci') {
-    throw 'Hosted CI must use and verify the Windows Server 2025 runner'
+if (
+    $workflow -notmatch 'runs-on: windows-2025' -or
+    $workflow -notmatch 'verify-runtime\.ps1 -Mode ci' -or
+    $workflow -notmatch 'Invoke-WebRequest.+TimeoutSec 180' -or
+    $workflow -notmatch 'Get-FileHash.+SHA256' -or
+    $workflow -notmatch '\$env:PATH = \(Split-Path -Parent \$pwshExecutable\)' -or
+    $workflow -notmatch 'quality-gate\.ps1'
+) {
+    throw 'Hosted CI must use the Windows Server 2025 runner and a SHA-256-verified pinned PowerShell runtime'
 }
 foreach ($supportDocument in @($agentsPolicy, $readme, $developmentGuide, $projectSpec, $kbSpec)) {
     if (
