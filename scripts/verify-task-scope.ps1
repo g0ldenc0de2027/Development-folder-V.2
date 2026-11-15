@@ -49,6 +49,7 @@ foreach ($change in $changes) {
     if (-not $allowed) { $outside.Add($normalized) }
 }
 if ($outside.Count -gt 0) { throw ('Out-of-scope paths: ' + ($outside -join ', ')) }
-$status = @(Invoke-Git @('-C',$repoRoot,'status','--porcelain=v1','--untracked-files=all'))
+$status = @(& git -C $repoRoot status --porcelain=v1 --untracked-files=all)
+if ($LASTEXITCODE -ne 0) { throw 'Task scope check could not read working-tree status' }
 if ($status.Count -gt 0) { throw 'Working tree must be clean before push' }
 Write-Output ("TASK-SCOPE=PASS ({0} changed paths; {1} allowed paths)" -f $changes.Count,$scope.Count)
