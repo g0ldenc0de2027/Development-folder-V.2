@@ -1,7 +1,9 @@
 # T-008 — Исправления аудита и понятная передача следующему агенту
 
-**Статус:** implementation in progress; опубликованная точка входа — remote branch `task/T-008`.
-**База:** `f577dc70e58d75ab5fd61d0c2e712c27b590713a` (origin/main при старте).
+**Статус:** draft PR #8 открыт; ветка опубликована. Требуются hosted CI и ручное review актуального head.
+**PR:** https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/8
+**База при старте:** `f577dc70e58d75ab5fd61d0c2e712c27b590713a` (origin/main).
+**Head при первой публикации:** `e4d580304333d15b80b7327bc559ab309ec12f56`. После обновления этой карточки head изменится; всегда сверяйте live head/base в PR #8.
 **Задача:** устранить воспроизводимые дефекты аудита 2026-11-15 и оставить полный реестр остатка.
 **Аудит:** `2026-11-15_Критический-аудит_Development-Folder-V2_OpenAI-Codex-GPT-6.md` в каталоге аудитов владельца; абсолютный локальный путь в публичный репозиторий не переносить.
 
@@ -66,17 +68,17 @@
 
 ## Проверки
 
-Регрессионные suites и quality gate не запускались в процессе подготовки этой ветки. До merge должны пройти команды, предписанные `docs/development.md`, на финальном HEAD; результаты фиксируются ниже.
+Ниже зафиксированы результаты первой опубликованной ревизии `e4d580304333d15b80b7327bc559ab309ec12f56`. Эта карточка обновляется отдельным commit; pre-push повторяет весь локальный gate. Hosted CI и review привязаны к точным SHA, поэтому после любого push сверяйте актуальные статусы в PR #8.
 
-- Локальный quality gate: PENDING.
-- Live settings verifier: PENDING / конфигурация в этой задаче не менялась.
-- Hosted `quality-gate`: PENDING.
-- Независимое review exact head: PENDING.
-- Scope/чистота worktree перед push: PENDING.
+- Scope/чистота worktree перед первой публикацией: PASS (1 изменённый путь из 11 разрешённых; дерево чистое).
+- Локальный quality gate на первой опубликованной ревизии: PASS — GitHub gate/regressions, KB integrity, 44 KB regressions, actionlint, Gitleaks рабочей копии/истории/push ranges; утечек не обнаружено.
+- Live settings verifier: не запускался; конфигурация GitHub в этой задаче не менялась.
+- Hosted `quality-gate`: был IN_PROGRESS на первой ревизии; актуальный SHA-bound статус смотреть в PR #8.
+- Независимое review актуального head: PENDING; PR остаётся draft.
 
 ## Итоговые SHA и приёмка
 
-- Base SHA: `f577dc70e58d75ab5fd61d0c2e712c27b590713a`.
-- Branch head: заполнить после commit/push.
-- PR head/base/merge-result: заполнить из актуального PR.
-- Merge SHA: оставить пустым до фактического merge.
+- Base SHA при создании PR: `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; сверяйте live PR base.
+- Head первой публикации: `e4d580304333d15b80b7327bc559ab309ec12f56`; после обновления этой карточки ветка получает новый head.
+- Актуальные head/base и CI: PR #8 — единственный источник истины для текущей ревизии.
+- Merge-result и merge SHA: pending; ничего не считать слитым до фактического merge.
