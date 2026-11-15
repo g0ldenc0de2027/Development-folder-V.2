@@ -3,7 +3,7 @@
 - Изолированная task/T-004 от c98a1922dee2dedeaed6eeb528d72098beb3a128; T-003 не изменяется.
 - По поручению владельца подготовлены RULES 0.1.0 и локальная файловая БЗ; допуск только spec/local-knowledge.md.
 - Канон правил готовится в новой общей БЗ, project snapshot проверяется policy-lock; абсолютный путь только в локальной настройке.
-- CLI check/search/get/context/capture/doctor реализован; полный локальный gate exit 0, 31 KB-регрессия прошла. Публикация task-ветки готовится.
+- CLI check/search/get/context/capture/doctor реализован; полный локальный gate exit 0, 31 KB-регрессия прошла. Рабочая ветка task/T-004 опубликована, актуальные свидетельства — PR #4.
 - Swarm runtime, общий authenticated publisher и federated search не реализованы; перед merge нужны independent review и CI.
 
 ## Исторический bootstrap-снимок (не текущие статусы задач)
