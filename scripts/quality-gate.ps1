@@ -102,6 +102,10 @@ try {
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/kb-regressions.ps1') -TempRoot $temporaryRoot
     if ($LASTEXITCODE -ne 0) { throw 'Knowledge regressions failed' }
 
+    Write-Output 'QUALITY-GATE: running task-scope regression fixtures'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/task-scope-regressions.ps1') -TempRoot $temporaryRoot
+    if ($LASTEXITCODE -ne 0) { throw 'Task-scope regressions failed' }
+
     $manifest = Get-Content -LiteralPath (Join-Path $repoRoot 'config/security/tools.json') -Raw | ConvertFrom-Json
     $actionlint = Get-PinnedExecutable -Tool $manifest.tools.actionlint -Name 'actionlint'
     $gitleaks = Get-PinnedExecutable -Tool $manifest.tools.gitleaks -Name 'gitleaks'

@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 function Invoke-Git([string[]]$Arguments) {
     $output = @(& git @Arguments)
     if ($LASTEXITCODE -ne 0) { throw 'Task scope check could not read Git state' }
-    return ,$output
+    return $output
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
