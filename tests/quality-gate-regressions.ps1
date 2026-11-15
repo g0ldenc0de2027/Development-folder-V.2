@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+. (Join-Path $repoRoot 'scripts/ide-cache.ps1')
 $workflowPath = Join-Path $repoRoot '.github/workflows/quality-gate.yml'
 $workflow = Get-Content -LiteralPath $workflowPath -Raw
 $actionsPolicy = Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/actions-policy.json') -Raw | ConvertFrom-Json
@@ -52,15 +53,9 @@ if ($expectedRelativePath -match $excludedRepositoryPathPattern -or $nestedRelat
     throw 'Worktree path fixture must include files at the checkout root and exclude nested worktrees'
 }
 $qualityGate = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
-$qualityGatePathSeparatorClass = '[' + ([string][char]92 * 2) + '/]'
-$qualityGateExclusionPattern = '(^|' + $qualityGatePathSeparatorClass + ')(\.git|\.worktrees|temp)(' + $qualityGatePathSeparatorClass + '|$)'
-$expectedPathFilterSource = '$relativePath -notmatch ' + [char]39 + $qualityGateExclusionPattern + [char]39
-if (
-    -not $qualityGate.Contains('[System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)') -or
-    -not $qualityGate.Contains($expectedPathFilterSource) -or
-    $qualityGate -notmatch 'if \(\$scriptFiles\.Count -eq 0\)'
-) {
-    throw 'Quality gate must use relative worktree path exclusions and fail when no scripts are scanned'
+if (-not $qualityGate.Contains('Get-ProjectFiles $repoRoot') -or
+    $qualityGate -notmatch 'if \(\$scriptFiles\.Count -eq 0\)') {
+    throw 'Quality gate must use scoped file enumeration and fail when no scripts are scanned'
 }
 if ($qualityGate -notmatch '\[string\[\]\]\$PushRange' -or -not $qualityGate.Contains('--log-opts=')) {
     throw 'Quality gate must scan exact incoming push history ranges'
@@ -276,12 +271,8 @@ foreach ($toolName in @('actionlint', 'gitleaks')) {
 $textExtensions = @('.md', '.json', '.yml', '.yaml', '.ps1')
 $specialTextNames = @('.gitignore', '.gitattributes', '.editorconfig', 'pre-push')
 $textFiles = @(
-    Get-ChildItem -LiteralPath $repoRoot -File -Recurse -Force |
-        Where-Object {
-            $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)
-            ($_.Extension -in $textExtensions -or $_.Name -in $specialTextNames) -and
-            $relativePath -notmatch $excludedRepositoryPathPattern
-        }
+    Get-ProjectFiles $repoRoot |
+        Where-Object { $_.Extension -in $textExtensions -or $_.Name -in $specialTextNames }
 )
 if ($textFiles.Count -eq 0) {
     throw 'Text hygiene scan found no repository files'

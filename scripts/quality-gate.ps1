@@ -69,13 +69,8 @@ try {
         $null = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
     }
 
-    $scriptFiles = @(
-        Get-ChildItem -LiteralPath $repoRoot -File -Recurse -Force -Filter '*.ps1' |
-            Where-Object {
-                $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)
-                $relativePath -notmatch '(^|[\\/])(\.git|\.worktrees|temp)([\\/]|$)'
-            }
-    )
+    . (Join-Path $repoRoot 'scripts/ide-cache.ps1')
+    $scriptFiles = @(Get-ProjectFiles $repoRoot | Where-Object { $_.Extension -ieq '.ps1' })
     if ($scriptFiles.Count -eq 0) {
         throw 'PowerShell syntax scan found no repository scripts'
     }
@@ -97,6 +92,10 @@ try {
     if ($testExit -ne 0) {
         throw "quality-gate-regressions.ps1 failed with exit code $testExit"
     }
+
+    Write-Output 'QUALITY-GATE: validating IDE cache isolation'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/ide-cache-regressions.ps1') -TempRoot $temporaryRoot
+    if ($LASTEXITCODE -ne 0) { throw 'IDE cache regressions failed' }
 
     Write-Output 'QUALITY-GATE: checking local knowledge and pinned rules'
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'scripts/kb.ps1') check
