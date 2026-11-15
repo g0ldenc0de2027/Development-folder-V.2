@@ -13,9 +13,8 @@ function Invoke-Git([string[]]$Arguments) {
     return ,$output
 }
 
-$currentPrefix = ((Invoke-Git @('rev-parse','--show-cdup')) -join '').Trim()
-if ($currentPrefix) { throw 'Task scope check must run from the task worktree root' }
-$repoRoot = ((Invoke-Git @('rev-parse','--show-toplevel')) -join '').Trim()
+$scriptDirectory = (Resolve-Path $PSScriptRoot).Path
+$repoRoot = ((Invoke-Git @('-C',$scriptDirectory,'rev-parse','--show-toplevel')) -join '').Trim()
 $branch = ((Invoke-Git @('-C',$repoRoot,'symbolic-ref','--quiet','--short','HEAD')) -join '').Trim()
 if ($branch -cne "task/$TaskId") { throw 'Current branch does not match the task ID' }
 $null = Invoke-Git @('-C',$repoRoot,'merge-base',$BaseRef,'HEAD')
