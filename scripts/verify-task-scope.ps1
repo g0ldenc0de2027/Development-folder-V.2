@@ -13,13 +13,11 @@ function Invoke-Git([string[]]$Arguments) {
     return ,$output
 }
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$currentPrefix = ((Invoke-Git @('rev-parse','--show-cdup')) -join '').Trim()
+if ($currentPrefix) { throw 'Task scope check must run from the task worktree root' }
+$repoRoot = ((Invoke-Git @('rev-parse','--show-toplevel')) -join '').Trim()
 $branch = ((Invoke-Git @('-C',$repoRoot,'symbolic-ref','--quiet','--short','HEAD')) -join '').Trim()
 if ($branch -cne "task/$TaskId") { throw 'Current branch does not match the task ID' }
-$rootFromGit = ((Invoke-Git @('-C',$repoRoot,'rev-parse','--show-toplevel')) -join '').Trim()
-if (-not [string]::Equals([IO.Path]::GetFullPath($rootFromGit),[IO.Path]::GetFullPath($repoRoot),[StringComparison]::OrdinalIgnoreCase)) {
-    throw 'Task scope check must run from the task worktree root'
-}
 $null = Invoke-Git @('-C',$repoRoot,'merge-base',$BaseRef,'HEAD')
 $gitDir = ((Invoke-Git @('-C',$repoRoot,'rev-parse','--path-format=absolute','--git-dir')) -join '').Trim()
 $commonDir = ((Invoke-Git @('-C',$repoRoot,'rev-parse','--path-format=absolute','--git-common-dir')) -join '').Trim()
