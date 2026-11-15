@@ -98,6 +98,12 @@ try {
         throw "quality-gate-regressions.ps1 failed with exit code $testExit"
     }
 
+    Write-Output 'QUALITY-GATE: checking local knowledge and pinned rules'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'scripts/kb.ps1') check
+    if ($LASTEXITCODE -ne 0) { throw 'Knowledge integrity check failed' }
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/kb-regressions.ps1') -TempRoot $temporaryRoot
+    if ($LASTEXITCODE -ne 0) { throw 'Knowledge regressions failed' }
+
     $manifest = Get-Content -LiteralPath (Join-Path $repoRoot 'config/security/tools.json') -Raw | ConvertFrom-Json
     $actionlint = Get-PinnedExecutable -Tool $manifest.tools.actionlint -Name 'actionlint'
     $gitleaks = Get-PinnedExecutable -Tool $manifest.tools.gitleaks -Name 'gitleaks'

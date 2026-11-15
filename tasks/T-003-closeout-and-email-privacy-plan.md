@@ -1,6 +1,7 @@
 # T-003 — Закрыть merge T-002 и закрепить план приватности email
 
-**Статус:** ready for review
+**Статус:** merged
+**Merge:** PR #3, squash commit 9f98b28046ca605577e5a829e02818335f66174c; Antigravity APPROVE на head 67ed516b81444c67b6b91f47472b0c78cddaee07; hosted run 43624104023 SUCCESS. Отчёт получен в чате, GitHub-native review не подавался.
 **Тип:** maintenance / GitHub closeout and privacy documentation
 **База:** `c98a1922dee2dedeaed6eeb528d72098beb3a128` (`origin/main` после merge PR #2)
 
@@ -42,6 +43,8 @@ PR #2 слита после локального `QUALITY-GATE=PASS`, live verif
 - На том же head Antigravity вынес CHANGES REQUIRED и воспроизвёл три группы проблем: ложные срабатывания на согласованные отрицательные списки; пропуски смешанных/разделённых утверждений и конструкций neither/nor; пропуск [dot]/(dot) и ложное срабатывание на URL-маршрутах с дефисом перед /users или /home.
 - GitHub Copilot checked exact PR #3 head bbd8abc223099b368407cd7082f6cec409d5c6e6 against base c98a1922dee2dedeaed6eeb528d72098beb3a128; verdict CHANGES REQUIRED. P2: the heuristic missed an affirmative copular privacy predicate following the profile null signal. P3: handoff/roadmap still described hosted CI as pending. Run 43618469816 succeeded on test merge-result 4592797ecefdf767903ae37d37522f52fa1a3146, whose parents are the exact base and head. These findings were resolved in the follow-up; this review applies only to bbd8abc.
 - Codex reproduced P2 with a red-first regression, fixed the predicate, and added direct positive and negative copular fixtures in code-fix commit 5c3eaf06dd5ee9a518659db015e4ffbc54b8a982. Its verification tuple was base c98a1922dee2dedeaed6eeb528d72098beb3a128, hosted run 43622066954 SUCCESS, and event/test merge-result 5fb052c8094ceb3f530b306d8ba164416411d63f with exact base/head parents. Local gate and push preflight passed. This tuple records that code-fix revision only; GitHub Actions validates each later PR revision separately. GitHub API showed no native review submissions; fresh independent review of the latest PR head remains pending.
+
+Следующий абзац про pending review выше относится к историческому code-fix срезу, не к текущему статусу merged.
 
 ## Границы
 
