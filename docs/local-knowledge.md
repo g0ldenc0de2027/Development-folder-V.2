@@ -10,7 +10,7 @@ pwsh -NoProfile -File scripts/kb.ps1 search -Query 'переносимость'
 pwsh -NoProfile -File scripts/kb.ps1 get -Id local-first
 pwsh -NoProfile -File scripts/kb.ps1 context -Id local-first
 pwsh -NoProfile -File scripts/kb.ps1 doctor
-pwsh -NoProfile -File scripts/kb.ps1 capture -Title 'Наблюдение' -Text 'Проверить новый сценарий'
+pwsh -NoProfile -File scripts/kb.ps1 capture -Title 'Наблюдение' -Text 'Проверить новый сценарий' -Source 'test:example' -Scope 'example' -Author 'operator' -Runtime 'local'
 ~~~
 
 CLI возвращает JSON в stdout, короткий код ошибки в stderr и exit 1 при отказе.
@@ -115,3 +115,5 @@ KB_POLICY_CHANGED means bytes differ; KB_POLICY_LINK means an unpinned local lin
 KB_POLICY_LOCK means a malformed/unsupported package. Restore a reviewed package, do not bypass checks.
 Missing or null knowledge_base is not configured; a non-string location is invalid.
 The coverage map openly lists missing application-stack, translation-validation and security-watch capabilities.
+
+Capture schema 2 требует заявленные source, scope, author, runtime; автор не аутентифицирован. Старые конверты schema 1 не переписываются. Check проверяет записи и правила на ограниченные признаки секретов и отклоняет неучтённые Markdown-файлы верхнего уровня knowledge/records; это не проверка PII и не гарантия отсутствия всех секретов. Draft возвращается со своим статусом и не является проверенным знанием.

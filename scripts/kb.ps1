@@ -4,6 +4,7 @@ param(
     [ValidateSet('check','search','get','context','capture','doctor')][string]$Command = 'check',
     [string]$ProjectRoot = (Join-Path $PSScriptRoot '..'),
     [string]$Id, [string]$Query, [string]$Title, [string]$Text,
+    [string]$Source, [string]$Scope, [string]$Author, [string]$Runtime,
     [ValidateRange(1,100)][int]$Limit = 20,
     [ValidateRange(512,262144)][int]$MaxBytes = 131072,
     [switch]$IncludeWithdrawn
@@ -13,6 +14,10 @@ $ErrorActionPreference = 'Stop'
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 
 function Fail([string]$Code) { throw $Code }
+function Assert-NoObviousSecret([string]$Value) {
+    if ($Value -match '(?i)(-----BEGIN [A-Z ]*PRIVATE KEY|(?:api[_-]?key|password|secret|token)\s*[:=]\s*\S{8,}|ghp_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,})') { Fail 'KB_POSSIBLE_SECRET' }
+}
+
 function Hash-Bytes([byte[]]$Bytes) {
     return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($Bytes)).ToLowerInvariant()
 }
@@ -134,6 +139,7 @@ function Load-Catalog {
         $bodyBytes = Read-Bytes $record.path
         if ((Hash-Bytes $bodyBytes) -cne $record.contentSha256) { Fail 'KB_CONTENT_CHANGED' }
         try { $body = $utf8.GetString($bodyBytes) } catch { Fail 'KB_UTF8_INVALID' }
+        Assert-NoObviousSecret $body
         if ($record.status -cin @('reviewed','accepted')) {
             Assert-Keys $record.review @('by','at','contentSha256','evidence')
             Assert-String $record.review.by
@@ -150,6 +156,12 @@ function Load-Catalog {
             path=$record.path;contentSha256=$record.contentSha256;sources=$record.sources
             review=$record.review;body=$body
         })
+    }
+    $recordsPath = Safe-Path 'knowledge/records'
+    if (-not [IO.Directory]::Exists($recordsPath)) { Fail 'KB_FILE_MISSING' }
+    foreach ($file in Get-ChildItem -LiteralPath $recordsPath -File -Force -Filter '*.md') {
+        if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Fail 'KB_REPARSE_POINT' }
+        if (-not $paths.Contains(('knowledge/records/'+$file.Name))) { Fail 'KB_ORPHAN_RECORD' }
     }
     return @{projectId=$catalog.projectId;catalogSha256=(Hash-Bytes $catalogBytes);entries=$entries.ToArray()}
 }
@@ -184,6 +196,7 @@ function Read-Rules {
         $bytes = Read-Bytes $entry.path
         if ((Hash-Bytes $bytes) -cne $entry.sha256) { Fail 'KB_POLICY_CHANGED' }
         try { $body = $utf8.GetString($bytes) } catch { Fail 'KB_UTF8_INVALID' }
+        Assert-NoObviousSecret $body
         $files.Add(@{path=$entry.path;sha256=$entry.sha256;body=$body})
     }
     $index = @($files | Where-Object { $_.path -ceq 'rules/RULES.md' })
@@ -210,8 +223,9 @@ try {
         $location = $env:ETALON_KNOWLEDGE_BASE
         $source = 'environment'
         if ([string]::IsNullOrWhiteSpace($location)) {
-            $source = 'local-marker'
+            $source = 'none'
             if ([IO.File]::Exists((Join-Path $root '.etalon.json'))) {
+                $source = 'local-marker'
                 $marker = Parse-Json (Read-Bytes '.etalon.json' 65536)
                 if ($marker -isnot [Collections.IDictionary]) { Fail 'KB_SHARED_PATH_INVALID' }
                 if (@($marker.Keys) -ccontains 'knowledge_base') {
@@ -243,9 +257,13 @@ try {
             'capture' {
                 Assert-String $Title 300
                 Assert-String $Text 65536
-                if (($Title+[Environment]::NewLine+$Text) -match '(?i)(-----BEGIN [A-Z ]*PRIVATE KEY|(?:api[_-]?key|password|secret|token)\s*[:=]\s*\S{8,}|ghp_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,})') { Fail 'KB_POSSIBLE_SECRET' }
+                Assert-String $Source 1000
+                Assert-String $Scope 300
+                Assert-String $Author 300
+                Assert-String $Runtime 300
+                Assert-NoObviousSecret ($Title+[Environment]::NewLine+$Text+[Environment]::NewLine+$Source+[Environment]::NewLine+$Scope+[Environment]::NewLine+$Author+[Environment]::NewLine+$Runtime)
                 $captureId=[guid]::NewGuid().ToString('D')
-                $proposal=[ordered]@{schemaVersion=1;id=$captureId;projectId=$catalog.projectId;createdAt=[DateTimeOffset]::UtcNow.ToString('o');status='draft';title=$Title;text=$Text}
+                $proposal=[ordered]@{schemaVersion=2;id=$captureId;projectId=$catalog.projectId;createdAt=[DateTimeOffset]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");status='draft';title=$Title;text=$Text;source=$Source;scope=$Scope;author=$Author;runtime=$Runtime}
                 $serialized=($proposal | ConvertTo-Json -Depth 8).Replace(([string][char]13+[char]10),[string][char]10)
                 $bytes=$utf8.GetBytes($serialized.TrimEnd()+[char]10)
                 if ($bytes.Length -gt 131072) { Fail 'KB_CAPTURE_TOO_LARGE' }

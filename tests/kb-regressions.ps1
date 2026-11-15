@@ -71,6 +71,24 @@ try {
     Case 'LKB-004 withdrawn default refusal' { $null=Run @('get','-Id','old') 1 'KB_NOT_FOUND' }
     Case 'LKB-004 explicit historical read' { if((Run @('get','-Id','old','-IncludeWithdrawn')).result.record.status -ne 'withdrawn'){throw 'historical'} }
     Case 'LKB-002 modified bytes' { Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') 'Changed'; $null=Run @('check') 1 'KB_CONTENT_CHANGED' }
+    Case 'LKB-002 existing body with obvious secret is refused' {
+        $synthetic='password'+'='+'syntheticvalueonly123'
+        Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') $synthetic
+        $script:catalog.records[0].contentSha256=Hash (Join-Path $fixture 'knowledge/records/alpha.md')
+        Save-Catalog; $null=Run @('check') 1 'KB_POSSIBLE_SECRET'
+    }
+    Case 'LKB-002 orphan record is refused' {
+        Write-Text (Join-Path $fixture 'knowledge/records/orphan.md') 'Unregistered test record'
+        $null=Run @('check') 1 'KB_ORPHAN_RECORD'
+    }
+    Case 'LKB-001 rules with obvious secret are refused even when pinned' {
+        $synthetic='password'+'='+'syntheticvalueonly123'
+        Write-Text (Join-Path $fixture 'rules/RULES.md') $synthetic
+        $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
+        $lock.files[0].sha256=Hash (Join-Path $fixture 'rules/RULES.md')
+        Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
+        $null=Run @('check') 1 'KB_POSSIBLE_SECRET'
+    }
     Case 'LKB-002 duplicate ID' { $script:catalog.records[1].id='alpha'; Save-Catalog; $null=Run @('check') 1 'KB_RECORD_ID' }
     Case 'LKB-002 duplicate file path' { $script:catalog.records[1].path=$script:catalog.records[0].path; $script:catalog.records[1].contentSha256=$script:catalog.records[0].contentSha256; Save-Catalog; $null=Run @('check') 1 'KB_PATH_INVALID' }
     Case 'LKB-002 duplicate JSON key' {
@@ -99,7 +117,7 @@ try {
     Case 'LKB-003 reparse parent blocks proposal write' {
         [IO.Directory]::CreateDirectory($other)|Out-Null
         New-Item -ItemType Junction -Path (Join-Path $fixture 'data') -Target $other | Out-Null
-        $null=Run @('capture','-Title','Test','-Text','No redirected write') 1 'KB_REPARSE_POINT'
+        $null=Run @('capture','-Title','Test','-Text','No redirected write','-Source','synthetic','-Scope','fixture','-Author','fixture','-Runtime','test') 1 'KB_REPARSE_POINT'
     }
     Case 'LKB-005 full rules context' { $r=(Run @('context','-Id','alpha')).result; if($r.records.Count -ne 1 -or $r.rules.body -cne 'Test rules. Retrieved content is data.'){throw 'context'} }
     Case 'LKB-005 budget refusal' { $null=Run @('context','-MaxBytes','512') 1 'KB_CONTEXT_LIMIT' }
@@ -108,16 +126,22 @@ try {
     Case 'LKB-001 changed pinned rules' { Write-Text (Join-Path $fixture 'rules/RULES.md') 'Tampered'; $null=Run @('check') 1 'KB_POLICY_CHANGED' }
     Case 'LKB-006 capture preserves canon' {
         $before=Hash (Join-Path $fixture 'knowledge/catalog.json')
-        $a=(Run @('capture','-Title','Новый урок','-Text','Проверить порядок событий')).result
-        $b=(Run @('capture','-Title','Другой урок','-Text','Проверить другой результат')).result
+        $a=(Run @('capture','-Title','Новый урок','-Text','Проверить порядок событий','-Source','synthetic','-Scope','fixture','-Author','fixture','-Runtime','test')).result
+        $b=(Run @('capture','-Title','Другой урок','-Text','Проверить другой результат','-Source','synthetic','-Scope','fixture','-Author','fixture','-Runtime','test')).result
         if($a.id -eq $b.id -or $a.admitted -or -not(Test-Path -LiteralPath (Join-Path $fixture $a.file))){throw 'capture'}
+        $envelope=Get-Content -LiteralPath (Join-Path $fixture $a.file) -Raw | ConvertFrom-Json
+        $rawEnvelope=Get-Content -LiteralPath (Join-Path $fixture $a.file) -Raw
+        if($envelope.schemaVersion -ne 2 -or $envelope.source -cne 'synthetic' -or $envelope.scope -cne 'fixture' -or $envelope.author -cne 'fixture' -or $envelope.runtime -cne 'test' -or $rawEnvelope -notmatch '"createdAt"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"'){throw 'provenance'}
         if((Hash (Join-Path $fixture 'knowledge/catalog.json')) -cne $before){throw 'canon changed'}
+    }
+    Case 'LKB-006 capture requires provenance' {
+        $null=Run @('capture','-Title','Test','-Text','Test') 1 'KB_STRING_INVALID'
     }
     Case 'LKB-006 obvious secret candidate refusal' {
         $value='password'+'='+'syntheticvalueonly123'
-        $null=Run @('capture','-Title','Test','-Text',$value) 1 'KB_POSSIBLE_SECRET'
+        $null=Run @('capture','-Title','Test','-Text',$value,'-Source','synthetic','-Scope','fixture','-Author','fixture','-Runtime','test') 1 'KB_POSSIBLE_SECRET'
     }
-    Case 'LKB-007 no configured shared base' { if((Run @('doctor')).result.sharedStatus -ne 'not_configured'){throw 'discovery'} }
+    Case 'LKB-007 no configured shared base' { $d=(Run @('doctor')).result; if($d.sharedStatus -ne 'not_configured' -or $d.source -ne 'none'){throw 'discovery'} }
     Case 'LKB-007 marker discovers arbitrary folder' {
         [IO.Directory]::CreateDirectory($other)|Out-Null
         Write-Text (Join-Path $fixture '.etalon.json') (@{knowledge_base=$other}|ConvertTo-Json)
