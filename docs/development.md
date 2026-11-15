@@ -32,3 +32,16 @@ Read-only сверка live GitHub settings с versioned config (repository, rul
 
 ## Обновления
 Обновление toolchain требует старой версии, официального источника, проверки совместимости, rollback plan и post-update gate. Не меняйте dependency manifests будущего проекта как часть обновления среды.
+
+## RULES и файловая база знаний
+
+Новые зависимости не устанавливаются: используется поддерживаемый PowerShell 7.4+.
+В проверенной среде T-004 effective PowerShell — 7.6.9, Git — 2.56.0.windows.4.
+Python не нужен этому срезу. Это inventory, а не pin target будущих продуктов.
+
+    pwsh -NoProfile -File scripts/kb.ps1 check
+    pwsh -NoProfile -File tests/kb-regressions.ps1
+
+Сценарии пользователя и подключения общей БЗ: local-knowledge.md.
+Gate запускает integrity check текущего корпуса и KB-регрессии.
+Каталог, Markdown и rules lock проверяются вместе. Inbox data/knowledge/inbox игнорируется Git.

@@ -1,3 +1,13 @@
+# Handoff — T-004, 2026-11-15
+
+- Изолированная task/T-004 от c98a1922dee2dedeaed6eeb528d72098beb3a128; T-003 не изменяется.
+- По поручению владельца подготовлены RULES 0.1.0 и локальная файловая БЗ; допуск только spec/local-knowledge.md.
+- Канон правил готовится в новой общей БЗ, project snapshot проверяется policy-lock; абсолютный путь только в локальной настройке.
+- CLI check/search/get/context/capture/doctor реализован; полный локальный gate exit 0, 31 KB-регрессия прошла. Публикация task-ветки готовится.
+- Swarm runtime, общий authenticated publisher и federated search не реализованы; перед merge нужны independent review и CI.
+
+## Исторический bootstrap-снимок (не текущие статусы задач)
+
 # Handoff
 
 - V2 создан с чистого листа; root commit `0641901e825fdede9e1fdabf3fa83078ce5ab8ad` опубликован в public repository по решению владельца.

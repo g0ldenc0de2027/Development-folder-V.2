@@ -20,3 +20,12 @@
     pwsh -NoProfile -File scripts/quality-gate.ps1
 
 Перед первым push настройте локальный Git hook: pwsh -NoProfile -File scripts/github/configure-local.ps1. Порядок веток, PR и проверок: docs/github-workflow.md. Цель и границы V2: spec/ТЗ.md и spec/СОСТОЯНИЕ.md.
+
+## Правила и знания
+
+Рабочие нормы: [rules/RULES.md](rules/RULES.md). Карта памяти проекта:
+[knowledge/README.md](knowledge/README.md). Команды чтения, поиска и предложений:
+[docs/local-knowledge.md](docs/local-knowledge.md).
+
+Первый файловый срез БЗ имеет отдельный допуск spec/local-knowledge.md.
+Он не включает автоматический рой, общий publisher или прикладные профили стеков.
