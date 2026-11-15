@@ -7,7 +7,7 @@
 1. Прочитай README.md, docs/handoff.md и эту задачу.
 2. Проверь git status, активную ветку, HEAD и origin/main. Не начинай задачу в смешанном рабочем каталоге.
 3. Уточни scope и критерии приемки. Для новой функциональности дождись READY в spec/СОСТОЯНИЕ.md.
-4. Эталонные инструменты поддерживают Windows 11 x64 с build 26200 или новее и PowerShell 7.6 LTS не ниже 7.6.6 и с актуальным servicing patch. CI отдельно проверяется на `windows-2025` (Windows Server 2025 x64); это не расширяет матрицу хоста разработчика. Windows 10, ARM64, Windows Server как хост разработчика, Windows PowerShell 5.1, Linux и macOS не входят в поддерживаемую матрицу.
+4. Эталонные инструменты поддерживают только проверенную Windows 11 x64 GA 26H2/build 26300 на ветке `ge_release` из allowlist `config/runtime-support.json`; и PowerShell 7.6 LTS не ниже 7.6.10. Неизвестный release/build и preview-ветка блокируются. CI отдельно проверяется на `windows-2025` (Windows Server 2025 x64, build 26100); это не расширяет матрицу хоста разработчика. Windows 10, Windows 11 25H2 и другие неподтверждённые выпуски, ARM64, Windows Server как хост разработчика, Windows PowerShell 5.1, Linux и macOS не входят в поддерживаемую матрицу.
 
 ## Изоляция и Git
 - main защищена на GitHub; обычные обновления идут только через PR. Единственное исключение — чистый initial root commit в подтверждённо пустой origin по процедуре docs/github-workflow.md.

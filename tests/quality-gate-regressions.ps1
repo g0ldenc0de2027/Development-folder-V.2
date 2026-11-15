@@ -14,6 +14,7 @@ $agentsPolicy = Get-Content -LiteralPath (Join-Path $repoRoot 'AGENTS.md') -Raw
 $readme = Get-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Raw
 $projectSpec = Get-Content -LiteralPath (Join-Path $repoRoot 'spec/ТЗ.md') -Raw
 $kbSpec = Get-Content -LiteralPath (Join-Path $repoRoot 'spec/local-knowledge.md') -Raw
+$runtimePolicy = Get-Content -LiteralPath (Join-Path $repoRoot 'config/runtime-support.json') -Raw | ConvertFrom-Json
 $scopeVerifierSource = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/verify-task-scope.ps1') -Raw
 if ($scopeVerifierSource -notmatch '(?m)^#Requires -Version 7\.6$' -or $scopeVerifierSource -notmatch 'verify-runtime\.ps1' -or $scopeVerifierSource -notmatch 'core\.quotepath=false') {
     throw 'Task scope guard must share the runtime baseline and preserve raw Unicode paths'
@@ -24,8 +25,35 @@ $scopeUnicodeNumberMarker = [string][char]92 + 'p{N}'
 if (-not $scopeVerifierSource.Contains($scopeUnicodeLetterMarker) -or -not $scopeVerifierSource.Contains($scopeUnicodeMarkMarker) -or -not $scopeVerifierSource.Contains($scopeUnicodeNumberMarker)) {
     throw 'Task scope validator must accept Unicode letters and combining marks in relative paths'
 }
-if ($runtimeVerifier -notmatch '(?m)^#Requires -Version 7\.6$' -or $runtimeVerifier -notmatch '7\.6\.6' -or $runtimeVerifier -notmatch 'OSArchitecture' -or $runtimeVerifier -notmatch '26200' -or $runtimeVerifier -notmatch '26100') {
-    throw 'Runtime verifier must enforce PowerShell 7.6, x64, Windows 11 developer baseline, and Windows Server 2025 CI baseline'
+$releasePairs = @($runtimePolicy.developerHost.supportedWindowsReleases | ForEach-Object { '{0}:{1}' -f $_.displayVersion, $_.build })
+if (
+    $runtimePolicy.schemaVersion -ne 1 -or
+    $runtimePolicy.developerHost.architecture -ne 'X64' -or
+    $runtimePolicy.developerHost.productType -ne 'WinNT' -or
+    $runtimePolicy.developerHost.installationType -ne 'Client' -or
+    $runtimePolicy.developerHost.releaseBranch -ne 'ge_release' -or
+    $runtimePolicy.powerShell.channel -ne 'LTS' -or
+    $runtimePolicy.powerShell.major -ne 7 -or
+    $runtimePolicy.powerShell.minor -ne 6 -or
+    $runtimePolicy.powerShell.minimumVersion -ne '7.6.10' -or
+    ($releasePairs -join ',') -ne '26H2:26300' -or
+    $runtimePolicy.ci.provider -ne 'GitHub Actions' -or
+    $runtimePolicy.ci.runner -ne 'windows-2025' -or
+    $runtimePolicy.ci.productType -ne 'ServerNT' -or
+    $runtimePolicy.ci.build -ne 26100
+) {
+    throw 'Runtime support policy must pin current PowerShell LTS and only the verified Windows GA release/build pairs'
+}
+if (
+    $runtimeVerifier -notmatch '(?m)^#Requires -Version 7\.6$' -or
+    $runtimeVerifier -notmatch 'runtime-support\.json' -or
+    $runtimeVerifier -notmatch 'OSArchitecture' -or
+    $runtimeVerifier -notmatch 'DisplayVersion' -or
+    $runtimeVerifier -notmatch 'BuildBranch' -or
+    $runtimeVerifier -notmatch 'InstallationType' -or
+    $runtimeVerifier -notmatch '\$build -ne \[int\]\$policy\.ci\.build'
+) {
+    throw 'Runtime verifier must enforce the shared PowerShell, OS release, branch, architecture, and exact CI baseline'
 }
 if ($qualityGateSource -notmatch 'verify-runtime\.ps1' -or $kbCliSource -notmatch '(?m)^#Requires -Version 7\.6$' -or $kbCliSource -notmatch 'verify-runtime\.ps1') {
     throw 'Quality gate and KB CLI must share the runtime verifier and require PowerShell 7.6'
@@ -34,12 +62,19 @@ if ($workflow -notmatch 'runs-on: windows-2025' -or $workflow -notmatch 'verify-
     throw 'Hosted CI must use and verify the Windows Server 2025 runner'
 }
 foreach ($supportDocument in @($agentsPolicy, $readme, $developmentGuide, $projectSpec, $kbSpec)) {
-    if ($supportDocument -notmatch 'Windows 11 x64' -or $supportDocument -notmatch 'PowerShell 7\.6') {
-        throw 'Every authoritative support document must state Windows 11 x64 and PowerShell 7.6 baselines'
+    if (
+        $supportDocument -notmatch 'Windows 11 x64' -or
+        $supportDocument -notmatch '26H2' -or
+        $supportDocument -notmatch '7\.6\.10'
+    ) {
+        throw 'Every authoritative support document must state the verified Windows 11 GA release and PowerShell 7.6.10 baseline'
     }
 }
-if ($developmentGuide -notmatch '(?s)Не входят в матрицу разработчика: Windows 10.*?Windows Server 2025 x64') {
-    throw 'Developer guide must exclude Windows 10 and distinguish the Windows Server CI environment'
+if (
+    $developmentGuide -notmatch '(?s)Не входят в матрицу разработчика: Windows 10.*?Windows Server 2025 x64' -or
+    $developmentGuide -match '26200 или новее|26200\+'
+) {
+    throw 'Developer guide must exclude broad build ranges and distinguish Windows Server CI from supported GA hosts'
 }
 if ($developmentGuide -notmatch '(?m)^\s+pwsh -NoProfile -File scripts/github/verify-settings\.ps1 -RequireStatusCheck\s*$') {
     throw 'Developer guide must show the live verifier in required-status mode'

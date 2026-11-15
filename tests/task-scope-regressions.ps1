@@ -104,8 +104,10 @@ try {
     [IO.Directory]::CreateDirectory($fixtureRoot) | Out-Null
     [IO.Directory]::CreateDirectory((Join-Path $fixtureRoot 'scripts')) | Out-Null
     [IO.Directory]::CreateDirectory((Join-Path $fixtureRoot 'tasks')) | Out-Null
+    [IO.Directory]::CreateDirectory((Join-Path $fixtureRoot 'config')) | Out-Null
     [IO.File]::Copy((Join-Path $repoRoot 'scripts/verify-runtime.ps1'), (Join-Path $fixtureRoot 'scripts/verify-runtime.ps1'))
     [IO.File]::Copy((Join-Path $repoRoot 'scripts/verify-task-scope.ps1'), (Join-Path $fixtureRoot 'scripts/verify-task-scope.ps1'))
+    [IO.File]::Copy((Join-Path $repoRoot 'config/runtime-support.json'), (Join-Path $fixtureRoot 'config/runtime-support.json'))
     Write-Text (Join-Path $fixtureRoot 'README.md') "Synthetic scope fixture`n"
     $fixtureCard = [string]::Join("`n", @(
         '# T-008 fixture',

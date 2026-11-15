@@ -15,7 +15,7 @@
 
 ## Быстрый старт
 
-Для разработки эталона требуется Windows 11 x64 (build 26200 или новее, в активной поддержке Microsoft), PowerShell 7.6 LTS не ниже 7.6.6 с актуальным servicing patch, Git и GitHub CLI. CI отдельно работает на `windows-2025` (Windows Server 2025 x64). Windows 10, ARM64, Windows Server как хост разработчика, Windows PowerShell 5.1, Linux и macOS не поддерживаются. Подробности и источники: docs/development.md. Локальная проверка:
+Для разработки эталона требуется проверенная Windows 11 x64 GA 26H2 (build 26300) на ветке `ge_release`, указанная в allowlist `config/runtime-support.json`; PowerShell 7.6 LTS не ниже 7.6.10, Git и GitHub CLI. CI отдельно работает на `windows-2025` (Windows Server 2025 x64, build 26100). Windows 10, Windows 11 25H2 и другие неподтверждённые выпуски, ARM64, Windows Server как хост разработчика, Windows PowerShell 5.1, Linux и macOS не поддерживаются. Подробности и источники: docs/development.md. Локальная проверка:
 
     pwsh -NoProfile -File scripts/quality-gate.ps1
 

@@ -13,6 +13,7 @@
 - `.githooks/pre-push`
 - `AGENTS.md`
 - `scripts/quality-gate.ps1`
+- `config/runtime-support.json`
 - `scripts/verify-runtime.ps1`
 - `scripts/verify-task-scope.ps1`
 - `scripts/kb.ps1`
@@ -32,7 +33,7 @@
 
 ## Изменения этой ветки
 
-- Базовая среда эталона уточнена до Windows 11 x64 build 26200+ и PowerShell 7.6.6+ LTS; `quality-gate`, scope guard и KB CLI используют общий fail-closed runtime verifier. Hosted CI отдельно проверяет Windows Server 2025 x64.
+- Матрица среды вынесена в `config/runtime-support.json`: проверенная Windows 11 x64 GA 26H2/build 26300 на `ge_release`; PowerShell 7.6 LTS 7.6.10+; CI — точный Windows Server 2025 build 26100. `quality-gate`, scope guard и KB CLI используют общий fail-closed runtime verifier.
 - Hook разрешает публикацию только с текущей ветки `task/T-NNN` в одноимённую remote branch; detached HEAD, tags, deletion, сторонний ref и non-fast-forward отклоняются.
 - Диапазоны refs передаются одним CSV аргументом и повторно разбираются quality gate. Записи hook ограничены 20 на вызов.
 - До quality gate hook вызывает scope guard. Точная зона берётся из единственной карточки `tasks/T-NNN-*.md`; dedicated linked worktree и task branch `origin/main...HEAD` проверяются с учётом rename как delete+add, дерево должно быть чистым.
@@ -57,7 +58,7 @@
 | F08 | P2 | Исправление в T-008 | Context fail-closed на ограничении числа записей; search сообщает полную метаинформацию truncation. Локальный/hosted evidence ещё надо зафиксировать. |
 | F09 | P2 | Частично | В quality gate добавлены поведенческие сценарии scope verifier: несколько изменённых путей, Unicode path, dirty worktree, отказ на посторонний файл и изоляция унаследованного Git hook environment с проверкой неизменности HEAD исходного репозитория. Поведенческие сценарии самого pre-push hook и хрупкие старые текст/SHA проверки остаются открыты. |
 | F10 | P2 | Другая открытая ветка | PR #7/T-007 обновляет handoff и closeout T-004. Проверить свежий base/head/CI/review; не считать исправленным до merge. |
-| F11 | P2 | Частично | Матрица эталона ограничена Windows 11 x64 build 26200+ / PowerShell 7.6.6+ LTS; CI отдельно — Windows Server 2025 x64. Hash-verified cache и timeout/retry остаются открыты; другие ОС не заявляются. |
+| F11 | P1 | Исправление в T-008 | Runtime policy перечисляет только фактически проверенную Windows 11 x64 GA 26H2/build 26300 на release branch; PowerShell минимум повышен до текущего LTS patch 7.6.10. CI отдельно — Windows Server 2025 build 26100. Неизвестные/preview builds блокируются; остальные версии Windows не заявляются до отдельной compatibility-проверки. Hash-verified cache и timeout/retry остаются открытыми другими пунктами аудита. |
 | F12 | P2 | Другая открытая ветка | PR #6/T-006 обрабатывает `.vs` и tracked cache; проверить свежий diff и интеграцию после обновления base. |
 | F13 | P2 | Открыто | Определить размеры уникальных Git blobs и предел push для всех ref updates; сначала утвердить метрики, проектные пороги и отрицательные сценарии. |
 | F14 | P2 | Открыто | Добавить redacted identity preflight и проверку author/committer после GitHub squash; не печатать адреса и не переписывать историю автоматически. |

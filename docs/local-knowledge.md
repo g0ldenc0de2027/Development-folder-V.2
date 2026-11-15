@@ -2,7 +2,7 @@
 
 ## Быстрый старт
 
-Из корня task worktree на Windows 11 x64 build 26200+ с PowerShell 7.6 LTS не ниже 7.6.6 и с актуальным servicing patch:
+Из корня task worktree на проверенной Windows 11 x64 GA 26H2/build 26300, ветка `ge_release`, с PowerShell 7.6 LTS не ниже 7.6.10:
 
 ~~~powershell
 pwsh -NoProfile -File scripts/kb.ps1 check
@@ -99,7 +99,7 @@ Backup содержит канон и нужный inbox. Restore не акти�
 
 ## English quick reference
 
-Run the commands above from the worktree root on Windows 11 x64 build 26200 or newer, using PowerShell 7.6 LTS, version 7.6.6 or newer, with the current servicing update. GitHub Actions separately validates on the Windows Server 2025 x64 `windows-2025` runner.
+Run the commands above from the worktree root on the verified Windows 11 x64 GA 26H2 (build 26300, `ge_release` branch), using PowerShell 7.6 LTS version 7.6.10 or newer. GitHub Actions separately validates on the Windows Server 2025 x64 `windows-2025` runner (build 26100).
 The CLI emits JSON; failures use stderr and exit code 1. Search is literal.
 Use -ProjectRoot to select any local/shared collection directory explicitly.
 Set ETALON_KNOWLEDGE_BASE or an ignored .etalon.json knowledge_base for discovery.
