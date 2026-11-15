@@ -3,7 +3,7 @@
 Статус: in_progress. Главный ИИ/исполнитель: Codex, gpt-6.1-sol.
 Дата: 2026-11-15. База: c98a1922dee2dedeaed6eeb528d72098beb3a128.
 Ветка: task/T-004; отдельный worktree .worktrees/T-004.
-Зависимость: T-003 не изменяется; интеграция пересечений docs/handoff выполняется последовательно.
+Зависимость: T-003 слита в 9f98b28046ca605577e5a829e02818335f66174c; статус её карточки и roadmap уточняются при интеграции.
 
 ## Поручение
 
@@ -26,6 +26,8 @@
 - docs/local-knowledge.md
 - docs/development.md
 - docs/handoff.md
+- docs/roadmap.md
+- tasks/T-003-closeout-and-email-privacy-plan.md
 - README.md
 - AGENTS.md
 - scripts/quality-gate.ps1
@@ -52,6 +54,6 @@
 
 - Предыдущий head 1007ab6 имел успешный hosted gate; это историческое свидетельство, не проверка новых правок.
 - Текущие проверки и точные head/base/test merge-result публикуются в PR #4; после правок требуется новое independent review.
-- До merge: последовательная интеграция после T-003, independent review другого производителя, успешный CI и повторная проверка при смене base.
+- До merge: независимое review итогового head после интеграции T-003, успешный CI и повторная проверка при смене base.
 - Полный swarm, federated search, authenticated publisher, remote freshness и OS sandbox вне среза.
 - Прикладные стековые профили, валидатор переводов/справки и security-watch onboarding ещё не реализованы; карта rules/COVERAGE.md фиксирует охват.

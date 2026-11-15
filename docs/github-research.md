@@ -40,7 +40,9 @@
 
 Recheck plan eligibility and API values when changing repository owner type or policy.
 
-## Повторная проверка связки разработки и GitHub — R2, 2026-11-14
+## Исторический срез до merge PR #2 — R2, 2026-11-14
+
+Этот раздел сохраняет live-состояние и рекомендации на момент подготовки исследования, до слияния PR #2. Упоминания открытой draft PR и её закрытия — исторические; они не описывают текущее состояние. Актуальные сведения находятся в разделе Post-merge T-002.
 
 ### Подтверждено live
 - Публичный репозиторий использует активный ruleset только для `main`: PR обязателен, `quality-gate` обязателен от GitHub Actions App `15368`, строгая актуальность включена, bypass actors отсутствуют. Review approvals — 0 по выбранному режиму одиночного владельца.
@@ -58,7 +60,7 @@ Recheck plan eligibility and API values when changing repository owner type or p
 - Для public Free нужен локальный fail-closed push-size gate и PR-проверка как компенсирующий контроль. Они не равны серверной блокировке; порог и метрика размера требуют отдельного определения и тестов.
 - Отсутствие LICENSE означает действие default copyright; GitHub ToS разрешает пользователям просматривать и fork публичный репозиторий. До решения владельца не подразумевать открытое разрешение на переиспользование.
 
-### Следующие действия
+### Рекомендации на момент исторического снимка
 1. Завершить T-002 после независимого review на текущем PR head и зелёного CI на текущей паре head/base.
 2. Отдельной sequential task добавить trust policy для изменений workflow/gate, remote non-fast-forward protection для `task/*`, author identity guard и ограничение размера push с негативными regression cases.
 3. До первого release установить tag policy; сейчас опубликованные tags отсутствуют.
@@ -70,3 +72,15 @@ Recheck plan eligibility and API values when changing repository owner type or p
 - [GitHub push protection detection scope and limitations](https://docs.github.com/en/code-security/reference/secret-security/secret-scanning-scope)
 - [GitHub secure use of `pull_request_target`](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target)
 - [GitHub licensing a repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository)
+
+## Post-merge T-002 closeout and email privacy evidence — 2026-11-14
+
+- PR #2 merged as c98a1922dee2dedeaed6eeb528d72098beb3a128 after local gate, live verifier, successful hosted run #43592810050, and Gemini 4 Argon APPROVE for the exact recorded head/base/test tuple.
+- Run #43592810050 reports/attaches the Actions check to PR head `e9db06ad083d007d15e0674d195f16999fbfc93b`; this is the check association SHA. The workflow checks out `github.sha`; for `pull_request`, GitHub defines `GITHUB_SHA` as the synthetic merge-branch commit. The tested event SHA was `04bf30fd6879f4d18abf3c270cd05e5428e55079`, with parents base `65b5ab35d46b81e5af1963c351d05ac5da0291dc` and head `e9db06ad083d007d15e0674d195f16999fbfc93b`. No separate check-run on the synthetic commit is expected; that does not mean the gate skipped it. [GitHub pull_request SHA semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows).
+- Read-only API classification found the author field of the new squash commit uses an external domain; the raw address was deliberately excluded from public project docs. The committer field and the author field are separate and must be checked separately.
+- The default-branch history contains a prior squash commit with the same redacted classification. Bootstrap and task-branch commits were classified as GitHub noreply. PR synthetic merge-result commits are PR refs, not commits on main.
+- GET /user вернул email = null. Это подтверждает только, что публичное поле профиля не раскрыто; это не подтверждает приватный commit email или account option, блокирующую CLI pushes. GET /user/emails не читался из-за отсутствия широкого scope user.
+- Before any future GitHub-generated merge, manually verify Keep my email addresses private and Block command-line pushes that expose my personal email in Settings > Emails. On squash, select/confirm the GitHub noreply author where the UI offers the selector; then verify the resulting commit author and committer via API without printing email values.
+- The owner chose to preserve public history. No rewrite, force-push, ref deletion, or Support request was performed. A separate redacted plan is stored outside this public repository in the owner's local audit folder.
+- The PR review artifact is external AI review, not GitHub-native approval. T-002 is closed; its task card and handoff now record the actual merge state.
+- Owner decision for the next CI-trust stage: do not add an external GitHub App now. The repository owner remains the trust root; document residual risk and do not describe the Actions check as an independent trust anchor.
