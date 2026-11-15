@@ -1,6 +1,14 @@
 # T-002 — Сверить GitHub settings и закрыть bootstrap T-001
 
-**Статус:** ready for review
+**Статус:** merged
+**PR:** #2 — https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/2
+**Merge SHA:** c98a1922dee2dedeaed6eeb528d72098beb3a128
+**Проверенные ревизии:** PR head `e9db06ad083d007d15e0674d195f16999fbfc93b`; base `65b5ab35d46b81e5af1963c351d05ac5da0291dc`; hosted run `43592810050` — `SUCCESS`; тестовый event merge-result `04bf30fd6879f4d18abf3c270cd05e5428e55079`.
+**Review:** Gemini 4 Argon (Antigravity) вынес APPROVE для точной указанной тройки SHA. Отчёт не является GitHub-native approval; GitHub API не содержит review submission.
+
+### Результат приёмки
+Все шесть критериев выполнены. Local quality gate и live settings verifier прошли на PR head. Hosted run #43592810050 завершился success: GitHub прикрепил check к PR head, а workflow проверил `github.sha` события `pull_request` — синтетический merge-result SHA из точной пары base/head. После merge PR #2 локальная main синхронизирована до `c98a1922dee2dedeaed6eeb528d72098beb3a128`. Для author email squash-коммита выявлен отдельный privacy follow-up; адрес намеренно не копируется.
+
 **Тип:** maintenance / GitHub configuration and closeout
 **База:** `65b5ab35d46b81e5af1963c351d05ac5da0291dc` (`origin/main`)
 

@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "projectId": "e803282e-a9ab-4da7-8579-519e3602f2fa",
+  "records": [
+    {
+      "id": "local-first",
+      "kind": "decision",
+      "title": "ADR: локальная работа и переносимость",
+      "status": "draft",
+      "path": "knowledge/records/local-first.md",
+      "contentSha256": "04a71ebf2e9aa194b738c5d49ca8416c44dd4effbd172dced93722376ec75fb7",
+      "sources": [
+        "owner:2026-11-15",
+        "author:Codex:gpt-6.1-sol"
+      ],
+      "review": null
+    },
+    {
+      "id": "project-map",
+      "kind": "reference",
+      "title": "Карта проекта",
+      "status": "draft",
+      "path": "knowledge/records/project-map.md",
+      "contentSha256": "df6e15211b8723c5898df583f1d4bfe0cab9b9d053dbde219fdfb6d815f3b1bd",
+      "sources": [
+        "owner:2026-11-15",
+        "author:Codex:gpt-6.1-sol"
+      ],
+      "review": null
+    },
+    {
+      "id": "swarm-boundaries",
+      "kind": "decision",
+      "title": "ADR: знания и оперативная память команды",
+      "status": "draft",
+      "path": "knowledge/records/swarm-boundaries.md",
+      "contentSha256": "8efc883cde14538e430c7b7bf594b7abe2b79bd3539b393c0f10168e269fbc5c",
+      "sources": [
+        "owner:2026-11-15",
+        "author:Codex:gpt-6.1-sol"
+      ],
+      "review": null
+    },
+    {
+      "id": "task-isolation",
+      "kind": "lesson",
+      "title": "Урок: отделять задачи до начала изменения",
+      "status": "draft",
+      "path": "knowledge/records/task-isolation.md",
+      "contentSha256": "b8addadc6d9b29295c2d56927a2efbaef63e2134700b8ba3dc0ed80c854eef9b",
+      "sources": [
+        "owner:2026-11-15",
+        "author:Codex:gpt-6.1-sol"
+      ],
+      "review": null
+    }
+  ]
+}
