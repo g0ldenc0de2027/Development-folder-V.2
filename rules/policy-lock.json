@@ -1,7 +1,44 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "packageId": "development-folder-rules",
-  "version": "0.1.0",
-  "sha256": "a665a14e1cdf9431e988d993916decf9a5da13d6dffda47a16ee04514ee60182",
-  "sourceCollectionId": "7c85d01f-3de1-4fe6-b090-960e41c20cf1"
+  "version": "0.2.0",
+  "sourceCollectionId": "7c85d01f-3de1-4fe6-b090-960e41c20cf1",
+  "files": [
+    {
+      "path": "rules/RULES.md",
+      "sha256": "96e6abf82bdf353516fbc6f21739e3c9a64329aef2a34a33ba170d9594e2d54c"
+    },
+    {
+      "path": "rules/modules/01-knowledge-and-calibration.md",
+      "sha256": "cb0ebd9bd52af87d584d6a5219a98508c6518bb035509e55e6eee6b0bc54c5c7"
+    },
+    {
+      "path": "rules/modules/02-spec-and-quality.md",
+      "sha256": "626b10aa2d99ad1aa233270fa06211de5b886d6b60ad39bf1d4c135f9849db71"
+    },
+    {
+      "path": "rules/modules/03-agents-and-workspace.md",
+      "sha256": "bc7e6d09841d19e50746eaf209ad661200305a0375022a1313059c39492f5e6d"
+    },
+    {
+      "path": "rules/modules/04-git-and-release.md",
+      "sha256": "7a9ae5651f87336a4ef6fb93feab22e8527e2730edcaf531b5df0d301e4857f9"
+    },
+    {
+      "path": "rules/modules/05-security.md",
+      "sha256": "e955b6d5811f257b568f0d5a519dc79acc489a1121a0cd55a1398ea76257aea7"
+    },
+    {
+      "path": "rules/modules/06-ui-i18n-help.md",
+      "sha256": "929cc6c050f9ce94f0bb0e7141fedbb4095f6b900a89546235d707f9663e2f4b"
+    },
+    {
+      "path": "rules/modules/07-research-and-decisions.md",
+      "sha256": "d9995ba17e49147cd8ca271c1f1007513094a6aaa594a33512d36e68a4e2041c"
+    },
+    {
+      "path": "rules/COVERAGE.md",
+      "sha256": "98ea16c847c6fcce4487f313aad6aee55e0af4131dd9a9cd90ff88824dba7fbb"
+    }
+  ]
 }

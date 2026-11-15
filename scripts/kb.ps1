@@ -5,7 +5,7 @@ param(
     [string]$ProjectRoot = (Join-Path $PSScriptRoot '..'),
     [string]$Id, [string]$Query, [string]$Title, [string]$Text,
     [ValidateRange(1,100)][int]$Limit = 20,
-    [ValidateRange(512,262144)][int]$MaxBytes = 65536,
+    [ValidateRange(512,262144)][int]$MaxBytes = 131072,
     [switch]$IncludeWithdrawn
 )
 Set-StrictMode -Version Latest
@@ -163,17 +163,44 @@ function Select-Entries($Catalog) {
     return @($selected | Select-Object -First $Limit)
 }
 function Read-Rules {
-    $lock = Parse-Json (Read-Bytes 'rules/policy-lock.json' 65536)
-    Assert-Keys $lock @('schemaVersion','packageId','version','sha256','sourceCollectionId')
+    $lockBytes = Read-Bytes 'rules/policy-lock.json' 65536
+    $lock = Parse-Json $lockBytes
+    Assert-Keys $lock @('schemaVersion','packageId','version','files','sourceCollectionId')
     if (($lock.schemaVersion -isnot [long] -and $lock.schemaVersion -isnot [int]) -or
-        $lock.schemaVersion -ne 1 -or $lock.packageId -cne 'development-folder-rules') { Fail 'KB_POLICY_LOCK' }
+        $lock.schemaVersion -ne 2 -or $lock.packageId -cne 'development-folder-rules') { Fail 'KB_POLICY_LOCK' }
     Assert-String $lock.version 40
+    if ($lock.version -cnotmatch '^\d+\.\d+\.\d+$') { Fail 'KB_POLICY_LOCK' }
     $sourceGuid = [guid]::Empty
     if ($lock.sourceCollectionId -isnot [string] -or -not [guid]::TryParseExact($lock.sourceCollectionId,'D',[ref]$sourceGuid) -or $sourceGuid -eq [guid]::Empty) { Fail 'KB_POLICY_LOCK' }
-    $bytes = Read-Bytes 'rules/RULES.md'
-    if ($lock.sha256 -isnot [string] -or $lock.sha256 -cnotmatch '^[a-f0-9]{64}$' -or
-        (Hash-Bytes $bytes) -cne $lock.sha256) { Fail 'KB_POLICY_CHANGED' }
-    return @{path='rules/RULES.md';sha256=$lock.sha256;version=$lock.version;body=$utf8.GetString($bytes)}
+    if ($lock.files -isnot [array] -or $lock.files.Count -lt 1 -or $lock.files.Count -gt 12) { Fail 'KB_POLICY_LOCK' }
+    $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $files = [Collections.Generic.List[object]]::new()
+    foreach ($entry in $lock.files) {
+        Assert-Keys $entry @('path','sha256')
+        Assert-String $entry.path 200
+        if ($entry.path -cnotmatch '^rules/(RULES\.md|COVERAGE\.md|modules/[0-9]{2}-[a-z0-9-]+\.md)$' -or
+            -not $paths.Add($entry.path)) { Fail 'KB_POLICY_LOCK' }
+        if ($entry.sha256 -isnot [string] -or $entry.sha256 -cnotmatch '^[a-f0-9]{64}$') { Fail 'KB_POLICY_LOCK' }
+        $bytes = Read-Bytes $entry.path
+        if ((Hash-Bytes $bytes) -cne $entry.sha256) { Fail 'KB_POLICY_CHANGED' }
+        try { $body = $utf8.GetString($bytes) } catch { Fail 'KB_UTF8_INVALID' }
+        $files.Add(@{path=$entry.path;sha256=$entry.sha256;body=$body})
+    }
+    $index = @($files | Where-Object { $_.path -ceq 'rules/RULES.md' })
+    if ($index.Count -ne 1) { Fail 'KB_POLICY_LOCK' }
+    # The full pinned package is returned: a link alone does not load a module.
+    foreach ($file in $files) {
+        foreach ($link in [regex]::Matches($file.body,'\]\(([^)\r\n]+)\)')) {
+            $target = $link.Groups[1].Value.Split('#')[0]
+            if ($target -match '^[a-zA-Z][a-zA-Z0-9+.-]*:' -or $target.StartsWith('#') -or -not $target) { continue }
+            $base = [IO.Path]::GetDirectoryName((Join-Path $root $file.path))
+            $resolved = [IO.Path]::GetRelativePath($root,[IO.Path]::GetFullPath((Join-Path $base $target))).Replace('\','/')
+            if (-not $paths.Contains($resolved)) { Fail 'KB_POLICY_LINK' }
+        }
+    }
+    return @{path=$index[0].path;sha256=$index[0].sha256;version=$lock.version
+        body=$index[0].body;relatedFiles=@($files | Where-Object { $_.path -cne 'rules/RULES.md' })
+        lockSha256=(Hash-Bytes $lockBytes)}
 }
 try {
     $root = [IO.Path]::GetFullPath($ProjectRoot)
@@ -186,7 +213,11 @@ try {
             $source = 'local-marker'
             if ([IO.File]::Exists((Join-Path $root '.etalon.json'))) {
                 $marker = Parse-Json (Read-Bytes '.etalon.json' 65536)
-                $location = $marker.knowledge_base
+                if ($marker -isnot [Collections.IDictionary]) { Fail 'KB_SHARED_PATH_INVALID' }
+                if (@($marker.Keys) -ccontains 'knowledge_base') {
+                    if ($null -ne $marker['knowledge_base'] -and $marker['knowledge_base'] -isnot [string]) { Fail 'KB_SHARED_PATH_INVALID' }
+                    $location = $marker['knowledge_base']
+                }
             }
         }
         $status = 'not_configured'
@@ -200,7 +231,7 @@ try {
         $catalog = Load-Catalog
         $rules = Read-Rules
         switch ($Command) {
-            'check' { $result=@{projectId=$catalog.projectId;records=$catalog.entries.Count;catalogSha256=$catalog.catalogSha256;rulesSha256=$rules.sha256;integrity='pass';truth='not_assessed';reviewIdentity='not_authenticated'} }
+            'check' { $result=@{projectId=$catalog.projectId;records=$catalog.entries.Count;catalogSha256=$catalog.catalogSha256;rulesSha256=$rules.sha256;rulesLockSha256=$rules.lockSha256;rulesFiles=(1+$rules.relatedFiles.Count);integrity='pass';truth='not_assessed';reviewIdentity='not_authenticated'} }
             'search' { if ([string]::IsNullOrWhiteSpace($Query)) { Fail 'KB_QUERY_REQUIRED' }; $result=@{projectId=$catalog.projectId;records=@(Select-Entries $catalog);matching='literal';limit=$Limit} }
             'get' { if (-not $Id) { Fail 'KB_ID_REQUIRED' }; $found=@(Select-Entries $catalog); if ($found.Count -ne 1) { Fail 'KB_NOT_FOUND' }; $result=@{projectId=$catalog.projectId;record=$found[0]} }
             'context' {
