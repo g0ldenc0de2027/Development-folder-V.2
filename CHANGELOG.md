@@ -3,6 +3,8 @@
 Все заметные изменения Development Folder V2 фиксируются здесь.
 
 ## Unreleased
+- Уточнена матрица хоста эталона до Windows 11 x64 build 26200+ и PowerShell 7.6 LTS 7.6.6+; CI отдельно проверяет Windows Server 2025 x64.
+- Gate, scope guard и KB CLI fail-closed проверяют поддерживаемую платформу и линию PowerShell через общий runtime verifier; scope guard корректно обрабатывает Unicode-пути.
 - Усилен pre-push: только одноимённая task/T-NNN ветка, без тегов/удалений/non-fast-forward; зоны файлов сверяются с карточкой задачи.
 - Исправлена передача диапазонов Git hook в PowerShell и добавлена fail-closed проверка scope.
 - KB CLI проверяет секретоподобные значения в метаданных, комплектность канонического RULES 0.2.0 и не выдаёт неполный context молча.

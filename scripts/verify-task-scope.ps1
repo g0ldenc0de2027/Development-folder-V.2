@@ -1,4 +1,4 @@
-#Requires -Version 7.4
+#Requires -Version 7.6
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidatePattern('^T-[0-9]{3}$')][string]$TaskId,
@@ -6,6 +6,7 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+& (Join-Path $PSScriptRoot 'verify-runtime.ps1') -Quiet
 
 function Invoke-Git([string[]]$Arguments) {
     $output = @(& git @Arguments)
@@ -31,13 +32,13 @@ if (-not $section.Success) { throw 'Task card has no file-scope section' }
 $scope = [Collections.Generic.List[string]]::new()
 foreach ($match in [regex]::Matches($section.Groups['body'].Value,'(?m)^\s*-\s+`(?<path>[^`]+)`\s*$')) {
     $path = $match.Groups['path'].Value.Replace('\','/').Trim()
-    if (-not $path -or $path.StartsWith('/') -or $path -match '(^|/)\.\.?(/|$)' -or $path -notmatch '^[A-Za-z0-9._/*?-]+$') {
+    if (-not $path -or $path.StartsWith('/') -or $path -match '(^|/)\.\.?(/|$)' -or $path.Contains('//') -or $path -notmatch '^[\p{L}\p{M}\p{N}._/*?-]+$') {
         throw 'Task card contains an invalid scope path'
     }
     $scope.Add($path)
 }
 if ($scope.Count -eq 0) { throw 'Task card scope is empty' }
-$changes = @(Invoke-Git @('-C',$repoRoot,'diff','--no-renames','--name-only','--diff-filter=ACDMRTUXB',"$BaseRef...HEAD"))
+$changes = @(Invoke-Git @('-C',$repoRoot,'-c','core.quotepath=false','diff','--no-renames','--name-only','--diff-filter=ACDMRTUXB',"$BaseRef...HEAD"))
 if ($changes.Count -eq 0) { throw 'Task branch contains no changes relative to its base' }
 $outside = [Collections.Generic.List[string]]::new()
 foreach ($change in $changes) {

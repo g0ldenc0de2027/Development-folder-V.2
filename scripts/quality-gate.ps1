@@ -50,9 +50,7 @@ function Get-PinnedExecutable {
 }
 
 try {
-    if ($PSVersionTable.PSVersion -lt [version]'7.4') {
-        throw 'PowerShell 7.4 or newer is required'
-    }
+    & (Join-Path $PSScriptRoot 'verify-runtime.ps1')
     $null = Get-Command git -ErrorAction Stop
     New-Item -ItemType Directory -Path $temporaryRoot -Force | Out-Null
     Set-Location -LiteralPath $repoRoot

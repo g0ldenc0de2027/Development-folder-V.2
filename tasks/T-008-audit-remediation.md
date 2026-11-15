@@ -1,6 +1,6 @@
 # T-008 — Исправления аудита и понятная передача следующему агенту
 
-**Статус:** draft PR #8 открыт; локальный gate и hosted CI прошли на последнем записанном head `1391d1ab663b15663abd492f91b33a21f7f3ef02`. Review текущего head ожидается. Эта карточка меняется новым commit: после его push все SHA-bound результаты нужно сверить заново в live PR #8.
+**Статус:** draft PR #8 открыт. До изменений support matrix последний проверенный head — `d2935887d13277754cfc84280e9eca56c5ca671a` (hosted run #43735139082 SUCCESS); это не доказывает текущую рабочую ревизию. После commit/push нового состояния нужно заново сверить live head/base, hosted CI и независимое review в PR #8.
 **PR:** https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/8
 **База при старте:** `f577dc70e58d75ab5fd61d0c2e712c27b590713a` (origin/main).
 **Head при первой публикации:** `e4d580304333d15b80b7327bc559ab309ec12f56`. После обновления этой карточки head изменится; всегда сверяйте live head/base в PR #8.
@@ -9,13 +9,21 @@
 
 ## Зона файлов
 
+- `.github/workflows/quality-gate.yml`
 - `.githooks/pre-push`
+- `AGENTS.md`
 - `scripts/quality-gate.ps1`
+- `scripts/verify-runtime.ps1`
 - `scripts/verify-task-scope.ps1`
 - `scripts/kb.ps1`
+- `docs/development.md`
 - `docs/local-knowledge.md`
 - `docs/github-workflow.md`
 - `docs/roadmap.md`
+- `spec/ТЗ.md`
+- `spec/СОСТОЯНИЕ.md`
+- `spec/local-knowledge.md`
+- `tests/quality-gate-regressions.ps1`
 - `tasks/README.md`
 - `tasks/T-008-audit-remediation.md`
 - `README.md`
@@ -23,6 +31,7 @@
 
 ## Изменения этой ветки
 
+- Базовая среда эталона уточнена до Windows 11 x64 build 26200+ и PowerShell 7.6.6+ LTS; `quality-gate`, scope guard и KB CLI используют общий fail-closed runtime verifier. Hosted CI отдельно проверяет Windows Server 2025 x64.
 - Hook разрешает публикацию только с текущей ветки `task/T-NNN` в одноимённую remote branch; detached HEAD, tags, deletion, сторонний ref и non-fast-forward отклоняются.
 - Диапазоны refs передаются одним CSV аргументом и повторно разбираются quality gate. Записи hook ограничены 20 на вызов.
 - До quality gate hook вызывает scope guard. Точная зона берётся из единственной карточки `tasks/T-NNN-*.md`; dedicated linked worktree и task branch `origin/main...HEAD` проверяются с учётом rename как delete+add, дерево должно быть чистым.
@@ -45,9 +54,9 @@
 | F06 | P1 | Исправление в T-008 | Для известного sourceCollectionId RULES 0.2.0 обязательны все девять файлов. Не защищает от намеренной замены lock/package и не аутентифицирует автора. |
 | F07 | P1 | Принятый остаточный риск | No-App — решение владельца. Внешний GitHub App не добавлять; нужна ручная проверка diff workflow/gate на текущем head и точной SHA evidence. Owner approval технически не enforced. |
 | F08 | P2 | Исправление в T-008 | Context fail-closed на ограничении числа записей; search сообщает полную метаинформацию truncation. Локальный/hosted evidence ещё надо зафиксировать. |
-| F09 | P2 | Открыто | Сократить хрупкие проверки старого текста/SHA, добавить поведенческие сценарии hook/verifier. Regression suite не редактировалась в этом срезе. |
+| F09 | P2 | Частично | Добавлены проверки контракта Unicode scope-путей, UTF-8 Git diff output и общего runtime verifier. Остальные поведенческие сценарии hook/verifier и хрупкие старые текст/SHA проверки остаются открыты. |
 | F10 | P2 | Другая открытая ветка | PR #7/T-007 обновляет handoff и closeout T-004. Проверить свежий base/head/CI/review; не считать исправленным до merge. |
-| F11 | P2 | Открыто | Определить hash-verified cache, timeout/retry и runtime matrix; один Windows run не подтверждает весь диапазон. |
+| F11 | P2 | Частично | Матрица эталона ограничена Windows 11 x64 build 26200+ / PowerShell 7.6.6+ LTS; CI отдельно — Windows Server 2025 x64. Hash-verified cache и timeout/retry остаются открыты; другие ОС не заявляются. |
 | F12 | P2 | Другая открытая ветка | PR #6/T-006 обрабатывает `.vs` и tracked cache; проверить свежий diff и интеграцию после обновления base. |
 | F13 | P2 | Открыто | Определить размеры уникальных Git blobs и предел push для всех ref updates; сначала утвердить метрики, проектные пороги и отрицательные сценарии. |
 | F14 | P2 | Открыто | Добавить redacted identity preflight и проверку author/committer после GitHub squash; не печатать адреса и не переписывать историю автоматически. |
@@ -68,10 +77,10 @@
 
 ## Проверки
 
-На последнем проверенном head до этого tracking-коммита `1391d1ab663b15663abd492f91b33a21f7f3ef02`:
+На последнем проверенном head до исправления runtime-матрицы `d2935887d13277754cfc84280e9eca56c5ca671a`:
 - Scope/чистота worktree: PASS (1 изменённый путь из 11 разрешённых; дерево чистое).
 - Локальный quality gate: PASS — GitHub gate/regressions, KB integrity, 44 KB regressions, actionlint, Gitleaks рабочей копии/истории/push ranges; утечек не обнаружено.
-- Hosted `quality-gate`: PASS, run `43734793614`, 46 секунд.
+- Hosted `quality-gate`: PASS, run `43735139082`. Эти результаты относятся только к указанному head; повторить на новой ревизии.
 - Live settings verifier: не запускался; конфигурация GitHub в этой задаче не менялась.
 - Независимое review: PENDING; PR остаётся draft.
 
@@ -81,6 +90,6 @@
 
 - Base SHA при создании PR: `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; сверяйте live PR base.
 - Head первой публикации: `e4d580304333d15b80b7327bc559ab309ec12f56`.
-- Последний полностью проверенный head до этого tracking-коммита: `1391d1ab663b15663abd492f91b33a21f7f3ef02`.
+- Последний полностью проверенный head до исправления runtime-матрицы: `d2935887d13277754cfc84280e9eca56c5ca671a`.
 - Эта карточка создаёт новый head; актуальные head/base и CI: PR #8 — единственный источник истины для текущей ревизии.
 - Merge-result и merge SHA: pending; ничего не считать слитым до фактического merge.

@@ -1,4 +1,4 @@
-#Requires -Version 7.4
+#Requires -Version 7.6
 [CmdletBinding()]
 param(
     [ValidateSet('check','search','get','context','capture','doctor')][string]$Command = 'check',
@@ -11,6 +11,7 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+& (Join-Path $PSScriptRoot 'verify-runtime.ps1') -Quiet
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 
 function Fail([string]$Code) { throw $Code }

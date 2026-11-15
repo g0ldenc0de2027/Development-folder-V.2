@@ -32,7 +32,7 @@ jobs:
       - name: Verify PowerShell
         shell: pwsh
         run: |
-          if ($PSVersionTable.PSVersion -lt [version]'7.4') { throw "PowerShell 7.4+ is required" }
+          ./scripts/verify-runtime.ps1 -Mode ci
 
       - name: Run quality gate and record tested revisions
         shell: pwsh

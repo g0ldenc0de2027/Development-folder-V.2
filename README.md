@@ -15,7 +15,7 @@
 
 ## Быстрый старт
 
-Требуется Windows 10/11, PowerShell 7.4+, Git и GitHub CLI. Проверьте точные требования в docs/development.md. Локальная проверка:
+Для разработки эталона требуется Windows 11 x64 (build 26200 или новее, в активной поддержке Microsoft), PowerShell 7.6 LTS не ниже 7.6.6 с актуальным servicing patch, Git и GitHub CLI. CI отдельно работает на `windows-2025` (Windows Server 2025 x64). Windows 10, ARM64, Windows Server как хост разработчика, Windows PowerShell 5.1, Linux и macOS не поддерживаются. Подробности и источники: docs/development.md. Локальная проверка:
 
     pwsh -NoProfile -File scripts/quality-gate.ps1
 

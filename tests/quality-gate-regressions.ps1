@@ -7,6 +7,40 @@ $workflow = Get-Content -LiteralPath $workflowPath -Raw
 $actionsPolicy = Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/actions-policy.json') -Raw | ConvertFrom-Json
 $tools = Get-Content -LiteralPath (Join-Path $repoRoot 'config/security/tools.json') -Raw | ConvertFrom-Json
 $developmentGuide = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/development.md') -Raw
+$runtimeVerifier = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/verify-runtime.ps1') -Raw
+$qualityGateSource = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
+$kbCliSource = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/kb.ps1') -Raw
+$agentsPolicy = Get-Content -LiteralPath (Join-Path $repoRoot 'AGENTS.md') -Raw
+$readme = Get-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Raw
+$projectSpec = Get-Content -LiteralPath (Join-Path $repoRoot 'spec/ТЗ.md') -Raw
+$kbSpec = Get-Content -LiteralPath (Join-Path $repoRoot 'spec/local-knowledge.md') -Raw
+$scopeVerifierSource = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/verify-task-scope.ps1') -Raw
+if ($scopeVerifierSource -notmatch '(?m)^#Requires -Version 7\.6$' -or $scopeVerifierSource -notmatch 'verify-runtime\.ps1' -or $scopeVerifierSource -notmatch 'core\.quotepath=false') {
+    throw 'Task scope guard must share the runtime baseline and preserve raw Unicode paths'
+}
+$scopeUnicodeLetterMarker = [string][char]92 + 'p{L}'
+$scopeUnicodeMarkMarker = [string][char]92 + 'p{M}'
+$scopeUnicodeNumberMarker = [string][char]92 + 'p{N}'
+if (-not $scopeVerifierSource.Contains($scopeUnicodeLetterMarker) -or -not $scopeVerifierSource.Contains($scopeUnicodeMarkMarker) -or -not $scopeVerifierSource.Contains($scopeUnicodeNumberMarker)) {
+    throw 'Task scope validator must accept Unicode letters and combining marks in relative paths'
+}
+if ($runtimeVerifier -notmatch '(?m)^#Requires -Version 7\.6$' -or $runtimeVerifier -notmatch '7\.6\.6' -or $runtimeVerifier -notmatch 'OSArchitecture' -or $runtimeVerifier -notmatch '26200' -or $runtimeVerifier -notmatch '26100') {
+    throw 'Runtime verifier must enforce PowerShell 7.6, x64, Windows 11 developer baseline, and Windows Server 2025 CI baseline'
+}
+if ($qualityGateSource -notmatch 'verify-runtime\.ps1' -or $kbCliSource -notmatch '(?m)^#Requires -Version 7\.6$' -or $kbCliSource -notmatch 'verify-runtime\.ps1') {
+    throw 'Quality gate and KB CLI must share the runtime verifier and require PowerShell 7.6'
+}
+if ($workflow -notmatch 'runs-on: windows-2025' -or $workflow -notmatch 'verify-runtime\.ps1 -Mode ci') {
+    throw 'Hosted CI must use and verify the Windows Server 2025 runner'
+}
+foreach ($supportDocument in @($agentsPolicy, $readme, $developmentGuide, $projectSpec, $kbSpec)) {
+    if ($supportDocument -notmatch 'Windows 11 x64' -or $supportDocument -notmatch 'PowerShell 7\.6') {
+        throw 'Every authoritative support document must state Windows 11 x64 and PowerShell 7.6 baselines'
+    }
+}
+if ($developmentGuide -notmatch '(?s)Не входят в матрицу разработчика: Windows 10.*?Windows Server 2025 x64') {
+    throw 'Developer guide must exclude Windows 10 and distinguish the Windows Server CI environment'
+}
 if ($developmentGuide -notmatch '(?m)^\s+pwsh -NoProfile -File scripts/github/verify-settings\.ps1 -RequireStatusCheck\s*$') {
     throw 'Developer guide must show the live verifier in required-status mode'
 }
