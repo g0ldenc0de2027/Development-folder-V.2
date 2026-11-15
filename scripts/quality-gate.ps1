@@ -153,8 +153,15 @@ try {
         Write-Output 'NOT APPLICABLE: no commits or refs exist yet on the valid unborn branch.'
     }
 
+    $pushRangeTokens = [Collections.Generic.List[string]]::new()
+    foreach ($rangeGroup in @($PushRange | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+        foreach ($rangeToken in $rangeGroup.Split([char]',', [StringSplitOptions]::None)) {
+            if ([string]::IsNullOrWhiteSpace($rangeToken)) { throw 'Pre-push supplied an empty commit range token' }
+            $pushRangeTokens.Add($rangeToken)
+        }
+    }
     $normalizedPushRanges = [System.Collections.Generic.List[string]]::new()
-    foreach ($range in @($PushRange | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+    foreach ($range in $pushRangeTokens) {
         if ($range -match '^(?<head>(?:[0-9a-f]{40}|[0-9a-f]{64}))$') {
             $headInput = $Matches.head
             $baseInput = $null

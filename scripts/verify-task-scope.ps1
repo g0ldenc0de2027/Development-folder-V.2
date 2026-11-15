@@ -1,0 +1,58 @@
+#Requires -Version 7.4
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)][ValidatePattern('^T-[0-9]{3}$')][string]$TaskId,
+    [string]$BaseRef = 'origin/main'
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Invoke-Git([string[]]$Arguments) {
+    $output = @(& git @Arguments)
+    if ($LASTEXITCODE -ne 0) { throw 'Task scope check could not read Git state' }
+    return ,$output
+}
+
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$branch = ((Invoke-Git @('-C',$repoRoot,'symbolic-ref','--quiet','--short','HEAD')) -join '').Trim()
+if ($branch -cne "task/$TaskId") { throw 'Current branch does not match the task ID' }
+$rootFromGit = ((Invoke-Git @('-C',$repoRoot,'rev-parse','--show-toplevel')) -join '').Trim()
+if (-not [string]::Equals([IO.Path]::GetFullPath($rootFromGit),[IO.Path]::GetFullPath($repoRoot),[StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Task scope check must run from the task worktree root'
+}
+$null = Invoke-Git @('-C',$repoRoot,'merge-base',$BaseRef,'HEAD')
+$gitDir = ((Invoke-Git @('-C',$repoRoot,'rev-parse','--path-format=absolute','--git-dir')) -join '').Trim()
+$commonDir = ((Invoke-Git @('-C',$repoRoot,'rev-parse','--path-format=absolute','--git-common-dir')) -join '').Trim()
+if ([string]::Equals([IO.Path]::GetFullPath($gitDir),[IO.Path]::GetFullPath($commonDir),[StringComparison]::OrdinalIgnoreCase)) {
+    throw 'A dedicated linked task worktree is required'
+}
+
+$taskFiles = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'tasks') -File -Filter "$TaskId-*.md")
+if ($taskFiles.Count -ne 1) { throw 'Task scope requires exactly one matching task card' }
+$card = [IO.File]::ReadAllText($taskFiles[0].FullName)
+$section = [regex]::Match($card,'(?ms)^## Зона файлов\s*\r?\n(?<body>.*?)(?=^## |\z)')
+if (-not $section.Success) { throw 'Task card has no file-scope section' }
+$scope = [Collections.Generic.List[string]]::new()
+foreach ($match in [regex]::Matches($section.Groups['body'].Value,'(?m)^\s*-\s+`(?<path>[^`]+)`\s*$')) {
+    $path = $match.Groups['path'].Value.Replace('\','/').Trim()
+    if (-not $path -or $path.StartsWith('/') -or $path -match '(^|/)\.\.?(/|$)' -or $path -notmatch '^[A-Za-z0-9._/*?-]+$') {
+        throw 'Task card contains an invalid scope path'
+    }
+    $scope.Add($path)
+}
+if ($scope.Count -eq 0) { throw 'Task card scope is empty' }
+$changes = @(Invoke-Git @('-C',$repoRoot,'diff','--no-renames','--name-only','--diff-filter=ACDMRTUXB',"$BaseRef...HEAD"))
+if ($changes.Count -eq 0) { throw 'Task branch contains no changes relative to its base' }
+$outside = [Collections.Generic.List[string]]::new()
+foreach ($change in $changes) {
+    $normalized = $change.Replace('\','/')
+    $allowed = $false
+    foreach ($pattern in $scope) {
+        if ($normalized -like $pattern) { $allowed = $true; break }
+    }
+    if (-not $allowed) { $outside.Add($normalized) }
+}
+if ($outside.Count -gt 0) { throw ('Out-of-scope paths: ' + ($outside -join ', ')) }
+$status = @(Invoke-Git @('-C',$repoRoot,'status','--porcelain=v1','--untracked-files=all'))
+if ($status.Count -gt 0) { throw 'Working tree must be clean before push' }
+Write-Output ("TASK-SCOPE=PASS ({0} changed paths; {1} allowed paths)" -f $changes.Count,$scope.Count)

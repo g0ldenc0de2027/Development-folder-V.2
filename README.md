@@ -2,7 +2,7 @@
 
 **Назначение:** безопасный, воспроизводимый эталон для создания отдельных проектов на современных языках и стеках.
 **Версия продукта:** 2.0.0-development
-**Статус:** GitHub foundation активен: hosted CI прошёл на bootstrap SHA, а `quality-gate` обязателен в live ruleset. Прикладная реализация остается закрыта до READY; P0 scope/worktree guard пока ручной.
+**Статус:** GitHub foundation активен: hosted CI прошёл на bootstrap SHA, а `quality-gate` обязателен в live ruleset. Прикладная реализация остаётся закрыта до READY. Scope/worktree guard подготовлен в `task/T-008`; до merge в main действует предыдущий ручной процесс.
 
 ## Принципы
 
@@ -29,3 +29,5 @@
 
 Первый файловый срез БЗ имеет отдельный допуск spec/local-knowledge.md.
 Он не включает автоматический рой, общий publisher или прикладные профили стеков.
+
+Текущие исправления по аудиту и точка передачи следующему агенту: [tasks/T-008-audit-remediation.md](tasks/T-008-audit-remediation.md).

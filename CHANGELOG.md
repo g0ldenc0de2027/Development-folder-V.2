@@ -2,6 +2,12 @@
 
 Все заметные изменения Development Folder V2 фиксируются здесь.
 
+## Unreleased
+- Усилен pre-push: только одноимённая task/T-NNN ветка, без тегов/удалений/non-fast-forward; зоны файлов сверяются с карточкой задачи.
+- Исправлена передача диапазонов Git hook в PowerShell и добавлена fail-closed проверка scope.
+- KB CLI проверяет секретоподобные значения в метаданных, комплектность канонического RULES 0.2.0 и не выдаёт неполный context молча.
+- Аудит-реестр и инструкции передачи: tasks/T-008-audit-remediation.md.
+
 ## 2.0.0-development — 2026-11-14
 - Создан чистый каркас V2 без переноса файлов и Git-истории прежнего эталона.
 - Добавлены GitHub rules, read-only settings verifier, CI quality gate, pre-push hook и документация рабочего процесса.

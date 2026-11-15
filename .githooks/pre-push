@@ -14,28 +14,56 @@ if ! command -v pwsh >/dev/null 2>&1; then
     exit 1
 fi
 
-set --
+current_ref=$(git symbolic-ref --quiet HEAD) || {
+    echo "pre-push: detached HEAD is not allowed" >&2
+    exit 1
+}
+case "$current_ref" in
+    refs/heads/task/T-[0-9][0-9][0-9]) ;;
+    *) echo "pre-push: only task/T-NNN branches may be pushed" >&2; exit 1 ;;
+esac
+
+task_id=${current_ref#refs/heads/task/}
+update_count=0
+push_ranges_csv=
 while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
     if [ -z "${local_ref:-}" ] && [ -z "${local_sha:-}" ]; then
         continue
     fi
+    update_count=$((update_count + 1))
+    if [ "$update_count" -gt 20 ]; then
+        echo "pre-push: too many ref updates in one push" >&2
+        exit 1
+    fi
+    if [ "$local_ref" != "$current_ref" ] || [ "$remote_ref" != "$local_ref" ]; then
+        echo "pre-push: only the current same-named task branch may be updated" >&2
+        exit 1
+    fi
 
     case "${local_sha:-}" in
         *[!0]*) ;;
-        *)
-            echo "pre-push: ref deletion or missing local object is forbidden" >&2
-            exit 1
-            ;;
+        *) echo "pre-push: ref deletion or missing local object is forbidden" >&2; exit 1 ;;
     esac
-
     case "${remote_sha:-}" in
-        *[!0]*) set -- "$@" "${remote_sha}..${local_sha}" ;;
-        *) set -- "$@" "$local_sha" ;;
+        *[!0]*)
+            if ! git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+                echo "pre-push: non-fast-forward update or missing remote object is forbidden" >&2
+                exit 1
+            fi
+            range="${remote_sha}..${local_sha}"
+            ;;
+        *) range=$local_sha ;;
     esac
+    case "$range" in
+        *[!0-9a-f.]*) echo "pre-push: invalid commit range from Git" >&2; exit 1 ;;
+    esac
+    if [ -n "$push_ranges_csv" ]; then push_ranges_csv="$push_ranges_csv,$range"; else push_ranges_csv=$range; fi
 done
 
-if [ "$#" -gt 0 ]; then
-    exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -RemoteName "$remote_name" -RemoteUrl "$remote_url" -PushRange "$@"
+if [ "$update_count" -eq 0 ]; then
+    echo "pre-push: Git supplied no ref updates" >&2
+    exit 1
 fi
 
-exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -RemoteName "$remote_name" -RemoteUrl "$remote_url"
+pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-task-scope.ps1" -TaskId "$task_id" -BaseRef origin/main
+exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -RemoteName "$remote_name" -RemoteUrl "$remote_url" -PushRange "$push_ranges_csv"
