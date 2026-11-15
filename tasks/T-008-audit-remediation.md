@@ -1,6 +1,6 @@
 # T-008 — Исправления аудита и понятная передача следующему агенту
 
-**Статус:** draft PR #8 открыт; ветка опубликована. Требуются hosted CI и ручное review актуального head.
+**Статус:** draft PR #8 открыт; локальный gate и hosted CI прошли на последнем записанном head `1391d1ab663b15663abd492f91b33a21f7f3ef02`. Review текущего head ожидается. Эта карточка меняется новым commit: после его push все SHA-bound результаты нужно сверить заново в live PR #8.
 **PR:** https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/8
 **База при старте:** `f577dc70e58d75ab5fd61d0c2e712c27b590713a` (origin/main).
 **Head при первой публикации:** `e4d580304333d15b80b7327bc559ab309ec12f56`. После обновления этой карточки head изменится; всегда сверяйте live head/base в PR #8.
@@ -68,17 +68,19 @@
 
 ## Проверки
 
-Ниже зафиксированы результаты первой опубликованной ревизии `e4d580304333d15b80b7327bc559ab309ec12f56`. Эта карточка обновляется отдельным commit; pre-push повторяет весь локальный gate. Hosted CI и review привязаны к точным SHA, поэтому после любого push сверяйте актуальные статусы в PR #8.
-
-- Scope/чистота worktree перед первой публикацией: PASS (1 изменённый путь из 11 разрешённых; дерево чистое).
-- Локальный quality gate на первой опубликованной ревизии: PASS — GitHub gate/regressions, KB integrity, 44 KB regressions, actionlint, Gitleaks рабочей копии/истории/push ranges; утечек не обнаружено.
+На последнем проверенном head до этого tracking-коммита `1391d1ab663b15663abd492f91b33a21f7f3ef02`:
+- Scope/чистота worktree: PASS (1 изменённый путь из 11 разрешённых; дерево чистое).
+- Локальный quality gate: PASS — GitHub gate/regressions, KB integrity, 44 KB regressions, actionlint, Gitleaks рабочей копии/истории/push ranges; утечек не обнаружено.
+- Hosted `quality-gate`: PASS, run `43734793614`, 46 секунд.
 - Live settings verifier: не запускался; конфигурация GitHub в этой задаче не менялась.
-- Hosted `quality-gate`: был IN_PROGRESS на первой ревизии; актуальный SHA-bound статус смотреть в PR #8.
-- Независимое review актуального head: PENDING; PR остаётся draft.
+- Независимое review: PENDING; PR остаётся draft.
+
+Этот tracking-коммит продвигает branch head. Pre-push повторяет локальный gate; hosted CI и review привязаны к SHA. После push обязательно проверьте текущий head/base и checks в PR #8; не считайте результаты выше доказательством для более нового SHA.
 
 ## Итоговые SHA и приёмка
 
 - Base SHA при создании PR: `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; сверяйте live PR base.
-- Head первой публикации: `e4d580304333d15b80b7327bc559ab309ec12f56`; после обновления этой карточки ветка получает новый head.
-- Актуальные head/base и CI: PR #8 — единственный источник истины для текущей ревизии.
+- Head первой публикации: `e4d580304333d15b80b7327bc559ab309ec12f56`.
+- Последний полностью проверенный head до этого tracking-коммита: `1391d1ab663b15663abd492f91b33a21f7f3ef02`.
+- Эта карточка создаёт новый head; актуальные head/base и CI: PR #8 — единственный источник истины для текущей ревизии.
 - Merge-result и merge SHA: pending; ничего не считать слитым до фактического merge.
