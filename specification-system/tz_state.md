@@ -13,7 +13,7 @@ Open decisions: supported operating systems; stack-profile inventory; portfolio 
 
 ## Целевой контур локальной и портфельной памяти
 
-Спецификация: spec/portfolio-kb-agent-workflow.md, версия 0.4.0.
+Спецификация: spec/portfolio-kb-agent-workflow.md, версия 0.5.0.
 Статус: DRAFT / NOT READY; архитектурный дизайн, не допуск к реализации.
 Решено владельцем: local KB — только один проект; common KB — накопительная память всех проектов плюс прямые записи на любые темы; обе проверяются в начале содержательной работы; значимые findings сохраняются локально и рассматриваются для promotion.
 Не решено: identity/ACL; отдельные права parser-run/review/release; допуск проектных сведений в remote Git/облако; storage/network matrix; file capabilities/performance; parser concurrency/backend; promotion approvals и backup RPO/RTO.

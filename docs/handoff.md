@@ -1,11 +1,11 @@
 # Handoff — T-011, 2026-11-16
 
-- Общая БЗ: PR #2 head `f7a2a4dc1cc37bda5405fea1805b743e886c0568`, base `283ec02c47b7a1228ebaf878f75d400dd734e406`; hosted run #43858637248 SUCCESS на merge-result `11be6c3ff86a4091eff211920c0b132bb097ec19` с точными родителями.
-- V2 replacement PR #10 открыт Draft: head `558ee654903920f752a0bc60d21be2d691df03fc`, base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; hosted run #43860729578 SUCCESS на merge-result `efaa6aa96dfe950ab6e8cd12b4b696c5007adcc4`, чьи родители совпадают с base/head. GitHub-native reviews нет; независимые cross-vendor отзывы ещё нужны.
-- Контент T-011 локально прошёл полный quality-gate, push-preflight и hosted CI; commits используют подтверждённую account-ID noreply identity с `Assisted-by: Codex:GPT-6`. Canonical rules package 0.5.0 и V2 mirror совпадают побайтно по пяти файлам.
-- T-011 исправляет описание current schema/ACL, ограничения egress Rule 20, открытую encryption/key-management развилку, stale version/SHA и атрибуцию; PR #9 сохранён без переписывания истории.
-- Ограничения остаются: ACL, федеративный поиск, publisher, ingestion/OCR/ASR и coordinator не реализованы; portfolio workflow `DRAFT / NOT READY`; app stack audit `NOT COVERED`.
-- Перед любым merge заново считайте live head/base/test SHA, требуйте hosted gate и независимое review для одного и того же текущего head. Следующий шаг — получить независимые отзывы по точным diff/SHA; unresolved CI-parent assertion вынесен отдельно.
+- Общая БЗ: [PR #2](https://github.com/g0ldenc0de2027/Knowledge_Base/pull/2) остаётся Draft; актуальные ревизии и проверки смотрите в live PR. Исторические снимки сохраняются в карточке задачи.
+- V2 replacement [PR #10](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/10) остаётся Draft до зелёного CI и свежего независимого review на одном и том же head. Актуальные head/base/checks определяются только по live PR; точные SHA и run IDs намеренно не дублируются в этом handoff.
+- T-011 уточняет current-vs-target границы БЗ, ограничения внешней передачи и спецификацию 0.5.0. Канонические правила и V2 mirror совпадают по пяти закреплённым файлам.
+- Copilot и DeepSeek проверили прежний PR #10 head; их замечания разбираются в карточке T-011. После изменений нужен новый CI и review на итоговом head.
+- ACL, федеративный поиск, publisher, ingestion/OCR/ASR и coordinator не реализованы; portfolio workflow остаётся `DRAFT / NOT READY`; app stack audit — `NOT COVERED`.
+- Перед merge повторно проверьте live PR, незакрытые review threads и актуальность обоих SHA. Отдельная автоматическая проверка parent tuple вынесена в T-012.
 ## Исторический handoff T-004 — 2026-11-15
 
 - T-003 слита PR #3 в main (squash commit 9f98b28046ca605577e5a829e02818335f66174c); task/T-004 объединяется с новой main.
