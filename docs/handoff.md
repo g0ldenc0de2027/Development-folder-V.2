@@ -1,11 +1,11 @@
 # Handoff — T-011, 2026-11-16
 
-- Общая БЗ: [PR #2](https://github.com/g0ldenc0de2027/Knowledge_Base/pull/2) остаётся Draft; актуальные ревизии и проверки смотрите в live PR. Исторические снимки сохраняются в карточке задачи.
-- V2 replacement [PR #10](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/10) остаётся Draft до зелёного CI и свежего независимого review на одном и том же head. Актуальные head/base/checks определяются только по live PR; точные SHA и run IDs намеренно не дублируются в этом handoff.
-- T-011 уточняет current-vs-target границы БЗ, ограничения внешней передачи и спецификацию 0.5.0. Канонические правила и V2 mirror совпадают по пяти закреплённым файлам.
-- Copilot и DeepSeek проверили прежний PR #10 head; их замечания разбираются в карточке T-011. После изменений нужен новый CI и review на итоговом head.
+- Общая БЗ: [PR #2](https://github.com/g0ldenc0de2027/Knowledge_Base/pull/2) — источник истины для статуса, ревизий, CI и review. Карточка задачи хранит только подписанные исторические снимки.
+- V2 replacement [PR #10](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/10) — источник истины для актуальных статуса, head/base и checks. Merge разрешается только после проверки неизменившейся пары SHA, успешного CI и независимого review на соответствующем head.
+- T-011 уточняет границы текущей и целевой БЗ, ограничения внешней передачи и спецификацию 0.5.0. Канонические правила и V2 mirror совпадают по пяти закреплённым файлам.
+- Исторические отчёты Copilot/DeepSeek и разбор их замечаний находятся в карточке T-011. Перед использованием review сверяйте его SHA с head live PR.
 - ACL, федеративный поиск, publisher, ingestion/OCR/ASR и coordinator не реализованы; portfolio workflow остаётся `DRAFT / NOT READY`; app stack audit — `NOT COVERED`.
-- Перед merge повторно проверьте live PR, незакрытые review threads и актуальность обоих SHA. Отдельная автоматическая проверка parent tuple вынесена в T-012.
+- Перед merge перепроверьте live PR, unresolved review threads и неизменность SHA после CI/review. Автоматическая проверка parent tuple выделена в T-012.
 ## Исторический handoff T-004 — 2026-11-15
 
 - T-003 слита PR #3 в main (squash commit 9f98b28046ca605577e5a829e02818335f66174c); task/T-004 объединяется с новой main.

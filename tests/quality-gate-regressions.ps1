@@ -701,7 +701,10 @@ $currentHandoff = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'docs/hando
 if ($currentHandoff -match '\b[a-f0-9]{40}\b') {
     throw 'Current handoff must not pin mutable GitHub revision or CI identifiers'
 }
-if ($currentHandoff -notmatch '(?im)PR #10.*(?:live PR|live GitHub)') {
+if ($currentHandoff -match '(?im)PR #\d+[^\r\n]*\b(?:Draft|open|merged|success|pending)\b') {
+    throw 'Current handoff must not freeze mutable PR or CI status'
+}
+if ($currentHandoff -notmatch '(?im)PR #10.*(?:live PR|live GitHub|источник истины)') {
     throw 'Current handoff must direct readers to the live PR for mutable status'
 }
 $trailing = [System.Collections.Generic.List[string]]::new()
