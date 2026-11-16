@@ -44,13 +44,13 @@
 9. После обычного push открыть replacement PR; зафиксировать live head/base/test merge-result SHA; получить зелёный hosted gate и независимый cross-vendor review на точном head до любого merge.
 10. Текущая документация не маркирует пакет 0.5.0 как 0.4.0; исторические SHAs/run IDs и старые review привязаны к точным исходным ревизиям.
 
-## Локальная проверка (2026-11-16, рабочая копия до commit)
+## Локальная проверка (2026-11-16; content commit c8c5b04)
 
 - V2 `quality-gate.ps1 -BaseRef origin/main`: PASS, exit 0; base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; 40 Markdown и test source проверены privacy scan, 58 текстовых файлов — hygiene, 44 KB-регрессии PASS, actionlint PASS, Gitleaks PASS (47 commits). Стек приложения не выбран — build/dependency audit `NOT COVERED`.
-- Общая БЗ: `kb.ps1 check` PASS (integrity=pass, 2 records, 9 rule files); `kb-regressions.ps1` — 44/44; `diff-regressions.ps1` — 11/11; `git diff --check` PASS.
+- Общая БЗ: `kb.ps1 check` PASS (integrity=pass, 2 records, 9 rule files); `kb-regressions.ps1` — 44/44; `diff-regressions.ps1` — 11/11; `security-ci.ps1` Gitleaks/actionlint PASS; `git diff --check` PASS. Commit `f7a2a4dc1cc37bda5405fea1805b743e886c0568` pushed to PR #2; hosted run #43858637248 SUCCESS on exact head, base `283ec02c47b7a1228ebaf878f75d400dd734e406`.
 - Пять файлов rule package совпадают побайтно между каноном и V2. Lock SHA-256: `73950eea937bed9501feb4fcd11b89bc49c5e5f4d6fb8fd34bf0d6ca52bc9022`.
 - Первый T-011 gate выявил CRLF в созданной карточке; line endings нормализованы до LF, полный gate после исправления прошёл.
-- Hosted CI и независимое cross-vendor review новой T-011 ревизии пока не проводились. Commit/push пока не выполнены.
+- Content commit `c8c5b04f55766c9d87b2d94f98a4c64ff567a140` создан с проверенным account-ID noreply author/committer и trailer `Assisted-by: Codex:GPT-6`; его полный локальный gate прошёл. На момент этого снимка перед публикацией T-011 ещё не pushed; hosted CI и свежий независимый review T-011 не проводились.
 ## Ограничения
 
 T-011 не реализует федеративный поиск, record ACL, publisher, ingestion/parsers, OCR/ASR, агентский coordinator или прикладной стек. Старый PR #9 не закрывать до проверки замещающего PR и отдельного решения о завершении старого PR.

@@ -1,11 +1,11 @@
 # Handoff — T-011, 2026-11-16
 
-- T-011 создана от `origin/main` `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; исправленный текстовый срез T-010 перенесён без переписывания старой истории. Новые изменения ещё не закоммичены и не опубликованы.
-- Исправляются подтверждённые расхождения текущей schema/CLI с целевыми ACL, egress ограничение Rule 20, открытое решение по encryption/key management и статусы handoff/карточек.
-- Канон общей БЗ и V2 snapshot должны быть точными копиями пакета 0.5.0; общая БЗ остаётся отдельной рабочей веткой и проверяется отдельно.
-- PR #9 остаётся Draft; три старых коммита имеют автора `Scope Fixture`. Старую ветку и историю не переписывать. Старые CI/review подтверждают только прежние SHA, не T-011.
-- Следующий шаг: завершить адресную сверку diff и зеркала, запустить локальные gates обоих репозиториев, подтвердить noreply-атрибуцию, затем создать обычные task commits/push, пройти hosted CI и получить независимое review новых точных heads. Не сливать до этих проверок.
-- Прикладной стек не выбран; сборка приложения и dependency audit остаются `NOT COVERED`. Спецификация портфельного workflow остаётся `DRAFT / NOT READY`.
+- Общая БЗ обновлена commit `f7a2a4dc1cc37bda5405fea1805b743e886c0568` в PR #2; hosted `knowledge-quality` run #43858637248 SUCCESS на этом head, base `283ec02c47b7a1228ebaf878f75d400dd734e406`.
+- V2 T-011 content commit `c8c5b04f55766c9d87b2d94f98a4c64ff567a140` создан от `origin/main` `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; автор/committer — проверенная account-ID noreply идентичность, trailer Codex присутствует.
+- Полный V2 `quality-gate.ps1 -BaseRef origin/main` прошёл на content commit: privacy 40 Markdown + test source, hygiene 58 text files, KB regressions 44/44, actionlint и Gitleaks PASS. Application stack `NOT COVERED`.
+- Canonical rule package 0.5.0 и V2 mirror побайтно совпадают по пяти файлам; текущий `policy-lock` SHA-256 `73950eea937bed9501feb4fcd11b89bc49c5e5f4d6fb8fd34bf0d6ca52bc9022`.
+- V2 PR #9 остаётся открытым и не слитым на старом SHA с fixture-авторами; published history не переписывать. Отдельный PR #2 общей БЗ открыт на canonical head `f7a2a4d`; hosted CI успешен, свежий независимый cross-vendor review ещё нужен.
+- Снимок handoff перед публикацией T-011: закончить фиксацию этой записи, повторить полный gate на итоговом HEAD, затем обычным push открыть replacement PR и проверить его live CI/review по точным SHA; не сливать до независимой проверки.
 ## Исторический handoff T-004 — 2026-11-15
 
 - T-003 слита PR #3 в main (squash commit 9f98b28046ca605577e5a829e02818335f66174c); task/T-004 объединяется с новой main.
