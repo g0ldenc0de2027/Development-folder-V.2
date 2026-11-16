@@ -51,6 +51,11 @@
 - Пять файлов rule package совпадают побайтно между каноном и V2. Lock SHA-256: `73950eea937bed9501feb4fcd11b89bc49c5e5f4d6fb8fd34bf0d6ca52bc9022`.
 - Первый T-011 gate выявил CRLF в созданной карточке; line endings нормализованы до LF, полный gate после исправления прошёл.
 - Content commit `c8c5b04f55766c9d87b2d94f98a4c64ff567a140` создан с проверенным account-ID noreply author/committer и trailer `Assisted-by: Codex:GPT-6`; его полный локальный gate прошёл. На момент этого снимка перед публикацией T-011 ещё не pushed; hosted CI и свежий независимый review T-011 не проводились.
+## Initial hosted evidence snapshot (2026-11-16)
+
+- V2 PR #10 initial head `558ee654903920f752a0bc60d21be2d691df03fc`, base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; run #43860729578 SUCCESS on merge-result `efaa6aa96dfe950ab6e8cd12b4b696c5007adcc4` with exact parent pair.
+- GitHub-native reviews at this snapshot: 0; independent cross-vendor review pending. PR #10 remained Draft.
+- This evidence is bound only to the listed head/base. The subsequent handoff-only commit advances the PR head; this run does not validate that later head. Before merge, refresh the live tuple and require CI/review on the current head.
 ## Ограничения
 
 T-011 не реализует федеративный поиск, record ACL, publisher, ingestion/parsers, OCR/ASR, агентский coordinator или прикладной стек. Старый PR #9 не закрывать до проверки замещающего PR и отдельного решения о завершении старого PR.
