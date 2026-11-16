@@ -1,11 +1,11 @@
 # Связь правил с исполнением
 
-Редакция 0.2.0, 2026-11-15. Область: первый файловый срез V2.
+Редакция 0.3.0, 2026-11-16. Область: текущий текстовый срез и явные пробелы покрытия.
 Это карта текущего охвата; обязательства нормы определяются соответствующим модулем.
 
 | Правило | Механизм/свидетельство | Охват и пробел |
 |---|---|---|
-| 1 | kb.ps1 check/search/get/context/capture/doctor | Hash/schema/path/budget, drafts; truth/reviewer identity не аутентифицированы; federated search отсутствует |
+| 1 | kb.ps1 check/search/get/context/capture/doctor | Hash/schema/path/budget, drafts; project namespace/record ACL, safe portfolio admission и federated search отсутствуют; truth/reviewer identity не аутентифицированы |
 | 2 | Карточка задачи и bounded scope review | Организационный контроль; общего enforcement процесса нет |
 | 3 | quality-gate.ps1, actionlint, Gitleaks, KB regressions | Host scope; application coverage/performance/SBOM/DAST NOT COVERED |
 | 4 | Regression failing-before/passing-after, draft capture | Автоматического продвижения урока в accepted нет |

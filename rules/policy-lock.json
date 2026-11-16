@@ -1,16 +1,16 @@
 {
   "schemaVersion": 2,
   "packageId": "development-folder-rules",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "sourceCollectionId": "7c85d01f-3de1-4fe6-b090-960e41c20cf1",
   "files": [
     {
       "path": "rules/RULES.md",
-      "sha256": "96e6abf82bdf353516fbc6f21739e3c9a64329aef2a34a33ba170d9594e2d54c"
+      "sha256": "edafbdac48e052150998896cfb81043c926d96df1b2f0f7eec9275a491a8fd98"
     },
     {
       "path": "rules/modules/01-knowledge-and-calibration.md",
-      "sha256": "cb0ebd9bd52af87d584d6a5219a98508c6518bb035509e55e6eee6b0bc54c5c7"
+      "sha256": "c49149513e43b95c4f106dd417a23852aacc2cb9778c23a324f31c073059fd17"
     },
     {
       "path": "rules/modules/02-spec-and-quality.md",
@@ -38,7 +38,7 @@
     },
     {
       "path": "rules/COVERAGE.md",
-      "sha256": "98ea16c847c6fcce4487f313aad6aee55e0af4131dd9a9cd90ff88824dba7fbb"
+      "sha256": "812d8be1b31e6169a9cbf19039d718463b727984aa2e413dba54decf011d7717"
     }
   ]
 }
