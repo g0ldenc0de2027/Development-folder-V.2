@@ -25,6 +25,7 @@
 - `knowledge/README.md`
 - `spec/local-knowledge.md`
 - `docs/local-knowledge.md`
+- `docs/handoff.md`
 
 Каноническая общая БЗ изменяется отдельно в ветке `codex/portfolio-kb-scope`: только соответствующие `rules/` файлы и `README.md`. Изменения из общей БЗ переносятся в V2 точной копией после проверки.
 
@@ -43,8 +44,8 @@
 - V2 открыт отдельно в `task/T-010-kb-portfolio-scope` от `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; project snapshot и spec/документация обновлены.
 - Canonical module hash и V2 module hash совпадают: `c49149513e43b95c4f106dd417a23852aacc2cb9778c23a324f31c073059fd17`. Оба `policy-lock.json` совпадают побайтно, version `0.3.0`.
 - Общая БЗ: scripts/kb.ps1 check PASS (integrity=pass, 2 records, 9 rules files); tests/kb-regressions.ps1 PASS (44/44).
-- V2: scripts/quality-gate.ps1 -BaseRef origin/main PASS на незакоммиченном рабочем дереве от f577dc70e58d75ab5fd61d0c2e712c27b590713a; privacy/hygiene checks PASS, KB regressions 44/44, actionlint PASS, Gitleaks PASS. Stack build/dependency audit NOT COVERED: шаблон не выбирает стек.
-- Изменения T-009 по широкому формату ingestion не включались в gate; T-010 лишь фиксирует цель и текущую границу. PR, hosted CI и независимый review точного commit SHA ещё не выполнены; merge запрещён до их завершения.
+- V2: scripts/quality-gate.ps1 -BaseRef origin/main PASS на task/T-010; privacy/hygiene checks PASS, KB regressions 44/44, actionlint PASS, Gitleaks PASS. Post-commit gate и hosted result следует перепроверить на текущем PR head. Stack build/dependency audit NOT COVERED: шаблон не выбирает стек.
+- Изменения T-009 по широкому формату ingestion не включались в gate; T-010 фиксирует цель и текущую границу. PR #2 общей БЗ и PR #9 V2 — draft; проверяйте текущие head/base/test merge-result в самих PR. Merge запрещён до hosted CI и независимого review точного head.
 
 ## Ограничения
 
