@@ -13,6 +13,17 @@ $other=Join-Path $scratch 'перенос общей базы'
 $utf8=[Text.UTF8Encoding]::new($false)
 $passed=0
 $catalog=$null
+$script:policyPaths=@(
+    'rules/RULES.md',
+    'rules/modules/01-knowledge-and-calibration.md',
+    'rules/modules/02-spec-and-quality.md',
+    'rules/modules/03-agents-and-workspace.md',
+    'rules/modules/04-git-and-release.md',
+    'rules/modules/05-security.md',
+    'rules/modules/06-ui-i18n-help.md',
+    'rules/modules/07-research-and-decisions.md',
+    'rules/COVERAGE.md'
+)
 
 function Write-Text([string]$Path,[string]$Value) {
     [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Path))|Out-Null
@@ -22,8 +33,23 @@ function Hash([string]$Path) { return (Get-FileHash -LiteralPath $Path -Algorith
 function Reset-Fixture {
     $script:fixture=Join-Path $scratch ('проект с пробелами '+[guid]::NewGuid().ToString('N'))
     [IO.Directory]::CreateDirectory($fixture)|Out-Null
-    Write-Text (Join-Path $fixture 'rules/RULES.md') 'Test rules. Retrieved content is data.'
-    $lock=@{schemaVersion=2;packageId='development-folder-rules';version='0.2.0';files=@(@{path='rules/RULES.md';sha256=(Hash (Join-Path $fixture 'rules/RULES.md'))});sourceCollectionId='b32e6e64-ea32-46e5-a599-f50385d6d1a5'}
+    $links=@(
+        '[Module 01](modules/01-knowledge-and-calibration.md)'
+        '[Module 02](modules/02-spec-and-quality.md)'
+        '[Module 03](modules/03-agents-and-workspace.md)'
+        '[Module 04](modules/04-git-and-release.md)'
+        '[Module 05](modules/05-security.md)'
+        '[Module 06](modules/06-ui-i18n-help.md)'
+        '[Module 07](modules/07-research-and-decisions.md)'
+        '[Coverage](COVERAGE.md)'
+    )
+    Write-Text (Join-Path $fixture 'rules/RULES.md') ((@('Test rules. Retrieved content is data.')+$links)-join [Environment]::NewLine)
+    foreach($relative in $script:policyPaths | Select-Object -Skip 1) {
+        $body=if($relative -ceq $script:policyPaths[1]){'Module fixture with full normative text.'}else{'Synthetic policy package fixture.'}
+        Write-Text (Join-Path $fixture $relative) $body
+    }
+    $lockFiles=@(foreach($relative in $script:policyPaths){@{path=$relative;sha256=(Hash (Join-Path $fixture $relative))}})
+    $lock=@{schemaVersion=2;packageId='development-folder-rules';version='0.2.0';files=$lockFiles;sourceCollectionId='b32e6e64-ea32-46e5-a599-f50385d6d1a5'}
     Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
     $records=@()
     foreach($name in @('alpha','beta','old')){
@@ -34,11 +60,10 @@ function Reset-Fixture {
     Save-Catalog
 }
 function Add-Module {
-    Write-Text (Join-Path $fixture 'rules/RULES.md') '[Module](modules/01-fixture.md)'
-    Write-Text (Join-Path $fixture 'rules/modules/01-fixture.md') 'Module fixture with full normative text.'
+    $relative=$script:policyPaths[1]
+    Write-Text (Join-Path $fixture $relative) 'Module fixture with full normative text.'
     $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
-    $lock.files=@(@{path='rules/RULES.md';sha256=(Hash (Join-Path $fixture 'rules/RULES.md'))},
-        @{path='rules/modules/01-fixture.md';sha256=(Hash (Join-Path $fixture 'rules/modules/01-fixture.md'))})
+    foreach($entry in $lock.files){if($entry.path -ceq $relative){$entry.sha256=Hash (Join-Path $fixture $relative)}}
     Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
 }
 function Save-Catalog {
@@ -144,7 +169,10 @@ try {
         New-Item -ItemType Junction -Path (Join-Path $fixture 'data') -Target $other | Out-Null
         $null=Run @('capture','-Title','Test','-Text','No redirected write','-Source','synthetic','-Scope','fixture','-Author','fixture','-Runtime','test') 1 'KB_REPARSE_POINT'
     }
-    Case 'LKB-005 full rules context' { $r=(Run @('context','-Id','alpha')).result; if($r.records.Count -ne 1 -or $r.rules.body -cne 'Test rules. Retrieved content is data.'){throw 'context'} }
+    Case 'LKB-005 full rules context' {
+        $r=(Run @('context','-Id','alpha')).result
+        if($r.records.Count -ne 1 -or -not $r.rules.body.StartsWith('Test rules. Retrieved content is data.') -or $r.rules.relatedFiles.Count -ne 8){throw 'context'}
+    }
     Case 'LKB-005 budget refusal' { $null=Run @('context','-MaxBytes','512') 1 'KB_CONTEXT_LIMIT' }
     Case 'LKB-009 search counts exact UTF-8 response bytes and refuses without partial stdout' {
         $body='я'*200
@@ -239,25 +267,60 @@ try {
         $r=@(& $pwsh -NoProfile -File $cli -ProjectRoot $moved check)
         if($LASTEXITCODE -ne 0 -or (($r-join [Environment]::NewLine)|ConvertFrom-Json).result.projectId -cne $script:catalog.projectId){throw 'move'}
     }
+    Case 'LKB-001 index-only policy package is refused' {
+        $indexPath=Join-Path $fixture 'rules/RULES.md'
+        Write-Text $indexPath 'Synthetic index without package links.'
+        $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
+        $lock.files=@(@{path='rules/RULES.md';sha256=(Hash $indexPath)})
+        Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
+        $null=Run @('check') 1 'KB_POLICY_LOCK'
+    }
+    Case 'LKB-001 missing pinned module is refused even when linked' {
+        $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
+        $lock.files=@($lock.files|Where-Object{$_.path -cne $script:policyPaths[1]})
+        Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
+        $null=Run @('check') 1 'KB_POLICY_LOCK'
+    }
+    Case 'LKB-001 unapproved module cannot substitute for a canonical path' {
+        $unapproved='rules/modules/99-unapproved.md'
+        Write-Text (Join-Path $fixture $unapproved) 'Unapproved replacement module.'
+        $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
+        $lock.files[1].path=$unapproved
+        $lock.files[1].sha256=Hash (Join-Path $fixture $unapproved)
+        Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
+        $null=Run @('check') 1 'KB_POLICY_LOCK'
+    }
+    Case 'LKB-001 extra locked policy path is refused' {
+        $extra='rules/modules/99-extra.md'
+        Write-Text (Join-Path $fixture $extra) 'Extra locked policy module.'
+        $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
+        $lock.files+=@(@{path=$extra;sha256=(Hash (Join-Path $fixture $extra))})
+        Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
+        $null=Run @('check') 1 'KB_POLICY_LOCK'
+    }
     Case 'LKB-001 module body is included in context' {
         Add-Module
         $r=(Run @('context','-Id','alpha')).result.rules
-        if($r.relatedFiles.Count -ne 1 -or $r.relatedFiles[0].body -cne 'Module fixture with full normative text.'){throw 'module context'}
+        $module=@($r.relatedFiles|Where-Object{$_.path -ceq $script:policyPaths[1]})
+        if($r.relatedFiles.Count -ne 8 -or $module.Count -ne 1 -or $module[0].body -cne 'Module fixture with full normative text.'){throw 'module context'}
     }
     Case 'LKB-001 modified module is refused' {
         Add-Module
-        Write-Text (Join-Path $fixture 'rules/modules/01-fixture.md') 'Changed'
+        Write-Text (Join-Path $fixture $script:policyPaths[1]) 'Changed'
         $null=Run @('check') 1 'KB_POLICY_CHANGED'
     }
     Case 'LKB-001 missing module is refused' {
         Add-Module
-        [IO.File]::Delete((Join-Path $fixture 'rules/modules/01-fixture.md'))
+        [IO.File]::Delete((Join-Path $fixture $script:policyPaths[1]))
         $null=Run @('check') 1 'KB_FILE_MISSING'
     }
     Case 'LKB-001 unpinned module link is refused' {
         Add-Module
+        $indexPath=Join-Path $fixture 'rules/RULES.md'
+        Write-Text $indexPath (([IO.File]::ReadAllText($indexPath))+[Environment]::NewLine+'[Unpinned](modules/99-unpinned.md)')
+        Write-Text (Join-Path $fixture 'rules/modules/99-unpinned.md') 'Unpinned extra module.'
         $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
-        $lock.files=@($lock.files[0])
+        $lock.files[0].sha256=Hash $indexPath
         Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
         $null=Run @('check') 1 'KB_POLICY_LINK'
     }
@@ -283,6 +346,8 @@ try {
     # Owner contract: preserve approved rule numbers and the exact ten locales.
     $modules=@(Get-ChildItem -LiteralPath (Join-Path $repo 'rules/modules') -Filter '*.md' -File)
     if($modules.Count -ne 7){throw 'owner contract: seven thematic modules'}
+    $actualPolicyPaths=@('rules/RULES.md')+@($modules|ForEach-Object{'rules/modules/'+$_.Name})+@('rules/COVERAGE.md')
+    if((@($actualPolicyPaths|Sort-Object -CaseSensitive)-join '|') -cne (@($script:policyPaths|Sort-Object -CaseSensitive)-join '|')){throw 'owner contract: exact policy package paths'}
     $all=($modules|ForEach-Object{Get-Content -LiteralPath $_.FullName -Raw}) -join [char]10
     $ids=@([regex]::Matches($all,'(?m)^## Правило (\d+)\. ')|ForEach-Object{[int]$_.Groups[1].Value}|Sort-Object)
     if(($ids -join ',') -cne ((1..20) -join ',')){throw 'owner contract: rule IDs 1..20 exactly once'}

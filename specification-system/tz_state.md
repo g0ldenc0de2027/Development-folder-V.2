@@ -13,4 +13,4 @@ Open decisions: supported operating systems; stack-profile inventory; local know
 
 ## T-014 admission (2026-11-17)
 
-Owner-directed local KB improvement. READY only for LKB-009 bounded JSON stdout responses from search/get. Overall project remains DRAFT / NOT READY.
+Owner-directed local KB improvement. READY for LKB-009 bounded JSON stdout responses from search/get and the corrective completion of existing LKB-001 exact RULES-package membership enforcement. Overall project remains DRAFT / NOT READY.

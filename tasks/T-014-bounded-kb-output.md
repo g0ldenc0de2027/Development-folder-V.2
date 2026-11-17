@@ -10,9 +10,13 @@
 
 Воспроизведено на T-009: `search -Query local-first -Limit 1 -MaxBytes 512` завершился успешно и выдал 75 629 UTF-8 байт, включая тело записи 71 854 байта. `MaxBytes` документирован только для `context`; у `search/get` нет явного ограничения ответа. Это не нарушение прежнего контракта, а подтверждённый риск неконтролируемого размера ответа.
 
+Дополнительно в ходе аудита локальной БЗ воспроизведён разрыв LKB-001: schema 2 lock только с `rules/RULES.md` и индекс без локальных ссылок проходил `check` с exit 0, хотя READY-контракт требует полный пакет из индекса, семи модулей и карты охвата. Тест `LKB-001 index-only policy package is refused` зафиксировал прохождение такого fixture до исправления.
+
 ## Решение
 
 Добавить отдельный параметр `-MaxOutputBytes` для полных JSON-ответов `search` и `get`: default 131072 байта, диапазон 512–2097152. При превышении возвращать `KB_OUTPUT_LIMIT`, exit 1 и пустой stdout. Не урезать JSON/записи. Существующий `-MaxBytes` и код отказа `KB_CONTEXT_LIMIT` для `context` оставить без изменений. Текущие поля и полные тела записей при успешном ответе сохранить.
+
+Для уже принятого LKB-001 проверять в schema 2 lock точное множество девяти канонических путей RULES: индекс, модули 01–07 с фиксированными именами и `rules/COVERAGE.md`. Отсутствующие, заменённые, лишние и повторные пути отклонять как `KB_POLICY_LOCK`, даже если индекс перестал ссылаться на пакет; ссылку на незакреплённый файл — как `KB_POLICY_LINK`.
 
 ## Зона файлов
 
@@ -32,6 +36,7 @@
 3. Regression cases покрывают Unicode byte-count (многобайтный текст), превышение бюджета обеими командами, пустой stdout при отказе и успешную полную выдачу при достаточном бюджете.
 4. Контракт `context -MaxBytes` и существующие проверки остаются прежними.
 5. Локальные KB-регрессии и quality gate проходят на точном HEAD/рабочем diff; scope, handoff и `git diff --check` согласованы.
+6. Fixtures моделируют полный девятифайловый пакет; сокращение lock до одного индекса, пропуск канонического модуля, изменение его байтов, отсутствие файла, незакреплённая ссылка и дубликат отклоняются ожидаемыми кодами.
 
 ## Ограничения
 
@@ -39,6 +44,6 @@
 
 ## Текущая проверка
 
-- На рабочем diff от base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`: KB-regressions — 48/48 PASS; полный quality gate — PASS; `git diff --check` — PASS.
-- Gate охватил privacy (38 Markdown + test source), hygiene (56 text files), Actionlint и Gitleaks; application stack build/dependency audit — NOT APPLICABLE, стек не выбран.
-- Эти результаты относятся к рабочему содержимому, не к commit SHA. Commit, push, hosted CI и независимое review ещё нужны.
+- Полный gate выполнен на рабочем содержимом поверх committed HEAD `3f75090c6e236aca7ffb5533a83e7f7302e71f18` и базы `origin/main` `f577dc70e58d75ab5fd61d0c2e712c27b590713a`: KB-regressions — 52/52 PASS; PowerShell AST и `git diff --check` — PASS. Scoped commit содержит ровно это проверенное содержимое.
+- `quality-gate.ps1 -BaseRef origin/main` — PASS: 6 PowerShell files parsed; privacy — 38 Markdown plus regression source; hygiene — 56 text files; Actionlint PASS; Gitleaks PASS (64 reachable commits, рабочее дерево и supplied push range).
+- Application stack build/dependency audit — NOT COVERED, стек не выбран. Hosted CI и независимое review требуются на опубликованном SHA этой правки; результаты старого PR head не переносятся.

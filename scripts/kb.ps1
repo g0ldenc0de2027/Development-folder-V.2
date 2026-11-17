@@ -185,7 +185,18 @@ function Read-Rules {
     if ($lock.version -cnotmatch '^\d+\.\d+\.\d+$') { Fail 'KB_POLICY_LOCK' }
     $sourceGuid = [guid]::Empty
     if ($lock.sourceCollectionId -isnot [string] -or -not [guid]::TryParseExact($lock.sourceCollectionId,'D',[ref]$sourceGuid) -or $sourceGuid -eq [guid]::Empty) { Fail 'KB_POLICY_LOCK' }
-    if ($lock.files -isnot [array] -or $lock.files.Count -lt 1 -or $lock.files.Count -gt 12) { Fail 'KB_POLICY_LOCK' }
+    $requiredPaths = @(
+        'rules/RULES.md',
+        'rules/modules/01-knowledge-and-calibration.md',
+        'rules/modules/02-spec-and-quality.md',
+        'rules/modules/03-agents-and-workspace.md',
+        'rules/modules/04-git-and-release.md',
+        'rules/modules/05-security.md',
+        'rules/modules/06-ui-i18n-help.md',
+        'rules/modules/07-research-and-decisions.md',
+        'rules/COVERAGE.md'
+    )
+    if ($lock.files -isnot [array] -or $lock.files.Count -ne $requiredPaths.Count) { Fail 'KB_POLICY_LOCK' }
     $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $files = [Collections.Generic.List[object]]::new()
     foreach ($entry in $lock.files) {
@@ -199,6 +210,9 @@ function Read-Rules {
         try { $body = $utf8.GetString($bytes) } catch { Fail 'KB_UTF8_INVALID' }
         Assert-NoObviousSecret $body
         $files.Add(@{path=$entry.path;sha256=$entry.sha256;body=$body})
+    }
+    foreach ($requiredPath in $requiredPaths) {
+        if (-not $paths.Contains($requiredPath)) { Fail 'KB_POLICY_LOCK' }
     }
     $index = @($files | Where-Object { $_.path -ceq 'rules/RULES.md' })
     if ($index.Count -ne 1) { Fail 'KB_POLICY_LOCK' }

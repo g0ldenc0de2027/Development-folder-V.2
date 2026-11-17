@@ -71,11 +71,15 @@ Capture создаёт уникальный draft envelope в ignored data/knowl
 Редактировать RULES следует в общей БЗ. V2 хранит точную копию; policy-lock фиксирует
 версию, sourceCollectionId и SHA-256 каждого файла. После обновления канона главный ИИ проверяет diff,
 переносит полную копию и обновляет lock одной задачей, затем запускает check.
-Пакет редакции 0.2.0: index rules/RULES.md, семь rules/modules/*.md и rules/COVERAGE.md.
-У каждой нормы один модуль; индекс задаёт общие ограничения и маршрут чтения.
-Policy-lock имеет schemaVersion=2 и files с path/sha256, максимум 12 файлов.
-Неизвестная схема, отсутствующий файл, изменённые байты, повтор пути или локальная
-ссылка за пределы поставки приводят к отказу. Старый lock schema 1 не конвертируется
+Пакет правил содержит ровно девять обязательных путей: `rules/RULES.md`, семь
+канонических файлов `rules/modules/01-knowledge-and-calibration.md`,
+`02-spec-and-quality.md`, `03-agents-and-workspace.md`, `04-git-and-release.md`,
+`05-security.md`, `06-ui-i18n-help.md`, `07-research-and-decisions.md` и
+`rules/COVERAGE.md`. У каждой нормы один модуль; индекс задаёт общие ограничения и маршрут чтения.
+Policy-lock schemaVersion=2 фиксирует path/sha256 каждого файла. CLI требует точное
+множество этих девяти путей и возвращает `KB_POLICY_LOCK` при пропуске, подмене, лишнем
+или повторном пути; локальная ссылка на незакреплённый файл возвращает `KB_POLICY_LINK`.
+Изменённые байты возвращают `KB_POLICY_CHANGED`. Старый lock schema 1 не конвертируется
 молча: сохраните снимок, перенесите полную согласованную поставку и проверьте check/context.
 Каталог знаний сохраняет schemaVersion=1. Карта COVERAGE различает норму и реальную автоматику.
 
@@ -113,9 +117,13 @@ Do not store credentials or personal data. Back up ignored inbox separately.
 ### English policy-package update and recovery
 
 The editable rules canon is in the shared collection; projects keep a byte-identical snapshot.
-Policy-lock schema 2 pins the index, seven thematic modules and the coverage map.
-Update the entire approved package in one task; schema 1 is refused rather than silently migrated.
-Check validates every pinned file and local Markdown link; context returns all pinned texts.
+The package has exactly nine required paths: `rules/RULES.md`, the seven canonical files
+under `rules/modules/` (`01-knowledge-and-calibration.md` through
+`07-research-and-decisions.md`), and `rules/COVERAGE.md`. Policy-lock schema 2 pins every
+path and SHA-256. `check` rejects missing, substituted, extra, or duplicate lock paths as
+`KB_POLICY_LOCK`; an unpinned local Markdown link is `KB_POLICY_LINK`, and changed bytes
+are `KB_POLICY_CHANGED`. Update the entire approved package in one task; schema 1 is refused
+rather than silently migrated. Check validates every pinned file and local Markdown link; context returns all pinned texts.
 The default context budget is 128 KiB (512–262144 bytes); an insufficient budget fails explicitly.
 Full `search` and `get` JSON output uses a separate `-MaxOutputBytes` budget (131072 default,
 512–2097152 range), counted as UTF-8 bytes including the final LF. Oversized output returns
