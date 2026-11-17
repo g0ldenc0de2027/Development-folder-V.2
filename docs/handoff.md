@@ -1,10 +1,10 @@
-# Handoff — T-004, 2026-11-15
+# Handoff — attribution recovery T-016, 2026-11-17
 
-- T-003 слита PR #3 в main (squash commit 9f98b28046ca605577e5a829e02818335f66174c); task/T-004 объединяется с новой main.
-- Повторная сверка: RULES 0.2.0, семь модулей, COVERAGE и schema 2 lock всего пакета; восстановлен утверждённый список языков.
-- Общая БЗ — редактируемый канон, здесь точная закреплённая копия; путь подключения произвольный и локальный.
-- Реализован файловый CLI; новые проверки охватывают весь пакет и optional/null marker. Актуальные test/CI evidence и точные SHA — PR #4.
-- Перед merge нужны свежие independent review/CI и последовательная интеграция после T-003. Swarm, прикладная матрица, security-watch и валидатор переводов ещё не готовы; детали в rules/COVERAGE.md.
+- T-013 остаётся DRAFT / NOT READY; agent orchestrator/adapters не реализованы. Draft spec/roadmap 0.18.2, research 2.9.4.
+- Исходная T-013 ветка сохранена без изменений: HEAD 88342060af7c6c18a163d3b6fa6727ab5c17fd7e, два fixture-authored commits и семь modified paths. Историческая атрибуция UNKNOWN; exact input manifest 704 bytes / 39fc2f2f042d15e546b778cff626ab8e60d1eaf0adf3383b80868fb64e9cc37f. В T-016 семь файлов побайтно скопированы от origin/main f577dc70e58d75ab5fd61d0c2e712c27b590713a без переноса старых commit objects.
+- T-016 добавляет в DRAFT FR-AOR-006 версионированную Unicode 18.0.0 display policy; implementation remains blocked. Review findings про assignment, account-memory digest, COM¹/LPT¹ и M5 уже покрыты текстом; Unicode gap закрывается формальным правилом. Прежние review snapshots не относятся к T-016.
+- PR #10/T-011: OPEN/DRAFT, head 2298597c76dddf3deb9d0b11ca9b9f758cea50b5, hosted run #43866666822 SUCCESS. PR #11/#12/#13/#14: OPEN/DRAFT, hosted quality-gate SUCCESS на head, перечисленных в актуальных PR; merge не выполнялся.
+- T-016: полный локальный quality gate и `git diff --check` прошли на восьми scoped paths; дальше — точная фиксация, обычный push task branch, draft PR и свежее read-only review. Старый T-013 source worktree сохранять без изменений до отдельного решения владельца.
 
 ## Исторический bootstrap-снимок до слияния T-003 (не текущие статусы задач)
 
