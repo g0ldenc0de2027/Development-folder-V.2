@@ -1,9 +1,9 @@
-# Handoff — T-015, 2026-11-17
+# Передача работы — T-015, 2026-11-17
 
-- Root cause confirmed: configure-local.ps1 wrote identity with git config --local into the shared admin config; Scope Fixture therefore leaked to linked worktrees.
-- T-015 adds per-worktree GitHub-account verification, safe automatic repair before commit, outgoing commit author/committer checks before push, and 13 synthetic regressions.
-- Validation: full local quality gate passed on the current worktree; KB regressions 44/44, identity regressions 13/13, actionlint and Gitleaks passed; both shell hooks parse with Git for Windows sh -n.
-- No commit or push yet. Next: review exact staged scope, commit with verified worktree identity, push the task branch, then request independent review and hosted CI.
+- Причина: `configure-local.ps1` писал Git identity через `git config --local` в общий admin config; поэтому `Scope Fixture` попадал в linked worktrees.
+- T-015 хранит identity отдельно в каждом worktree, сверяет live GitHub account, безопасно исправляет обычный drift до commit, проверяет metadata исходящих commits перед push и покрывает поведение 14 синтетическими регрессиями.
+- Ветка опубликована, открыт draft [PR #11](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/11). Локальный и hosted quality gate прошли для опубликованного содержимого; актуальные head, CI и их результаты сверяются по PR, поскольку каждый новый commit требует повторной проверки.
+- Следующий шаг: получить независимое ревью текущего live head, закрыть замечания и повторно подтвердить gates на итоговой ревизии. PR не сливать до зелёного CI и успешного независимого review.
 - Historical T-004/bootstrap notes below are preserved as historical records.
 # Handoff — T-004, 2026-11-15
 
