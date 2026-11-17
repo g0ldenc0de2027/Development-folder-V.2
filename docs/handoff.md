@@ -4,9 +4,8 @@
 - The complete response is serialized to UTF-8 bytes before writing; `context -MaxBytes` retains its prior contract. The output limit does not cap corpus reading or serialization memory.
 - T-014 also closes a verified LKB-001 gap: `check` now requires the exact nine canonical RULES package paths; an index-only, incomplete, substituted, extra, duplicate, changed or unpinned package is rejected.
 - LKB-009 remains the only new product slice; LKB-001 is a corrective completion of an existing requirement. The overall project remains `DRAFT / NOT READY`.
-- Full gate ran on the exact working content over baseline HEAD `3f75090c6e236aca7ffb5533a83e7f7302e71f18` and `origin/main` `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; KB regressions pass 52/52, PowerShell AST and `git diff --check` pass. The scoped commit captures this checked content.
-- Full `quality-gate.ps1 -BaseRef origin/main` passes: privacy 38 Markdown plus regression source; hygiene 56 text files; Actionlint; Gitleaks across 64 reachable commits, working tree and supplied push range. No application stack is selected, so build/dependency audit is not covered.
-- Hosted CI and independent review remain required on the published SHA; old PR checks do not validate this revision. Do not merge until both are current and successful.
+- An internal read-only review reproduced an output-limit bypass for uppercase `SEARCH/GET`. The working tree now uses case-insensitive command membership and has adversarial uppercase regressions. Full local quality gate passes on this diff over HEAD `7715450d0664eb9c64a3f0e5e42eb814f187ac37` and base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`: KB 52/52, PowerShell/JSON parse, privacy 38 Markdown + regression source, hygiene 56 text files, Actionlint and Gitleaks (65 commits), exit 0; `git diff --check` PASS, exit 0.
+- Hosted run `#44192782023` is historical and applies only to the pre-follow-up head. Use live PR #12 for the current head, CI and review status; merge only after its gate and fresh independent review pass on the exact head. Application stack build/dependency audit is not covered because the template has no selected stack.
 
 # Handoff — T-004, 2026-11-15
 

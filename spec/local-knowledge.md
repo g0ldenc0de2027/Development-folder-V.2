@@ -65,7 +65,7 @@ Doctor допускает отсутствие/null knowledge_base; нестро
 | LKB-006 | P0 | Capture создаёт отдельное предложение, не меняя catalog | Schema 2 требует source/scope/author/runtime; уникальная публикация; неполный stage не готов; секрет-подобный ввод отклоняется |
 | LKB-007 | P0 | Config общей БЗ разрешается env, иначе локальный marker; null/отсутствие поля — not_configured | Явно недоступный источник не заменяется; doctor не утверждает совместимость |
 | LKB-008 | P1 | БЗ работает офлайн и после переноса проекта | Нет загрузок/телеметрии/сервисов; все canonical refs относительны |
-| LKB-009 | P1 | Полные JSON-ответы `search/get` ограничены явным UTF-8 byte budget | Default 131072, диапазон 512–2097152; точный сериализованный ответ + newline в бюджете; при превышении `KB_OUTPUT_LIMIT`, exit 1, stdout пустой, без truncation; Unicode-byte и успешный увеличенный budget покрыты regressions |
+| LKB-009 | P1 | Полные JSON-ответы `search/get` ограничены явным UTF-8 byte budget | Default 131072, диапазон 512–2097152; точный сериализованный ответ + newline в бюджете; при превышении `KB_OUTPUT_LIMIT`, exit 1, stdout пустой, без truncation; Unicode-byte, accepted command casing и успешный увеличенный budget покрыты regressions |
 
 LKB-002/003 предшествуют LKB-004/005. Capture не предоставляет права admission. LKB-009 ограничивает только итоговый stdout для search/get; внутренний working set не является гарантированно ограниченным.
 Проверки привязаны к этим IDs; CI запускает отдельный regression suite.

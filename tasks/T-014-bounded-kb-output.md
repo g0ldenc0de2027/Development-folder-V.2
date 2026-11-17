@@ -16,6 +16,8 @@
 
 Добавить отдельный параметр `-MaxOutputBytes` для полных JSON-ответов `search` и `get`: default 131072 байта, диапазон 512–2097152. При превышении возвращать `KB_OUTPUT_LIMIT`, exit 1 и пустой stdout. Не урезать JSON/записи. Существующий `-MaxBytes` и код отказа `KB_CONTEXT_LIMIT` для `context` оставить без изменений. Текущие поля и полные тела записей при успешном ответе сохранить.
 
+PowerShell принимает значения `Command` из `ValidateSet` без учёта регистра. Поэтому проверка бюджета обязана одинаково охватывать все принятые варианты написания команды; верхний регистр нельзя трактовать как обход.
+
 Для уже принятого LKB-001 проверять в schema 2 lock точное множество девяти канонических путей RULES: индекс, модули 01–07 с фиксированными именами и `rules/COVERAGE.md`. Отсутствующие, заменённые, лишние и повторные пути отклонять как `KB_POLICY_LOCK`, даже если индекс перестал ссылаться на пакет; ссылку на незакреплённый файл — как `KB_POLICY_LINK`.
 
 ## Зона файлов
@@ -32,8 +34,8 @@
 ## Приёмка
 
 1. Спецификация определяет параметр, default/range, подсчёт UTF-8 байтов сериализованного JSON вместе с завершающей новой строкой, fail-closed поведение и отсутствие обрезания.
-2. `search` и `get` не пишут частичный/полный JSON в stdout при превышении бюджета; stderr содержит только короткий стабильный код.
-3. Regression cases покрывают Unicode byte-count (многобайтный текст), превышение бюджета обеими командами, пустой stdout при отказе и успешную полную выдачу при достаточном бюджете.
+2. `search` и `get` не пишут частичный/полный JSON в stdout при превышении бюджета; stderr содержит только короткий стабильный код. Любые написания команд, принимаемые `ValidateSet` (включая `SEARCH` и `GET`), имеют тот же предел.
+3. Regression cases покрывают Unicode byte-count (многобайтный текст), превышение бюджета обеими командами в нижнем и верхнем регистре, пустой stdout при отказе и успешную полную выдачу при достаточном бюджете.
 4. Контракт `context -MaxBytes` и существующие проверки остаются прежними.
 5. Локальные KB-регрессии и quality gate проходят на точном HEAD/рабочем diff; scope, handoff и `git diff --check` согласованы.
 6. Fixtures моделируют полный девятифайловый пакет; сокращение lock до одного индекса, пропуск канонического модуля, изменение его байтов, отсутствие файла, незакреплённая ссылка и дубликат отклоняются ожидаемыми кодами.
@@ -42,8 +44,14 @@
 
 Лимит ограничивает stdout-ответ, но не обещает ограничить объём чтения/внутреннюю память до сериализации. Не менять схему каталога, статус admission знаний, поиск по shared KB или transport к AI-провайдерам.
 
-## Текущая проверка
+## Проверка исходного среза (до case-variant follow-up)
 
 - Полный gate выполнен на рабочем содержимом поверх committed HEAD `3f75090c6e236aca7ffb5533a83e7f7302e71f18` и базы `origin/main` `f577dc70e58d75ab5fd61d0c2e712c27b590713a`: KB-regressions — 52/52 PASS; PowerShell AST и `git diff --check` — PASS. Scoped commit содержит ровно это проверенное содержимое.
 - `quality-gate.ps1 -BaseRef origin/main` — PASS: 6 PowerShell files parsed; privacy — 38 Markdown plus regression source; hygiene — 56 text files; Actionlint PASS; Gitleaks PASS (64 reachable commits, рабочее дерево и supplied push range).
 - Application stack build/dependency audit — NOT COVERED, стек не выбран. Hosted CI и независимое review требуются на опубликованном SHA этой правки; результаты старого PR head не переносятся.
+
+## Follow-up проверка регистра (2026-11-18)
+
+- Внутренний read-only review точного PR head `7715450d0664eb9c64a3f0e5e42eb814f187ac37` обнаружил обход: `ValidateSet` принимает команды без учёта регистра, а `-cin` пропускал `SEARCH/GET` мимо лимита. Новые фикстуры воспроизвели дефект до исправления; после замены на `-in` регрессии прошли 52/52 (exit 0).
+- Полный `pwsh -NoProfile -File scripts/quality-gate.ps1 -BaseRef origin/main` на текущем working diff поверх HEAD `7715450d0664eb9c64a3f0e5e42eb814f187ac37` и base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`: **PASS, exit 0**; KB regressions 52/52, PowerShell/JSON parse PASS, privacy 38 Markdown + regression source, hygiene 56 text files, Actionlint PASS, Gitleaks PASS (65 commits, working tree и push range). `git diff --check`: **PASS, exit 0**.
+- Hosted run `#44192782023` относится к прежнему head и fix не подтверждает. Перед merge нужны свежие CI и независимое review точного live head; стековая сборка/dependency audit не применяются к docs-only template без выбранного стека.

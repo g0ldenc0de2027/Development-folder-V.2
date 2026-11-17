@@ -193,6 +193,8 @@ try {
         if($payload.result.records.Count -ne 1 -or $payload.result.records[0].body -cne $body){throw 'search body was truncated'}
         $under=Run-Captured ($arguments+@('-MaxOutputBytes',[string]($baseline.stdoutBytes.Length-1)))
         if($under.exitCode -ne 1 -or $under.stderr.Trim() -cne 'KB_OUTPUT_LIMIT' -or $under.stdoutBytes.Length -ne 0){throw 'search over-budget behavior'}
+        $upperSearch=Run-Captured @('SEARCH','-Query','Title alpha','-Limit','1','-MaxOutputBytes',[string]($baseline.stdoutBytes.Length-1))
+        if($upperSearch.exitCode -ne 1 -or $upperSearch.stderr.Trim() -cne 'KB_OUTPUT_LIMIT' -or $upperSearch.stdoutBytes.Length -ne 0){throw 'uppercase search bypassed output budget'}
         $exact=Run-Captured ($arguments+@('-MaxOutputBytes',[string]$baseline.stdoutBytes.Length))
         $exactPayload=$utf8.GetString($exact.stdoutBytes)|ConvertFrom-Json -Depth 30
         if($exact.exitCode -ne 0 -or $exact.stdoutBytes.Length -ne $baseline.stdoutBytes.Length -or $exactPayload.result.records[0].body -cne $body){throw 'search exact budget boundary'}
@@ -208,6 +210,8 @@ try {
         if($baseline.exitCode -ne 0 -or $baseline.stdoutBytes.Length -le 512){throw 'get baseline'}
         $blocked=Run-Captured ($arguments+@('-MaxOutputBytes','512'))
         if($blocked.exitCode -ne 1 -or $blocked.stderr.Trim() -cne 'KB_OUTPUT_LIMIT' -or $blocked.stdoutBytes.Length -ne 0){throw 'get over-budget behavior'}
+        $upperGet=Run-Captured @('GET','-Id','alpha','-MaxOutputBytes','512')
+        if($upperGet.exitCode -ne 1 -or $upperGet.stderr.Trim() -cne 'KB_OUTPUT_LIMIT' -or $upperGet.stdoutBytes.Length -ne 0){throw 'uppercase get bypassed output budget'}
         $full=Run-Captured ($arguments+@('-MaxOutputBytes',[string]$baseline.stdoutBytes.Length))
         $payload=$utf8.GetString($full.stdoutBytes)|ConvertFrom-Json -Depth 30
         if($full.exitCode -ne 0 -or $payload.result.record.body -cne $body){throw 'get full response with sufficient budget'}

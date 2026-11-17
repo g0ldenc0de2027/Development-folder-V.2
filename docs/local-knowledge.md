@@ -26,6 +26,8 @@ KB_CONTEXT_LIMIT. По умолчанию бюджет 128 KiB, диапазон
 вместе с завершающим LF. Если ответ больше бюджета, CLI возвращает `KB_OUTPUT_LIMIT`
 и exit 1, пишет пустой stdout и не обрезает JSON. Лимит относится только к выдаче:
 он не ограничивает объём чтения и внутреннюю память до сериализации.
+Значение команды принимается PowerShell без учёта регистра; `SEARCH` и `GET` подчиняются
+тому же лимиту.
 
 ## Произвольное местоположение общей БЗ
 
@@ -128,6 +130,8 @@ The default context budget is 128 KiB (512–262144 bytes); an insufficient budg
 Full `search` and `get` JSON output uses a separate `-MaxOutputBytes` budget (131072 default,
 512–2097152 range), counted as UTF-8 bytes including the final LF. Oversized output returns
 `KB_OUTPUT_LIMIT`, exit 1, and empty stdout without truncation; processing memory is not bounded.
+PowerShell accepts command values case-insensitively, so uppercase `SEARCH` and `GET` use
+the same output limit.
 KB_POLICY_CHANGED means bytes differ; KB_POLICY_LINK means an unpinned local link;
 KB_POLICY_LOCK means a malformed/unsupported package. Restore a reviewed package, do not bypass checks.
 Missing or null knowledge_base is not configured; a non-string location is invalid.

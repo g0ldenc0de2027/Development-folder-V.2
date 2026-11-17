@@ -296,7 +296,7 @@ try {
     }
     $json=@{schemaVersion=1;command=$Command;result=$result} | ConvertTo-Json -Depth 20
     if ($Command -eq 'context' -and $utf8.GetByteCount($json) -gt $MaxBytes) { Fail 'KB_CONTEXT_LIMIT' }
-    if ($Command -cin @('search','get')) {
+    if ($Command -in @('search','get')) {
         $outputBytes=$utf8.GetBytes($json+[char]10)
         if ($outputBytes.Length -gt $MaxOutputBytes) { Fail 'KB_OUTPUT_LIMIT' }
         $stdout=[Console]::OpenStandardOutput()
