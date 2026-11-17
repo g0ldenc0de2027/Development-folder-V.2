@@ -1,3 +1,10 @@
+# Handoff — T-015, 2026-11-17
+
+- Root cause confirmed: configure-local.ps1 wrote identity with git config --local into the shared admin config; Scope Fixture therefore leaked to linked worktrees.
+- T-015 adds per-worktree GitHub-account verification, safe automatic repair before commit, outgoing commit author/committer checks before push, and 13 synthetic regressions.
+- Validation: full local quality gate passed on the current worktree; KB regressions 44/44, identity regressions 13/13, actionlint and Gitleaks passed; both shell hooks parse with Git for Windows sh -n.
+- No commit or push yet. Next: review exact staged scope, commit with verified worktree identity, push the task branch, then request independent review and hosted CI.
+- Historical T-004/bootstrap notes below are preserved as historical records.
 # Handoff — T-004, 2026-11-15
 
 - T-003 слита PR #3 в main (squash commit 9f98b28046ca605577e5a829e02818335f66174c); task/T-004 объединяется с новой main.

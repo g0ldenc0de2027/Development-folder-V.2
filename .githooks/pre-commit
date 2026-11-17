@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+repo_root=$(git rev-parse --show-toplevel) || {
+    echo "pre-commit: repository root could not be resolved" >&2
+    exit 1
+}
+if ! command -v pwsh >/dev/null 2>&1; then
+    echo "pre-commit: PowerShell 7 is required" >&2
+    exit 1
+fi
+if pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1"; then
+    exit 0
+else
+    verify_status=$?
+fi
+if [ "$verify_status" -eq 23 ]; then
+    echo "pre-commit: explicit Git identity/config environment overrides block commit; remove the override and retry" >&2
+    exit 1
+fi
+echo "pre-commit: identity is missing or invalid; verifying GitHub account and repairing this worktree" >&2
+pwsh -NoLogo -NoProfile -File "$repo_root/scripts/github/configure-local.ps1"
+exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1"

@@ -12,6 +12,9 @@
 ## Изоляция и Git
 - main защищена на GitHub; обычные обновления идут только через PR. Единственное исключение — чистый initial root commit в подтверждённо пустой origin по процедуре docs/github-workflow.md.
 - Новая работа ведется в отдельной ветке task/T-NNN и отдельном worktree; не смешивай задачи.
+- Git identity задаётся только в конфиге конкретного linked worktree через git config --worktree после проверки gh api user против commitIdentity в config/github/repository.json; общую identity в common .git/config не использовать.
+- Перед commit hook проверяет текущие author/committer identity; перед push hook проверяет также metadata всех отправляемых commits. Author/committer environment values допустимы только при точном совпадении с закреплённой repository identity; несовпадающие environment/config overrides и `--author` блокируются.
+- До commit разрешено безопасно восстановить identity только через scripts/github/configure-local.ps1, если GitHub CLI подтверждает ожидаемые login и numeric user ID. После commit неверную атрибуцию не переписывать: сохранить refs/patch и оформить отдельную recovery-задачу с новой историей.
 - Перед commit проверь полный diff, статус, секреты и только точный набор файлов задачи.
 - Записывай PR head SHA, base SHA и CI merge-result SHA как отдельные значения; независимое review привязывай к head, а CI — к тестируемому merge-result этих точных head/base.
 - Сообщения commit — Conventional Commits; AI-assisted commit получает trailer Assisted-by с именем агента и моделью.
