@@ -13,7 +13,8 @@ $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/lib/GitIdent
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $utf8 = [Text.UTF8Encoding]::new($false)
 $passed = 0
-$envNames = @('GIT_AUTHOR_NAME','GIT_AUTHOR_EMAIL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL',
+$envNames = @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_CEILING_DIRECTORIES',
+    'GIT_AUTHOR_NAME','GIT_AUTHOR_EMAIL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL',
     'GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0','GIT_CONFIG_PARAMETERS','GIT_CONFIG_GLOBAL',
     'GIT_CONFIG_NOSYSTEM')
 $savedEnv = @{}
@@ -52,7 +53,10 @@ try {
     [IO.Directory]::CreateDirectory($xdg) | Out-Null
     $env:GIT_CONFIG_GLOBAL = $globalConfig
     $env:GIT_CONFIG_NOSYSTEM = '1'
-    foreach ($name in @('GIT_AUTHOR_NAME','GIT_AUTHOR_EMAIL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL','GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0','GIT_CONFIG_PARAMETERS')) { Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue }
+    foreach ($name in @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_CEILING_DIRECTORIES',
+        'GIT_AUTHOR_NAME','GIT_AUTHOR_EMAIL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL','GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0','GIT_CONFIG_PARAMETERS')) {
+        Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
+    }
 
     Invoke-GitFixture -Directory $scratch -Arguments @('init','--quiet',$seed) | Out-Null
     Invoke-GitFixture -Directory $seed -Arguments @('config','extensions.worktreeConfig','true') | Out-Null
