@@ -61,14 +61,36 @@ function Invoke-GitProcess([string[]]$Arguments,[hashtable]$Environment=@{}) {
     $process.WaitForExit()
     return [pscustomobject]@{ ExitCode=$process.ExitCode; StdOut=$stdoutTask.Result; StdErr=$stderrTask.Result }
 }
+function Find-GitForWindowsShellRoot([string[]]$StartPaths) {
+    foreach ($startPath in $StartPaths) {
+        if ([string]::IsNullOrWhiteSpace($startPath)) { continue }
+        try { $current = [IO.Path]::GetFullPath($startPath) }
+        catch { continue }
+        if (Test-Path -LiteralPath $current -PathType Leaf) { $current = [IO.Path]::GetDirectoryName($current) }
+        while (-not [string]::IsNullOrWhiteSpace($current)) {
+            $sh = Join-Path $current 'bin/sh.exe'
+            $cygpath = Join-Path $current 'usr/bin/cygpath.exe'
+            if ((Test-Path -LiteralPath $sh -PathType Leaf) -and (Test-Path -LiteralPath $cygpath -PathType Leaf)) {
+                return [IO.Path]::GetFullPath($current)
+            }
+            $parentInfo = [IO.Directory]::GetParent($current)
+            if ($null -eq $parentInfo) { break }
+            $parent = $parentInfo.FullName
+            if ($parent.Equals($current,[StringComparison]::OrdinalIgnoreCase)) { break }
+            $current = $parent
+        }
+    }
+    return $null
+}
 function New-PwshShim([string]$Directory,[string]$LogPath) {
     $gitExe = (Get-Command git -ErrorAction Stop).Source
-    $gitRoot = Split-Path (Split-Path $gitExe -Parent) -Parent
+    $execPathOutput = @(& git --exec-path 2>$null)
+    $execPathExitCode = $LASTEXITCODE
+    if ($execPathExitCode -ne 0 -or $execPathOutput.Count -eq 0) { throw 'GIT_IDENTITY_GIT_EXEC_PATH_UNAVAILABLE' }
+    $gitRoot = Find-GitForWindowsShellRoot -StartPaths @($gitExe,([string]$execPathOutput[0]).Trim())
+    if ([string]::IsNullOrWhiteSpace($gitRoot)) { throw 'GIT_IDENTITY_GIT_FOR_WINDOWS_SHELL_MISSING' }
     $sh = Join-Path $gitRoot 'bin/sh.exe'
     $cygpath = Join-Path $gitRoot 'usr/bin/cygpath.exe'
-    if (-not (Test-Path -LiteralPath $sh -PathType Leaf) -or -not (Test-Path -LiteralPath $cygpath -PathType Leaf)) {
-        throw 'GIT_IDENTITY_GIT_FOR_WINDOWS_SHELL_MISSING'
-    }
     [IO.Directory]::CreateDirectory($Directory) | Out-Null
     $shim = Join-Path $Directory 'pwsh'
     WriteText $shim @'
@@ -464,6 +486,20 @@ try {
         $null = Set-GitWorktreeIdentity -RepositoryRoot $worktree -Login 'SYNTHETIC-OWNER' -UserId '123456'
         if ((Invoke-GitFixture -Directory $worktree -Arguments @('config','--worktree','--get','user.name')) -cne 'synthetic-owner') {
             throw 'GIT_IDENTITY_LOGIN_CASE_NOT_CANONICALIZED'
+        }
+    }
+    Case 'GIT-ID-022 nested Git executable resolves the installation shell root' {
+        $syntheticGitRoot = Join-Path $scratch 'synthetic-git-install'
+        $nestedGitExe = Join-Path $syntheticGitRoot 'mingw64/libexec/git-core/git.exe'
+        $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($nestedGitExe))
+        $null = [IO.Directory]::CreateDirectory((Join-Path $syntheticGitRoot 'bin'))
+        $null = [IO.Directory]::CreateDirectory((Join-Path $syntheticGitRoot 'usr/bin'))
+        WriteText (Join-Path $syntheticGitRoot 'bin/sh.exe') ''
+        WriteText (Join-Path $syntheticGitRoot 'usr/bin/cygpath.exe') ''
+        WriteText $nestedGitExe ''
+        $resolvedRoot = Find-GitForWindowsShellRoot -StartPaths @($nestedGitExe)
+        if (-not $resolvedRoot.Equals([IO.Path]::GetFullPath($syntheticGitRoot),[StringComparison]::OrdinalIgnoreCase)) {
+            throw 'GIT_IDENTITY_NESTED_EXECUTABLE_ROOT_NOT_FOUND'
         }
     }
     Write-Output ('GIT-IDENTITY-REGRESSIONS: ' + $passed + ' passed, 0 failed')
