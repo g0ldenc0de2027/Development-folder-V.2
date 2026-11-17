@@ -21,6 +21,12 @@ Get/search исключают withdrawn и superseded по умолчанию; �
 Context включает index, все закреплённые модули, карту охвата и выбранные записи; при превышении -MaxBytes отказ
 KB_CONTEXT_LIMIT. По умолчанию бюджет 128 KiB, диапазон 512–262144 bytes. Он не означает автоматическую загрузку в конкретный AI client.
 
+Полные ответы `search` и `get` ограничены отдельно через `-MaxOutputBytes`: по умолчанию
+131072 байта, допустимый диапазон 512–2097152. Считаются UTF-8 байты точного JSON
+вместе с завершающим LF. Если ответ больше бюджета, CLI возвращает `KB_OUTPUT_LIMIT`
+и exit 1, пишет пустой stdout и не обрезает JSON. Лимит относится только к выдаче:
+он не ограничивает объём чтения и внутреннюю память до сериализации.
+
 ## Произвольное местоположение общей БЗ
 
 Путь задаётся через ETALON_KNOWLEDGE_BASE, иначе knowledge_base локального .etalon.json.
@@ -111,6 +117,9 @@ Policy-lock schema 2 pins the index, seven thematic modules and the coverage map
 Update the entire approved package in one task; schema 1 is refused rather than silently migrated.
 Check validates every pinned file and local Markdown link; context returns all pinned texts.
 The default context budget is 128 KiB (512–262144 bytes); an insufficient budget fails explicitly.
+Full `search` and `get` JSON output uses a separate `-MaxOutputBytes` budget (131072 default,
+512–2097152 range), counted as UTF-8 bytes including the final LF. Oversized output returns
+`KB_OUTPUT_LIMIT`, exit 1, and empty stdout without truncation; processing memory is not bounded.
 KB_POLICY_CHANGED means bytes differ; KB_POLICY_LINK means an unpinned local link;
 KB_POLICY_LOCK means a malformed/unsupported package. Restore a reviewed package, do not bypass checks.
 Missing or null knowledge_base is not configured; a non-string location is invalid.

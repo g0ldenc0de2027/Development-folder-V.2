@@ -7,6 +7,7 @@ param(
     [string]$Source, [string]$Scope, [string]$Author, [string]$Runtime,
     [ValidateRange(1,100)][int]$Limit = 20,
     [ValidateRange(512,262144)][int]$MaxBytes = 131072,
+    [ValidateRange(512,2097152)][int]$MaxOutputBytes = 131072,
     [switch]$IncludeWithdrawn
 )
 Set-StrictMode -Version Latest
@@ -281,7 +282,14 @@ try {
     }
     $json=@{schemaVersion=1;command=$Command;result=$result} | ConvertTo-Json -Depth 20
     if ($Command -eq 'context' -and $utf8.GetByteCount($json) -gt $MaxBytes) { Fail 'KB_CONTEXT_LIMIT' }
-    [Console]::Out.WriteLine($json)
+    if ($Command -cin @('search','get')) {
+        $outputBytes=$utf8.GetBytes($json+[char]10)
+        if ($outputBytes.Length -gt $MaxOutputBytes) { Fail 'KB_OUTPUT_LIMIT' }
+        $stdout=[Console]::OpenStandardOutput()
+        $stdout.Write($outputBytes,0,$outputBytes.Length)
+    } else {
+        [Console]::Out.WriteLine($json)
+    }
     exit 0
 } catch {
     $code=$_.Exception.Message

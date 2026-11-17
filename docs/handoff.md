@@ -1,3 +1,11 @@
+# Handoff — T-014, 2026-11-17
+
+- T-014 implements bounded JSON stdout for local KB `search/get` through `-MaxOutputBytes` (131072 default, 512–2097152 range); oversized output fails closed as `KB_OUTPUT_LIMIT` with no stdout or truncation.
+- The complete response is serialized to UTF-8 bytes before writing; `context -MaxBytes` retains its prior contract. The output limit does not cap corpus reading or serialization memory.
+- LKB-009 is the only newly admitted product slice; the overall project remains `DRAFT / NOT READY`.
+- KB regressions pass 48/48, including Unicode byte counts, exact limit, empty stdout, default and parameter boundaries. Full quality gate, Actionlint, Gitleaks and `git diff --check` pass on this working tree; app-stack checks are not applicable because no stack is selected.
+- Committed HEAD remains base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; gate evidence covers the current uncommitted diff. Next: scoped commit, normal push through hooks, then hosted CI and independent review on the resulting head. Do not merge here.
+
 # Handoff — T-004, 2026-11-15
 
 - T-003 слита PR #3 в main (squash commit 9f98b28046ca605577e5a829e02818335f66174c); task/T-004 объединяется с новой main.
