@@ -4,7 +4,7 @@
 - Исходная T-013 ветка сохранена без изменений: HEAD 88342060af7c6c18a163d3b6fa6727ab5c17fd7e, два fixture-authored commits и семь modified paths. Историческая атрибуция UNKNOWN; exact input manifest 704 bytes / 39fc2f2f042d15e546b778cff626ab8e60d1eaf0adf3383b80868fb64e9cc37f. В T-016 семь файлов побайтно скопированы от origin/main f577dc70e58d75ab5fd61d0c2e712c27b590713a без переноса старых commit objects.
 - T-016 добавляет в DRAFT FR-AOR-006 версионированную Unicode 18.0.0 display policy; implementation remains blocked. Review findings про assignment, account-memory digest, COM¹/LPT¹ и M5 уже покрыты текстом; Unicode gap закрывается формальным правилом. Прежние review snapshots не относятся к T-016.
 - PR #10/T-011: OPEN/DRAFT, head 2298597c76dddf3deb9d0b11ca9b9f758cea50b5, hosted run #43866666822 SUCCESS. PR #11/#12/#13/#14: OPEN/DRAFT, hosted quality-gate SUCCESS на head, перечисленных в актуальных PR; merge не выполнялся.
-- T-016: полный локальный quality gate и `git diff --check` прошли на восьми scoped paths; дальше — точная фиксация, обычный push task branch, draft PR и свежее read-only review. Старый T-013 source worktree сохранять без изменений до отдельного решения владельца.
+- T-016 recovery опубликован в [draft PR #15](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/15). Первый hosted run `#44173816019` прошёл на head `a6e458e6972aeda409a9520c6bc0fd2d47d4f7d5` и merge-result `571d79398c150fd8d46dafd257f56fbe571f7ca4` с точными родителями; актуальные head и CI после статусного обновления смотреть в PR. Свежее независимое review ожидается; исходную T-013 копию сохранять без изменений.
 
 ## Исторический bootstrap-снимок до слияния T-003 (не текущие статусы задач)
 

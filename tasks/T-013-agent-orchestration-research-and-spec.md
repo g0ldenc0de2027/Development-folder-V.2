@@ -8,7 +8,7 @@
 - **База:** f577dc70e58d75ab5fd61d0c2e712c27b590713a (origin/main после read-only fetch)
 - **Историческое происхождение файлов T-013:** UNKNOWN. Два прежних локальных commits на исходной ветке имеют fixture author Scope Fixture; их author metadata и опубликованную историю не переписываем. Точный семифайловый recovery input сохранён в T-016 manifest; текущая редакционная сборка отмечается отдельно и не объявляется автором исходных фрагментов.
 - **Исходная ветка/worktree:** task/T-013-agent-orchestration-research / .worktrees/T-013 (сохранена без переписывания); восстановление: task/T-016-attribution-recovery / .worktrees/T-016
-- **Связанные PR, live-срез 2026-11-17:** PR #10/T-011 открыт и Draft на 2298597c76dddf3deb9d0b11ca9b9f758cea50b5 (quality-gate run 43866666822 SUCCESS); PR #13/T-012 открыт и Draft на 0adde89e72bee9d1f699e2f2e530c36df4ec3a87 (run 44167148894 SUCCESS). PR #11/#12/#14 также открыты Draft с успешным gate на текущих head; merge не выполнялся.
+- **Связанные PR, live-срез 2026-11-17:** PR #10/T-011 открыт и Draft на 2298597c76dddf3deb9d0b11ca9b9f758cea50b5 (quality-gate run 43866666822 SUCCESS); PR #13/T-012 открыт и Draft на 0adde89e72bee9d1f699e2f2e530c36df4ec3a87 (run 44167148894 SUCCESS). PR #11/#12/#14 также открыты Draft с успешным gate на текущих head; PR #15/T-016 открыт Draft, первый hosted gate прошёл; актуальный SHA/CI смотреть по PR. Merge не выполнялся.
 
 ## Цель
 

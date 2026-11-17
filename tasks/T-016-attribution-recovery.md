@@ -1,6 +1,6 @@
 # T-016 — Восстановление T-013 с неизвестным историческим происхождением
 
-- **Статус:** in_progress; полный локальный quality gate и KB integrity прошли на текущем дереве; commit/push/PR и свежее независимое review ещё ожидают завершения.
+- **Статус:** in_progress; T-016 опубликована в draft PR #15; первый hosted quality-gate успешен, свежее независимое review актуального PR head ожидается. Текущие head и CI проверяются по PR #15.
 - **Тип:** attribution recovery и scoped documentation/spec maintenance; без продуктовой реализации.
 - **Главный ИИ:** Codex (OpenAI), GPT-6.
 - **База:** f577dc70e58d75ab5fd61d0c2e712c27b590713a; live origin/main совпадал с этим SHA перед созданием worktree.
@@ -8,7 +8,7 @@
 - **Источник:** task/T-013-agent-orchestration-research, committed HEAD 88342060af7c6c18a163d3b6fa6727ab5c17fd7e, seven modified paths; два локальных commits имеют fixture author Scope Fixture.
 - **Историческое происхождение:** UNKNOWN. Source branch/worktree и старые commits сохраняются; reset, amend, rebase, force push и переписывание истории запрещены.
 - **Recovery editor:** Codex GPT-6 в T-016. Это атрибутирует только новую recovery-сборку и её commit, не исходные исторические фрагменты.
-- **PR:** ещё не создан; независимое cross-vendor review текущей recovery-редакции не проводилось.
+- **PR:** #15 открыт, Draft; merge не выполнялся. Первый recovery commit `a6e458e6972aeda409a9520c6bc0fd2d47d4f7d5` прошёл hosted run `#44173816019` на merge-result `571d79398c150fd8d46dafd257f56fbe571f7ca4`; родители merge-result — base `f577dc70e58d75ab5fd61d0c2e712c27b590713a` и этот head. Это свидетельство первой PR-редакции; актуальные после статусного обновления head и CI смотреть в PR #15. Независимое cross-vendor review актуального head не проводилось.
 
 ## Цель
 
