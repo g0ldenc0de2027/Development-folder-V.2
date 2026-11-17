@@ -1,9 +1,10 @@
 # Передача работы — T-015, 2026-11-17
 
-- Причина: `configure-local.ps1` писал Git identity через `git config --local` в общий admin config; поэтому `Scope Fixture` попадал в linked worktrees.
-- T-015 хранит identity отдельно в каждом worktree, сверяет live GitHub account, безопасно исправляет обычный drift до commit, проверяет metadata исходящих commits перед push и покрывает поведение 14 синтетическими регрессиями.
-- Ветка опубликована, открыт draft [PR #11](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/11). Локальный и hosted quality gate прошли для опубликованного содержимого; актуальные head, CI и их результаты сверяются по PR, поскольку каждый новый commit требует повторной проверки.
-- Следующий шаг: получить независимое ревью текущего live head, закрыть замечания и повторно подтвердить gates на итоговой ревизии. PR не сливать до зелёного CI и успешного независимого review.
+- Текущий task/T-015 содержит незакоммиченные scoped-правки; базовый HEAD `ff48a0fd7a412a5112477d86dfe5ff3122709fb0`, предыдущая ревизия уже опубликована в draft PR #11.
+- Локальная инициализация linked-worktree Git config безопасно разделила bare admin и T-015; все 14 linked worktrees читают `git status`, 9 чистые и 5 сохраняют прежние изменения без потерь.
+- Точечные регрессии T-015: 21/21 PASS; полный quality gate проходил до последнего уточнения документации, поэтому финальный gate для текущего дерева ещё требуется.
+- Следующий шаг: сверить полный diff/зону и identity, повторить полный quality gate на текущем содержимом, затем отдельным commit обновить PR #11 и проверить hosted CI на точной ревизии.
+- Независимое ревью прежнего PR head не покрывает новые правки; запросить свежий read-only review после публикации. PR не сливать до нового review и зелёного CI.
 - Historical T-004/bootstrap notes below are preserved as historical records.
 # Handoff — T-004, 2026-11-15
 

@@ -53,6 +53,21 @@
         "author:Codex:gpt-6.1-sol"
       ],
       "review": null
+    },
+    {
+      "id": "git-attribution-worktrees",
+      "kind": "lesson",
+      "title": "Урок: безопасная Git identity в linked worktrees",
+      "status": "draft",
+      "path": "knowledge/records/git-attribution-worktrees.md",
+      "contentSha256": "7e850e83e77cd1458c82c8880c702d041e9dfb88f636906087a907ce377a8485",
+      "sources": [
+        "owner:2026-11-17",
+        "review:Xiaomi-MiMo:2026-11-17",
+        "review:Antigravity:2026-11-17",
+        "author:Codex:GPT-6"
+      ],
+      "review": null
     }
   ]
 }

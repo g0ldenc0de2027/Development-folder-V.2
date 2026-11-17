@@ -4,7 +4,7 @@
 - **Основание:** владелец поручил устранить повторяемые ошибки Git attribution и добавить безопасную автокоррекцию.
 - **База:** `f577dc70e58d75ab5fd61d0c2e712c27b590713a` — live `origin/main` при создании worktree.
 - **Ветка/worktree:** `task/T-015-git-attribution` / `.worktrees/T-015`.
-- **Исходные факты:** common .git/config задаёт user.name=Scope Fixture; worktree-specific identity отсутствует; extensions.worktreeConfig=true. Старый configure-local.ps1 использовал git config --local, изменяя общий конфиг. PR #9/T-010 содержит опубликованные commits с fixture attribution; T-013 имеет два локальных fixture-attributed commits без обнаруженного remote branch. Два последних опубликованных T-011 commits имеют ID-based noreply association, но некорректный display name.
+- **Исторические исходные факты при создании задачи:** common .git/config задавал user.name=Scope Fixture; worktree-specific identity отсутствовала; extensions.worktreeConfig=true. Старый configure-local.ps1 использовал git config --local, изменяя общий конфиг. PR #9/T-010 содержит опубликованные commits с fixture attribution; T-013 имеет два локальных fixture-attributed commits без обнаруженного remote branch. Два последних опубликованных T-011 commits имеют ID-based noreply association, но некорректный display name.
 
 ## Цель
 
@@ -22,17 +22,23 @@
 - `scripts/quality-gate.ps1`
 - `tests/git-identity-regressions.ps1`
 - `docs/git-identity.md`
+- `docs/development.md`
+- `knowledge/УРОКИ.md`
+- `knowledge/records/git-attribution-worktrees.md`
+- `knowledge/catalog.json`
 - `tasks/T-015-git-attribution-hardening.md`
+- `docs/handoff.md`
 
 ## Приёмка
 
 1. GitHub author profile фиксируется открытыми полями `login` и `userId`; секреты и email не записываются в tracked files.
 2. Настройка сверяет live gh api user с repo policy, пишет user.name, ID-based noreply email и user.useConfigOnly только через git config --worktree. Common user.name/email сохраняются; стандартные hooks/fetch/pull/push параметры настраиваются отдельно.
-3. pre-commit сначала проверяет локальную identity; при отсутствии или несоответствии сверяет live gh api user и автоматически записывает identity только в этот worktree, затем повторяет проверку. Стандартные repository-wide settings настраиваются отдельно; сетевой сбой, другой аккаунт, environment overrides, не совпадающие с policy, и любые GIT_CONFIG overrides блокируют commit; точные author/committer совпадения проходят дополнительную проверку effective identity. Email не печатается.
-4. Push-range verifier отклоняет новые commits с неверными author/committer name/email, включая явный `--author` override и fixture identity.
-5. 14 synthetic regressions покрывают placeholder в common config, worktree repair, account mismatch, author/committer environment/config injection, точные разрешённые значения identity, неверные author/committer name/email, outgoing ranges и порядок hooks. Fixture удаляется из собственного temp-каталога.
-6. Полный `quality-gate.ps1 -BaseRef origin/main`, регрессии и `git diff --check` проходят. Успехи привязаны к точному HEAD/содержимому.
-7. Правила документируют безопасное автолечение только до commit при подтверждённой identity; после commit — только отдельная recovery-задача и новая история, без amend/rebase/filter/rewrite. Опубликованные T-010/T-011/T-013 refs не изменяются.
+3. Инициализация проверяет .git marker и регистрацию worktree, включает extensions.worktreeConfig, переносит core.bare=true из общего конфига в config.worktree bare admin root и задаёт core.bare=false выбранной worktree. Неоднозначный common core.worktree и конфликтующие значения завершаются fail-closed; после настройки проверяются root и git status.
+4. pre-commit проверяет effective default identity и безопасно исправляет обычный drift после проверки account. Не утверждай, что `git commit --author` всегда блокируется до создания commit: pre-push проверяет фактические author/committer metadata всех outgoing commits до отправки. Неверную историю он не исправляет автоматически.
+5. Pre-push передаёт несколько обновляемых ref ranges одним однозначным параметром; verifier и quality gate разбирают каждую строку отдельно.
+6. 21 synthetic regression покрывает common placeholder, изоляцию, account mismatch, author/committer environment/config injection, разрешённые identity, неверные author/committer name/email, multi-ref hook execution, автокоррекцию, безопасную bare-admin migration, будущий worktree bootstrap, неоднозначный common core.worktree и нормализацию регистра login. Fixtures удаляются только из собственного temp-каталога.
+7. Полный `quality-gate.ps1 -BaseRef origin/main`, регрессии и `git diff --check` проходят. Успехи привязаны к точному HEAD/содержимому.
+8. Правила документируют безопасное автолечение только до commit при подтверждённой identity; после commit — только отдельная recovery-задача и новая история, без amend/rebase/filter/rewrite. Опубликованные T-010/T-011/T-013 refs не изменяются.
 
 ## Ограничения
 

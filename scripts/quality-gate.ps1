@@ -156,7 +156,10 @@ try {
     }
 
     $normalizedPushRanges = [System.Collections.Generic.List[string]]::new()
-    foreach ($range in @($PushRange | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+    $pushRangeLines = foreach ($rangeArgument in @($PushRange | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+        $rangeArgument -split '\r?\n'
+    }
+    foreach ($range in @($pushRangeLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
         if ($range -match '^(?<head>(?:[0-9a-f]{40}|[0-9a-f]{64}))$') {
             $headInput = $Matches.head
             $baseInput = $null
