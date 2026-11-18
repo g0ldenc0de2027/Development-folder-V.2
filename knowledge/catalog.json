@@ -60,7 +60,7 @@
       "title": "Исследование: многоформатная локальная и портфельная БЗ",
       "status": "draft",
       "path": "knowledge/records/local-kb-file-ingestion-research-2026-11-18.md",
-      "contentSha256": "6768b0bed929fc3251a2e6a4d1cad62f74c6910010892e5c8290557a0e06eece",
+      "contentSha256": "91d7e48ebac3417aac3d84053210ec05fdb9710bb9ef612c61797c0d38a4f028",
       "sources": [
         "owner:2026-11-17",
         "research:Codex-GPT-6:2026-11-18",
@@ -74,7 +74,11 @@
         "https://learn.microsoft.com/en-us/windows/win32/secauthz/appcontainer-isolation",
         "https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects",
         "https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html",
-        "https://cheatsheetseries.owasp.org/cheatsheets/RAG_Security_Cheat_Sheet.html"
+        "https://cheatsheetseries.owasp.org/cheatsheets/RAG_Security_Cheat_Sheet.html",
+        "repo:V2/scripts/kb.ps1@1abcd6edcd7c039d13399c6b8433890e99c1c7d5:152,239,257-294,416-420",
+        "repo:V2/tasks/T-014-bounded-kb-output.md@1abcd6edcd7c039d13399c6b8433890e99c1c7d5:71-72",
+        "https://learn.microsoft.com/en-us/dotnet/api/system.io.filestream.read?view=net-8.0",
+        "https://learn.microsoft.com/en-us/dotnet/standard/io/how-to-read-text-from-a-file"
       ],
       "review": null
     }
