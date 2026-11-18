@@ -67,4 +67,4 @@ PowerShell принимает значения `Command` из `ValidateSet` бе
 
 - База перед изменением: HEAD fc0d391bf1ccbeae4ddb359a348c11a25eeb26ba; origin/main f577dc70e58d75ab5fd61d0c2e712c27b590713a.
 - Полный quality gate на рабочем diff: PASS, exit 0; 53 KB regressions; шесть PowerShell files parsed; privacy 38 Markdown плюс regression source; hygiene 56 text files; Actionlint PASS; Gitleaks PASS (68 commits). git diff --check PASS.
-- Это локальное доказательство рабочего diff; для нового commit нужны свежие hosted CI и независимое read-only review точного head.
+- Изменение кода зафиксировано как 440a792 и прошло полный local quality gate на точном committed HEAD: 53 regressions, parse/privacy/hygiene/Actionlint/Gitleaks PASS. Hosted run #44192782023 относится к более раннему head; актуальные CI и независимое review проверяйте на live PR #12.
