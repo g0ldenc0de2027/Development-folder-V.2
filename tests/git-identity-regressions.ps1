@@ -259,6 +259,14 @@ try {
     Case 'GIT-ID-004 correct isolated identity passes' {
         $null = Assert-GitWorktreeIdentity -RepositoryRoot $worktree
     }
+    Case 'GIT-ID-027 interrupted partial worktree identity converges on rerun' {
+        Invoke-GitFixture -Directory $worktree -Arguments @('config','--worktree','user.email','partial@example.invalid') | Out-Null
+        Invoke-GitFixture -Directory $worktree -Arguments @('config','--worktree','--unset-all','etalon.identity.userId') | Out-Null
+        ExpectFailure { Assert-GitWorktreeIdentity -RepositoryRoot $worktree } 'GIT_IDENTITY_WORKTREE_EMAIL_MISMATCH'
+        $null = Set-GitWorktreeIdentity -RepositoryRoot $worktree -Login 'synthetic-owner' -UserId '123456'
+        $null = Assert-GitWorktreeIdentity -RepositoryRoot $worktree
+        if ((Invoke-GitFixture -Directory $worktree -Arguments @('config','--worktree','--get','etalon.identity.userId')) -cne '123456') { throw 'PARTIAL_IDENTITY_RERUN_DID_NOT_CONVERGE' }
+    }
     Case 'GIT-ID-025 valid subdirectory hook prefix stays bound to this worktree' {
         $gitDir = Invoke-GitFixture -Directory $worktree -Arguments @('rev-parse','--absolute-git-dir')
         $indexFile = Invoke-GitFixture -Directory $worktree -Arguments @('rev-parse','--git-path','index')
@@ -645,7 +653,7 @@ try {
             if ((Invoke-GitFixture -Directory $secondLinked -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw ('LINKED_WORKTREE_CORE_BARE_INVALID:' + $scenario) }
         }
     }
-    if ($passed -ne 27) { throw ('GIT_IDENTITY_REGRESSION_COUNT_MISMATCH: expected 27, got ' + $passed) }
+    if ($passed -ne 28) { throw ('GIT_IDENTITY_REGRESSION_COUNT_MISMATCH: expected 28, got ' + $passed) }
     Write-Output ('GIT-IDENTITY-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {
