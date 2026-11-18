@@ -71,17 +71,19 @@ function Initialize-NativeLinkCounter {
         '}'
     ) -join [Environment]::NewLine
     try { Add-Type -TypeDefinition $nativeTypeDefinition -ErrorAction Stop | Out-Null }
-    catch { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
+    catch { $script:HardLinkMode = 'fsutil'; return }
     $script:HardLinkMode = 'native'
 }
 function Assert-NoHardLinkAliases([string]$Path, [IO.FileStream]$Stream) {
     if ($script:KbVolumeFormat -in @('FAT','FAT32','EXFAT')) { return }
     if ($script:HardLinkMode -eq 'native') {
         try { $linkCount = [DevelopmentFolder.KbFileInfo]::GetLinkCount($Stream.SafeFileHandle) }
-        catch { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
-        if ($linkCount -lt 1) { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
-        if ($linkCount -gt 1) { Fail 'KB_HARDLINK' }
-        return
+        catch { $script:HardLinkMode = 'fsutil' }
+        if ($script:HardLinkMode -eq 'native') {
+            if ($linkCount -lt 1) { $script:HardLinkMode = 'fsutil' }
+            elseif ($linkCount -gt 1) { Fail 'KB_HARDLINK' }
+            else { return }
+        }
     }
     $fsutil = Join-Path $env:windir 'System32\fsutil.exe'
     if (-not [IO.File]::Exists($fsutil)) { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
@@ -212,7 +214,7 @@ function Load-Catalog {
     $guid = [guid]::Empty
     if ($catalog.projectId -isnot [string] -or -not [guid]::TryParseExact($catalog.projectId,'D',[ref]$guid) -or $guid -eq [guid]::Empty) { Fail 'KB_PROJECT_ID' }
     if ($catalog.records -isnot [array] -or $catalog.records.Count -gt 1000) { Fail 'KB_RECORD_LIMIT' }
-    # Large catalogs use one same-handle API path instead of one fsutil process per record.
+    # Prefer one same-handle API query for large catalogs; safely fall back to fsutil when unavailable.
     if ($catalog.records.Count -gt 24 -and $script:KbVolumeFormat -notin @('FAT','FAT32','EXFAT')) { Initialize-NativeLinkCounter }
     $ids = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)

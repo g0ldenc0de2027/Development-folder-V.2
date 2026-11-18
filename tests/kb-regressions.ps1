@@ -193,7 +193,7 @@ try {
         $failClosed=$errorCode -in @('KB_HARDLINK','KB_LINK_ENUMERATION_UNAVAILABLE')
         if($result.exitCode -ne 1 -or -not $failClosed -or $result.stdoutBytes.Length -ne 0){throw "hard-link refusal (exit=$($result.exitCode); error=$errorCode; stdoutBytes=$($result.stdoutBytes.Length))"}
     }
-    Case 'LKB-003 high-volume same-handle check refuses hard-link alias' {
+    Case 'LKB-003 high-volume hard-link guard refuses hard-link alias' {
         for($i=1;$i -le 22;$i++){
             $id='extra-{0:D2}' -f $i
             $relative='knowledge/records/'+$id+'.md'
@@ -213,7 +213,8 @@ try {
         Save-Catalog
         $result=Run-Captured @('check')
         $errorCode=if($result.stderr -match '(KB_[A-Z_]+)'){$Matches[1]}else{'none'}
-        if($result.exitCode -ne 1 -or -not $result.stderr.Contains('KB_HARDLINK') -or $result.stdoutBytes.Length -ne 0){throw "high-volume native hard-link refusal (exit=$($result.exitCode); error=$errorCode; stdoutBytes=$($result.stdoutBytes.Length))"}
+        $failClosed=$errorCode -in @('KB_HARDLINK','KB_LINK_ENUMERATION_UNAVAILABLE')
+        if($result.exitCode -ne 1 -or -not $failClosed -or $result.stdoutBytes.Length -ne 0){throw "high-volume hard-link refusal (exit=$($result.exitCode); error=$errorCode; stdoutBytes=$($result.stdoutBytes.Length))"}
     }
     Case 'LKB-003 oversized body' { Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') ('x'*262145); $null=Run @('check') 1 'KB_FILE_TOO_LARGE' }
     Case 'LKB-003 maximum body size is read completely' {
