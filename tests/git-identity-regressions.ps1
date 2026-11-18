@@ -292,7 +292,7 @@ try {
             }
         }
     }
-    Case 'GIT-ID-026 executable Git context overrides are refused in hooks' {
+    Case 'GIT-ID-026 editor and pager environment do not break noninteractive checks' {
         $names = @('GIT_PAGER','GIT_EDITOR','GIT_EXEC_PATH')
         $saved = @{}
         foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
@@ -300,9 +300,10 @@ try {
         try {
             Push-Location -LiteralPath $worktree
             $pushed = $true
+            [Environment]::SetEnvironmentVariable('GIT_EDITOR','false','Process')
+            $null = Assert-GitWorktreeEnvironment -RepositoryRoot $worktree
+            $null = Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext
             [Environment]::SetEnvironmentVariable('GIT_EDITOR','pwsh -NoProfile -Command exit 0','Process')
-            ExpectFailure { Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext } 'GIT_IDENTITY_HOOK_EDITOR_INVALID'
-            [Environment]::SetEnvironmentVariable('GIT_EDITOR',':','Process')
             $null = Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext
             [Environment]::SetEnvironmentVariable('GIT_EDITOR',$null,'Process')
 
@@ -497,6 +498,94 @@ try {
         if (Compare-Object -ReferenceObject $expectedRanges -DifferenceObject $actualRanges) { throw 'MULTI_REF_COMMIT_RANGES_NOT_PRESERVED' }
         if ($gateRange -cne $verifyRange) { throw 'MULTI_REF_GATE_RANGE_MISMATCH' }
     }
+    Case 'GIT-ID-028 pre-push blocks protected T-013 local and remote refs from another worktree' {
+        $protectedRef = 'refs/heads/task/T-013-agent-orchestration-research'
+        $otherRemoteRef = 'refs/heads/task/recovery-copy'
+        Invoke-GitFixture -Directory $hookRepo -Arguments @('update-ref',$protectedRef,$script:hookShaA) | Out-Null
+        Remove-Item -LiteralPath (Join-Path $scratch 'pwsh-calls.bin') -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath (Join-Path $scratch 'pwsh-shim/state.txt') -Force -ErrorAction SilentlyContinue
+        $hookEnvs = @{
+            PATH=($script:hookShim.Directory + [IO.Path]::PathSeparator + $env:PATH)
+            PWSSHIM_LOG=$script:hookShim.LogPath
+            PWSSHIM_STATE=$script:hookShim.StatePath
+            PWSSHIM_MODE='pass'
+            PWSSHIM_DIR=$script:hookShim.DirectoryPosix
+            REAL_PRE_PUSH_HOOK=$script:hookShim.PrePushHookPosix
+            REAL_PRE_COMMIT_HOOK=$script:hookShim.PreCommitHookPosix
+        }
+        $localSourceResult = Invoke-GitProcess -Arguments @('-C',$hookRepo,'push','origin',($protectedRef + ':' + $otherRemoteRef)) -Environment $hookEnvs
+        $localSourceOutput = [string]::Join([Environment]::NewLine,@($localSourceResult.StdOut,$localSourceResult.StdErr))
+        if ($localSourceResult.ExitCode -eq 0 -or $localSourceOutput -notmatch 'T-013 is a read-only recovery source and cannot be published') {
+            throw ('T013_LOCAL_REF_NOT_BLOCKED:' + $localSourceOutput)
+        }
+        $localDestination = Invoke-GitProcess -Arguments @('--git-dir',$hookRemote,'show-ref','--verify','--quiet',$otherRemoteRef)
+        if ($localDestination.ExitCode -eq 0) { throw 'T013_LOCAL_REF_REACHED_SYNTHETIC_REMOTE' }
+        if ($localDestination.ExitCode -ne 1) { throw ('T013_LOCAL_REMOTE_STATE_UNVERIFIABLE:' + $localDestination.StdErr) }
+
+        $remoteTargetResult = Invoke-GitProcess -Arguments @('-C',$hookRepo,'push','origin',('refs/heads/task/hook-a:' + $protectedRef)) -Environment $hookEnvs
+        $remoteTargetOutput = [string]::Join([Environment]::NewLine,@($remoteTargetResult.StdOut,$remoteTargetResult.StdErr))
+        if ($remoteTargetResult.ExitCode -eq 0 -or $remoteTargetOutput -notmatch 'T-013 is a read-only recovery source and cannot be published') {
+            throw ('T013_REMOTE_REF_NOT_BLOCKED:' + $remoteTargetOutput)
+        }
+        $remoteDestination = Invoke-GitProcess -Arguments @('--git-dir',$hookRemote,'show-ref','--verify','--quiet',$protectedRef)
+        if ($remoteDestination.ExitCode -eq 0) { throw 'T013_REMOTE_REF_REACHED_SYNTHETIC_REMOTE' }
+        if ($remoteDestination.ExitCode -ne 1) { throw ('T013_REMOTE_STATE_UNVERIFIABLE:' + $remoteDestination.StdErr) }
+    }
+    Case 'GIT-ID-029 hook treats only config-matching identity values as repairable drift' {
+        $names = @('GIT_AUTHOR_NAME','GIT_AUTHOR_EMAIL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL')
+        $saved = @{}
+        foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
+        $originalName = Invoke-GitFixture -Directory $worktree -Arguments @('config','--worktree','--get','user.name')
+        $originalEmail = Invoke-GitFixture -Directory $worktree -Arguments @('config','--worktree','--get','user.email')
+        $pushed = $false
+        try {
+            Push-Location -LiteralPath $worktree
+            $pushed = $true
+            Invoke-GitFixture -Directory $worktree -Arguments @('config','--worktree','user.name','Drifted Fixture') | Out-Null
+            Invoke-GitFixture -Directory $worktree -Arguments @('config','--worktree','user.email','drifted@example.invalid') | Out-Null
+            [Environment]::SetEnvironmentVariable('GIT_AUTHOR_NAME','Drifted Fixture','Process')
+            [Environment]::SetEnvironmentVariable('GIT_AUTHOR_EMAIL','drifted@example.invalid','Process')
+            [Environment]::SetEnvironmentVariable('GIT_COMMITTER_NAME','Drifted Fixture','Process')
+            [Environment]::SetEnvironmentVariable('GIT_COMMITTER_EMAIL','drifted@example.invalid','Process')
+            $null = Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext
+            ExpectFailure { Assert-GitWorktreeIdentity -RepositoryRoot $worktree -HookContext } 'GIT_IDENTITY_WORKTREE_NAME_MISMATCH'
+            [Environment]::SetEnvironmentVariable('GIT_AUTHOR_NAME','Injected Identity','Process')
+            ExpectFailure { Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext } 'GIT_IDENTITY_ENVIRONMENT_OVERRIDE:GIT_AUTHOR_NAME'
+        }
+        finally {
+            if ($pushed) { Pop-Location }
+            Invoke-GitFixture -Directory $worktree -Arguments @('config','--worktree','user.name',$originalName) | Out-Null
+            Invoke-GitFixture -Directory $worktree -Arguments @('config','--worktree','user.email',$originalEmail) | Out-Null
+            foreach ($name in $names) {
+                if ($null -eq $saved[$name]) { Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue }
+                else { [Environment]::SetEnvironmentVariable($name,[string]$saved[$name],'Process') }
+            }
+        }
+    }
+    Case 'GIT-ID-030 hook accepts exact Git commit temporary indexes and rejects arbitrary indexes' {
+        $savedIndex = [Environment]::GetEnvironmentVariable('GIT_INDEX_FILE','Process')
+        $pushed = $false
+        try {
+            Push-Location -LiteralPath $worktree
+            $pushed = $true
+            $gitDir = Invoke-GitFixture -Directory $worktree -Arguments @('rev-parse','--absolute-git-dir')
+            foreach ($name in @('index.lock','next-index-64424.lock')) {
+                [Environment]::SetEnvironmentVariable('GIT_INDEX_FILE',(Join-Path $gitDir $name),'Process')
+                $null = Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext
+            }
+            [Environment]::SetEnvironmentVariable('GIT_INDEX_FILE',(Join-Path $gitDir 'next-index-64424Xlock'),'Process')
+            ExpectFailure { Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext } 'GIT_IDENTITY_HOOK_GIT_INDEX_FILE_MISMATCH'
+            [Environment]::SetEnvironmentVariable('GIT_INDEX_FILE',(Join-Path $gitDir 'untrusted.lock'),'Process')
+            ExpectFailure { Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext } 'GIT_IDENTITY_HOOK_GIT_INDEX_FILE_MISMATCH'
+            [Environment]::SetEnvironmentVariable('GIT_INDEX_FILE',(Join-Path $root 'outside-index.lock'),'Process')
+            ExpectFailure { Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext } 'GIT_IDENTITY_HOOK_GIT_INDEX_FILE_MISMATCH'
+        }
+        finally {
+            if ($pushed) { Pop-Location }
+            if ($null -eq $savedIndex) { Remove-Item -LiteralPath Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue }
+            else { [Environment]::SetEnvironmentVariable('GIT_INDEX_FILE',[string]$savedIndex,'Process') }
+        }
+    }
     Case 'GIT-ID-016 pre-commit dynamically blocks identity override before creating commit' {
         Invoke-GitFixture -Directory $hookRepo -Arguments @('switch','--quiet','-c','task/hook-block','main') | Out-Null
         WriteText (Join-Path $hookRepo 'blocked.txt') 'blocked commit'
@@ -523,9 +612,10 @@ try {
             [string]::Join(' ',$calls[1]) -notlike '*task-worktree-audit.ps1*-Mode Commit*' -or
             [string]::Join(' ',$calls[2]) -notlike '*verify-git-identity.ps1*') { throw 'PRE_COMMIT_OVERRIDE_HOOK_SEQUENCE_INVALID' }
     }
-    Case 'GIT-ID-017 pre-commit dynamically repairs identity drift and rechecks' {
+    Case 'GIT-ID-017 pre-commit repairs drift but aborts the commit captured with stale identity' {
         WriteText (Join-Path $hookRepo 'repaired.txt') 'repaired commit'
         Invoke-GitFixture -Directory $hookRepo -Arguments @('add','repaired.txt') | Out-Null
+        $before = Invoke-GitFixture -Directory $hookRepo -Arguments @('rev-parse','HEAD')
         $logPath = Join-Path $scratch 'pwsh-calls.bin'
         Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath (Join-Path $scratch 'pwsh-shim/state.txt') -Force -ErrorAction SilentlyContinue
@@ -539,7 +629,9 @@ try {
             REAL_PRE_COMMIT_HOOK=$hookShim.PreCommitHookPosix
         }
         $result = Invoke-GitProcess -Arguments @('-C',$hookRepo,'commit','-m','test: repaired hook commit') -Environment $envs
-        if ($result.ExitCode -ne 0) { throw ('PRE_COMMIT_REPAIR_HOOK_FAILED:' + $result.StdErr) }
+        if ($result.ExitCode -eq 0 -or $result.StdErr -notmatch 'rerun git commit') {
+            throw ('PRE_COMMIT_REPAIR_DID_NOT_REQUIRE_SAFE_RETRY:' + $result.StdErr)
+        }
         $calls = @((Read-PwshShimCalls -LogPath $logPath).Calls)
         if ($calls.Count -ne 5) { throw ('PRE_COMMIT_REPAIR_CALL_COUNT_INVALID:' + $calls.Count) }
         $sequence = @($calls | ForEach-Object { [string]::Join(' ',$_) })
@@ -550,6 +642,9 @@ try {
             $sequence[4] -notlike '*verify-git-identity.ps1*') {
             throw 'PRE_COMMIT_REPAIR_HOOK_SEQUENCE_INVALID'
         }
+        if ((Invoke-GitFixture -Directory $hookRepo -Arguments @('rev-parse','HEAD')) -cne $before) { throw 'STALE_IDENTITY_COMMIT_WAS_CREATED' }
+        Invoke-GitFixture -Directory $hookRepo -Arguments @('reset','--quiet','HEAD','--','repaired.txt') | Out-Null
+        Remove-Item -LiteralPath (Join-Path $hookRepo 'repaired.txt') -Force
     }
     Case 'GIT-ID-018 bare-admin core.bare migration enables future linked worktrees' {
         $bareAdmin = Join-Path $scratch 'bare-admin.git'
@@ -653,7 +748,7 @@ try {
             if ((Invoke-GitFixture -Directory $secondLinked -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw ('LINKED_WORKTREE_CORE_BARE_INVALID:' + $scenario) }
         }
     }
-    if ($passed -ne 28) { throw ('GIT_IDENTITY_REGRESSION_COUNT_MISMATCH: expected 28, got ' + $passed) }
+    if ($passed -ne 31) { throw ('GIT_IDENTITY_REGRESSION_COUNT_MISMATCH: expected 31, got ' + $passed) }
     Write-Output ('GIT-IDENTITY-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {

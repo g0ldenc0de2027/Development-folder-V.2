@@ -49,6 +49,12 @@ $1"
 }
 while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
     if [ -z "$local_ref" ] && [ -z "$local_sha" ]; then continue; fi
+    case "$local_ref:$remote_ref" in
+        refs/heads/task/T-013:*|refs/heads/task/T-013-*:*|*:refs/heads/task/T-013|*:refs/heads/task/T-013-*)
+            echo "pre-push: T-013 is a read-only recovery source and cannot be published" >&2
+            exit 1
+            ;;
+    esac
     case "$local_sha" in
         *[!0123456789abcdefABCDEF]*|'') echo "pre-push: invalid local object ID" >&2; exit 1 ;;
     esac

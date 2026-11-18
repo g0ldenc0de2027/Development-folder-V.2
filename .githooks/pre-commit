@@ -49,5 +49,14 @@ if [ "$verify_status" -ne 24 ]; then
     exit 1
 fi
 echo "pre-commit: identity is missing or invalid; verifying GitHub account and repairing this worktree" >&2
-pwsh -NoLogo -NoProfile -File "$repo_root/scripts/github/configure-local.ps1" -IdentityOnly -HookContext
-exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext
+if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/github/configure-local.ps1" -IdentityOnly -HookContext; then
+    echo "pre-commit: worktree identity repair failed; commit remains blocked" >&2
+    exit 1
+fi
+unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext; then
+    echo "pre-commit: repaired identity did not verify; commit remains blocked" >&2
+    exit 1
+fi
+echo "pre-commit: worktree identity repaired and verified; Git captured the old identity before this hook, so rerun git commit" >&2
+exit 1

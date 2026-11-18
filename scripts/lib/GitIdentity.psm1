@@ -73,9 +73,9 @@ function Assert-GitWorktreeEnvironment {
     if ($configNames.Count -gt 0) { throw ('GIT_IDENTITY_CONFIG_ENVIRONMENT_OVERRIDE:' + ($configNames -join ',')) }
 
     $allowed = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($name in @('GIT_PAGER','GIT_OPTIONAL_LOCKS','GIT_AUTHOR_NAME','GIT_AUTHOR_EMAIL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL')) { $null = $allowed.Add($name) }
+    foreach ($name in @('GIT_PAGER','GIT_EDITOR','GIT_OPTIONAL_LOCKS','GIT_AUTHOR_NAME','GIT_AUTHOR_EMAIL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL')) { $null = $allowed.Add($name) }
     if ($HookContext) {
-        foreach ($name in @('GIT_DIR','GIT_INDEX_FILE','GIT_PREFIX','GIT_AUTHOR_DATE','GIT_COMMITTER_DATE','GIT_EDITOR','GIT_EXEC_PATH')) {
+        foreach ($name in @('GIT_DIR','GIT_INDEX_FILE','GIT_PREFIX','GIT_AUTHOR_DATE','GIT_COMMITTER_DATE','GIT_EXEC_PATH')) {
             $null = $allowed.Add($name)
         }
     }
@@ -87,8 +87,6 @@ function Assert-GitWorktreeEnvironment {
     if ($HookContext) {
         $actualCwd = [IO.Path]::GetFullPath((Get-Location).Path).TrimEnd('\','/')
         if (-not $actualCwd.Equals($context.Root,[StringComparison]::OrdinalIgnoreCase)) { throw 'GIT_IDENTITY_HOOK_CWD_MISMATCH' }
-        $editor = [Environment]::GetEnvironmentVariable('GIT_EDITOR','Process')
-        if (-not [string]::IsNullOrEmpty($editor) -and $editor -cne ':') { throw 'GIT_IDENTITY_HOOK_EDITOR_INVALID' }
         $execPath = [Environment]::GetEnvironmentVariable('GIT_EXEC_PATH','Process')
         if (-not [string]::IsNullOrWhiteSpace($execPath)) {
             $expectedExecResult = Invoke-GitIdentityProcess -Arguments @('--exec-path')
@@ -104,12 +102,24 @@ function Assert-GitWorktreeEnvironment {
                 throw 'GIT_IDENTITY_HOOK_EXEC_PATH_MISMATCH'
             }
         }
-        foreach ($name in @('GIT_DIR','GIT_INDEX_FILE')) {
-            $value = [Environment]::GetEnvironmentVariable($name,'Process')
-            if ([string]::IsNullOrWhiteSpace($value)) { continue }
-            $expected = if ($name -ceq 'GIT_DIR') { $context.GitDir } else { $context.Index }
-            $actual = Convert-GitIdentityEnvironmentPath -Path $value -BasePath $context.Root
-            if (-not $actual.Equals($expected,[StringComparison]::OrdinalIgnoreCase)) { throw ('GIT_IDENTITY_HOOK_' + $name + '_MISMATCH') }
+        $gitDirValue = [Environment]::GetEnvironmentVariable('GIT_DIR','Process')
+        if (-not [string]::IsNullOrWhiteSpace($gitDirValue)) {
+            $actualGitDir = Convert-GitIdentityEnvironmentPath -Path $gitDirValue -BasePath $context.Root
+            if (-not $actualGitDir.Equals($context.GitDir,[StringComparison]::OrdinalIgnoreCase)) { throw 'GIT_IDENTITY_HOOK_GIT_DIR_MISMATCH' }
+        }
+        $indexValue = [Environment]::GetEnvironmentVariable('GIT_INDEX_FILE','Process')
+        if (-not [string]::IsNullOrWhiteSpace($indexValue)) {
+            try { $actualIndex = Convert-GitIdentityEnvironmentPath -Path $indexValue -BasePath $context.Root }
+            catch { throw 'GIT_IDENTITY_HOOK_GIT_INDEX_FILE_MISMATCH' }
+            $indexDirectory = [IO.Path]::GetDirectoryName($actualIndex)
+            $indexName = [IO.Path]::GetFileName($actualIndex)
+            $expectedIndex = [IO.Path]::GetFullPath($context.Index)
+            $isCanonicalIndex = $actualIndex.Equals($expectedIndex,[StringComparison]::OrdinalIgnoreCase)
+            $isGitCommitIndex = $indexDirectory.Equals($context.GitDir,[StringComparison]::OrdinalIgnoreCase) -and
+                $indexName -cmatch '^(?:index\.lock|next-index-[0-9]+\.lock)$'
+            if (-not $isCanonicalIndex -and -not $isGitCommitIndex) { throw 'GIT_IDENTITY_HOOK_GIT_INDEX_FILE_MISMATCH' }
+            Assert-GitIdentityNoReparsePath -Path $indexDirectory -RequireExists
+            if (Test-Path -LiteralPath $actualIndex) { Assert-GitIdentityNoReparsePath -Path $actualIndex -RequireExists }
         }
         $prefix = [Environment]::GetEnvironmentVariable('GIT_PREFIX','Process')
         if (-not [string]::IsNullOrEmpty($prefix) -and $prefix -notin @('.','./','.\')) {
@@ -140,7 +150,23 @@ function Assert-GitWorktreeEnvironment {
         $expected = if ($name -match '_NAME$') { $policy.Login } else { $policy.Email }
         if ($value -cne $expected) { $mismatches.Add($name) }
     }
-    if ($mismatches.Count -gt 0) { throw ('GIT_IDENTITY_ENVIRONMENT_OVERRIDE:' + ($mismatches -join ',')) }
+    if ($mismatches.Count -gt 0) {
+        $unmatchedIdentityEnvironment = [Collections.Generic.List[string]]::new()
+        if ($HookContext) {
+            $configuredName = Get-GitIdentityConfigValue -RepositoryRoot $context.Root -Arguments @('config','--worktree','--get','user.name')
+            $configuredEmail = Get-GitIdentityConfigValue -RepositoryRoot $context.Root -Arguments @('config','--worktree','--get','user.email')
+            foreach ($name in $mismatches) {
+                $value = [Environment]::GetEnvironmentVariable($name,'Process')
+                $configured = if ($name -match '_NAME$') { $configuredName } else { $configuredEmail }
+                if ([string]::IsNullOrEmpty($configured) -or $value -cne $configured) { $unmatchedIdentityEnvironment.Add($name) }
+            }
+        } else {
+            $unmatchedIdentityEnvironment.AddRange([string[]]$mismatches)
+        }
+        if ($unmatchedIdentityEnvironment.Count -gt 0) {
+            throw ('GIT_IDENTITY_ENVIRONMENT_OVERRIDE:' + ($unmatchedIdentityEnvironment -join ','))
+        }
+    }
     return $context
 }
 
