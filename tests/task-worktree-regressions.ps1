@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $root = [IO.Path]::GetFullPath($TempRoot)
 [IO.Directory]::CreateDirectory($root) | Out-Null
-$scratch = Join-Path $root ('task-worktree-regressions-' + [guid]::NewGuid().ToString('N'))
+$scratch = Join-Path $root ('Проверка-worktree-Git-' + [guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($scratch) | Out-Null
 $admin = Join-Path $scratch 'admin'
 $seed = Join-Path $scratch 'seed'
@@ -146,6 +146,20 @@ try {
         }
         finally { if (Test-Path -LiteralPath $orphan -PathType Container) { Remove-Item -LiteralPath $orphan -Recurse -Force } }
     }
+    Case 'unexpected and extended physical task directories are blocked without cleanup' {
+        foreach ($name in @('T-019-extra','scratch','T-1000','t-020')) {
+            $orphan = Join-Path (Join-Path $admin '.worktrees') $name
+            [IO.Directory]::CreateDirectory($orphan) | Out-Null
+            Write-Text (Join-Path $orphan 'preserve.txt') 'synthetic orphan'
+            try {
+                $result = Assert-AuditExit 1 ('UNEXPECTED_DIRECTORY_AUDIT_' + $name)
+                $expected = if ($name -match '^T-\d{3,}$') { 'unregistered task directory detected' } else { 'unexpected physical directory in task directory root' }
+                if ($result.Output -notmatch [regex]::Escape($expected)) { throw ('UNEXPECTED_DIRECTORY_REASON_MISSING:' + $name) }
+                if (-not (Test-Path -LiteralPath (Join-Path $orphan 'preserve.txt') -PathType Leaf)) { throw ('UNEXPECTED_DIRECTORY_DATA_CHANGED:' + $name) }
+            }
+            finally { if (Test-Path -LiteralPath $orphan -PathType Container) { Remove-Item -LiteralPath $orphan -Recurse -Force } }
+        }
+    }
     Case 'task directory and branch IDs must match' {
         Invoke-Git $mainTree @('branch','-m','task/T-019-worktree-mismatch') | Out-Null
         try {
@@ -211,7 +225,7 @@ try {
     Case 'changed quarantine fingerprint blocks admission' {
         Write-Text (Join-Path $quarantineTree 'README.md') ('changed-after-quarantine' + [Environment]::NewLine)
         $result = Assert-AuditExit 1 'CHANGED_QUARANTINE_AUDIT'
-        if ($result.Output -notmatch 'BLOCKED: unregistered dirty worktree') { throw 'CHANGED_QUARANTINE_REASON_MISSING' }
+        if ($result.Output -notmatch 'BLOCKED: registered dirty sibling worktree') { throw 'CHANGED_QUARANTINE_REASON_MISSING' }
         $null = Write-QuarantineConfig -Path $quarantineTree -Head (Invoke-Git $quarantineTree @('rev-parse','HEAD')) -Content ('quarantined' + [Environment]::NewLine)
     }
     Case 'commit mode permits staged changes but publish mode blocks them' {
@@ -250,13 +264,33 @@ try {
         Write-Text (Join-Path $mainTree 'README.md') ('base' + [Environment]::NewLine)
     }
     Case 'pre-commit hook refuses to commit the quarantined T-013 branch' {
+        $fixtureScripts = Join-Path $quarantineTree 'scripts'
+        $fixtureGitIdentity = Join-Path $fixtureScripts 'lib'
+        $fixtureGithub = Join-Path $quarantineTree 'config/github'
+        [IO.Directory]::CreateDirectory($fixtureGitIdentity) | Out-Null
+        [IO.Directory]::CreateDirectory($fixtureGithub) | Out-Null
+        Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/verify-git-hook-context.ps1') -Destination (Join-Path $fixtureScripts 'verify-git-hook-context.ps1')
+        Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/lib/GitIdentity.psm1') -Destination (Join-Path $fixtureGitIdentity 'GitIdentity.psm1')
+        Copy-Item -LiteralPath (Join-Path $repoRoot 'config/github/repository.json') -Destination (Join-Path $fixtureGithub 'repository.json')
         Invoke-Git $admin @('config','core.hooksPath',$hooksPath) | Out-Null
+        $repoPolicy = Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/repository.json') -Raw | ConvertFrom-Json
+        $policyLogin = [string]$repoPolicy.commitIdentity.login
+        $policyEmail = [string]$repoPolicy.commitIdentity.userId + '+' + $policyLogin + '@users.noreply.github.com'
+        Invoke-Git $quarantineTree @('config','--worktree','user.name',$policyLogin) | Out-Null
+        Invoke-Git $quarantineTree @('config','--worktree','user.email',$policyEmail) | Out-Null
         Write-Text (Join-Path $quarantineTree 'README.md') ('staged-forbidden' + [Environment]::NewLine)
         Invoke-Git $quarantineTree @('add','README.md') | Out-Null
         $git = (Get-Command git -ErrorAction Stop).Source
         $result = Invoke-NativeProcess $git @('-C',$quarantineTree,'commit','-m','test: must be blocked')
-        if ($result.ExitCode -eq 0 -or $result.Error -notmatch 'quarantined read-only recovery source') { throw ('T013_PRECOMMIT_GUARD_FAILED:' + $result.Error) }
+        $hookText = [string]::Join([Environment]::NewLine,@($result.Output,$result.Error))
+        if ($result.ExitCode -eq 0 -or $hookText -notmatch 'T-013 is a read-only recovery source') { throw ('T013_PRECOMMIT_GUARD_FAILED:' + $hookText) }
         Invoke-Git $quarantineTree @('reset','--quiet','HEAD','--','README.md') | Out-Null
+        Remove-Item -LiteralPath (Join-Path $fixtureScripts 'verify-git-hook-context.ps1') -Force
+        Remove-Item -LiteralPath (Join-Path $fixtureGitIdentity 'GitIdentity.psm1') -Force
+        Remove-Item -LiteralPath (Join-Path $fixtureGithub 'repository.json') -Force
+        Remove-Item -LiteralPath $fixtureGitIdentity -Force
+        Remove-Item -LiteralPath $fixtureScripts -Force
+        Remove-Item -LiteralPath $fixtureGithub -Force
         $null = Write-QuarantineConfig -Path $quarantineTree -Head (Invoke-Git $quarantineTree @('rev-parse','HEAD')) -Content ('quarantined' + [Environment]::NewLine)
     }
     Case 'dirty sibling worktree blocks publish mode while exact quarantine remains allowed' {
@@ -265,7 +299,7 @@ try {
         if ($clean.ExitCode -ne 0 -or $clean.Output -notmatch 'QUARANTINED_READ_ONLY') { throw ('EXACT_QUARANTINE_PUBLISH_FAILED:' + $clean.Output + $clean.Error) }
         Write-Text (Join-Path $quarantineTree 'README.md') ('changed-after-recording' + [Environment]::NewLine)
         $dirty = Invoke-Audit -Mode 'Publish'
-        if ($dirty.ExitCode -eq 0 -or $dirty.Output -notmatch 'BLOCKED: unregistered dirty worktree') { throw ('DIRTY_SIBLING_PUBLISH_NOT_BLOCKED:' + $dirty.Output + $dirty.Error) }
+        if ($dirty.ExitCode -eq 0 -or $dirty.Output -notmatch 'BLOCKED: registered dirty sibling worktree') { throw ('DIRTY_SIBLING_PUBLISH_NOT_BLOCKED:' + $dirty.Output + $dirty.Error) }
         $null = Write-QuarantineConfig -Path $quarantineTree -Head (Invoke-Git $quarantineTree @('rev-parse','HEAD')) -Content ('quarantined' + [Environment]::NewLine)
     }
     Case 'commit and publish hooks invoke the global worktree audit' {
@@ -281,9 +315,23 @@ try {
         [IO.Directory]::CreateDirectory($emptyHooks) | Out-Null
         Invoke-Git $mainTree @('-c',('core.hooksPath=' + $emptyHooks),'commit','--quiet','-m','test: create outgoing task commit') | Out-Null
         Write-Text (Join-Path $mainTree 'leftover.txt') 'uncommitted residue'
+        $mainHookScripts = Join-Path $mainTree 'scripts'
+        $mainHookGitIdentity = Join-Path $mainHookScripts 'lib'
+        [IO.Directory]::CreateDirectory($mainHookGitIdentity) | Out-Null
+        Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/verify-git-hook-context.ps1') -Destination (Join-Path $mainHookScripts 'verify-git-hook-context.ps1')
+        Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/lib/GitIdentity.psm1') -Destination (Join-Path $mainHookGitIdentity 'GitIdentity.psm1')
+        $mainHookPolicy = Join-Path $mainTree 'config/github'
+        [IO.Directory]::CreateDirectory($mainHookPolicy) | Out-Null
+        Copy-Item -LiteralPath (Join-Path $repoRoot 'config/github/repository.json') -Destination (Join-Path $mainHookPolicy 'repository.json')
         $git = (Get-Command git -ErrorAction Stop).Source
         $result = Invoke-NativeProcess $git @('-C',$mainTree,'push','origin','task/T-018-worktree-guard')
         if ($result.ExitCode -eq 0 -or $result.Error -notmatch 'current worktree is not clean') { throw ('DIRTY_PREPUSH_GUARD_FAILED:' + $result.Error) }
+        Remove-Item -LiteralPath (Join-Path $mainHookGitIdentity 'GitIdentity.psm1') -Force
+        Remove-Item -LiteralPath (Join-Path $mainHookScripts 'verify-git-hook-context.ps1') -Force
+        Remove-Item -LiteralPath (Join-Path $mainHookPolicy 'repository.json') -Force
+        Remove-Item -LiteralPath $mainHookPolicy -Force
+        Remove-Item -LiteralPath $mainHookGitIdentity -Force
+        Remove-Item -LiteralPath $mainHookScripts -Force
     }
     Write-Output ('TASK-WORKTREE-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }

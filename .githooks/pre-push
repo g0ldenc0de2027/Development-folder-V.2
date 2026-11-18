@@ -2,6 +2,26 @@
 set -eu
 remote_name=$1
 remote_url=$2
+if ! command -v pwsh >/dev/null 2>&1; then
+    echo "pre-push: PowerShell 7 is required" >&2
+    exit 1
+fi
+if ! command -v cygpath >/dev/null 2>&1; then
+    echo "pre-push: Git for Windows cygpath is required for the hook context check" >&2
+    exit 1
+fi
+hook_pwd=$(pwd -P) || {
+    echo "pre-push: current directory could not be resolved" >&2
+    exit 1
+}
+repo_root=$(cygpath -aw "$hook_pwd") || {
+    echo "pre-push: worktree path could not be converted safely" >&2
+    exit 1
+}
+if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-hook-context.ps1" -RepositoryRoot "$repo_root"; then
+    echo "pre-push: Git hook context gate blocked push" >&2
+    exit 1
+fi
 repo_root=$(git rev-parse --show-toplevel) || {
     echo "pre-push: repository root could not be resolved" >&2
     exit 1
@@ -14,11 +34,6 @@ if [ -n "$worktree_status" ]; then
     echo "pre-push: current worktree is not clean; preserve and commit all task changes before publishing" >&2
     exit 1
 fi
-if ! command -v pwsh >/dev/null 2>&1; then
-    echo "pre-push: PowerShell 7 is required" >&2
-    exit 1
-fi
-
 if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/task-worktree-audit.ps1" -Mode Publish; then
     echo "pre-push: task worktree audit blocked publish" >&2
     exit 1
@@ -50,9 +65,9 @@ while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
     esac
 done
 if [ -n "$push_ranges" ]; then
-    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RemoteName "$remote_name" -CommitRange "$push_ranges"
+    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name" -CommitRange "$push_ranges"
 else
-    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RemoteName "$remote_name"
+    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name"
 fi
 if [ -n "$push_ranges" ]; then
     exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -RemoteName "$remote_name" -RemoteUrl "$remote_url" -PushRange "$push_ranges"

@@ -1,27 +1,41 @@
 #!/bin/sh
 set -eu
-repo_root=$(git rev-parse --show-toplevel) || {
-    echo "pre-commit: repository root could not be resolved" >&2
-    exit 1
-}
-branch=$(git branch --show-current) || {
-    echo "pre-commit: current branch could not be resolved" >&2
-    exit 1
-}
-if [ "$branch" = "task/T-013-agent-orchestration-research" ]; then
-    echo "pre-commit: T-013 is a quarantined read-only recovery source; commit through its recovery task" >&2
-    exit 1
-fi
 if ! command -v pwsh >/dev/null 2>&1; then
     echo "pre-commit: PowerShell 7 is required" >&2
     exit 1
 fi
+if ! command -v cygpath >/dev/null 2>&1; then
+    echo "pre-commit: Git for Windows cygpath is required for the hook context check" >&2
+    exit 1
+fi
+hook_pwd=$(pwd -P) || {
+    echo "pre-commit: current directory could not be resolved" >&2
+    exit 1
+}
+repo_root=$(cygpath -aw "$hook_pwd") || {
+    echo "pre-commit: worktree path could not be converted safely" >&2
+    exit 1
+}
+if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-hook-context.ps1" -RepositoryRoot "$repo_root"; then
+    echo "pre-commit: Git hook context gate blocked commit" >&2
+    exit 1
+fi
+branch=$(git branch --show-current) || {
+    echo "pre-commit: current branch could not be resolved" >&2
+    exit 1
+}
+case "$branch" in
+    task/T-013|task/T-013-*)
+        echo "pre-commit: T-013 is a read-only recovery source; commit through its recovery task" >&2
+        exit 1
+        ;;
+esac
 
 if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/task-worktree-audit.ps1" -Mode Commit; then
     echo "pre-commit: task worktree audit blocked commit" >&2
     exit 1
 fi
-if pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1"; then
+if pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext; then
     exit 0
 else
     verify_status=$?
@@ -30,6 +44,10 @@ if [ "$verify_status" -eq 23 ]; then
     echo "pre-commit: explicit Git identity/config environment overrides block commit; remove the override and retry" >&2
     exit 1
 fi
+if [ "$verify_status" -ne 24 ]; then
+    echo "pre-commit: Git identity verification failed for a non-repairable reason; no configuration was changed" >&2
+    exit 1
+fi
 echo "pre-commit: identity is missing or invalid; verifying GitHub account and repairing this worktree" >&2
-pwsh -NoLogo -NoProfile -File "$repo_root/scripts/github/configure-local.ps1"
-exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1"
+pwsh -NoLogo -NoProfile -File "$repo_root/scripts/github/configure-local.ps1" -IdentityOnly -HookContext
+exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext

@@ -18,6 +18,7 @@ function Invoke-GitText {
     )
     # Inherited Git environment can redirect repository discovery, config, or object storage.
     $gitContext = @{}
+    $previousConsoleEncoding = [Console]::OutputEncoding
     foreach ($entry in [Environment]::GetEnvironmentVariables('Process').GetEnumerator()) {
         $name = [string]$entry.Key
         if (-not $name.StartsWith('GIT_',[StringComparison]::OrdinalIgnoreCase)) { continue }
@@ -25,10 +26,12 @@ function Invoke-GitText {
         Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
     }
     try {
+        [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
         $output = @(& git -C $Directory @Arguments 2>&1)
         $exitCode = $LASTEXITCODE
     }
     finally {
+        [Console]::OutputEncoding = $previousConsoleEncoding
         foreach ($name in $gitContext.Keys) {
             if ($null -eq $gitContext[$name]) { Remove-Item -LiteralPath ('Env:' + [string]$name) -ErrorAction SilentlyContinue }
             else { [Environment]::SetEnvironmentVariable([string]$name,[string]$gitContext[$name],'Process') }
@@ -135,7 +138,22 @@ try {
         }
         foreach ($directory in [IO.Directory]::EnumerateDirectories($taskDirectoryRoot)) {
             $directoryName = [IO.Path]::GetFileName($directory)
-            if ($directoryName -notmatch '^T-\d{3}$') { continue }
+            try { $directoryAttributes = [IO.File]::GetAttributes($directory) }
+            catch {
+                Write-Output ('BLOCKED: task directory attributes could not be verified: ' + $directoryName + ' (preserved; no cleanup performed)')
+                $failed = $true
+                continue
+            }
+            if (($directoryAttributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                Write-Output ('BLOCKED: reparse point in task directory root: ' + $directoryName + ' (preserved; no cleanup performed)')
+                $failed = $true
+                continue
+            }
+            if ($directoryName -notmatch '^T-\d{3,}$') {
+                Write-Output ('BLOCKED: unexpected physical directory in task directory root: ' + $directoryName + ' (preserved; no cleanup performed)')
+                $failed = $true
+                continue
+            }
             $directoryFullPath = [IO.Path]::GetFullPath($directory)
             if (-not $registeredTaskPaths.Contains($directoryFullPath)) {
                 Write-Output ('BLOCKED: unregistered task directory detected: ' + $directoryName + ' (preserved; no cleanup performed)')
@@ -150,12 +168,23 @@ try {
             $failed = $true
             continue
         }
+        try { $registeredAttributes = [IO.File]::GetAttributes($record.Path) }
+        catch {
+            Write-Output ('BLOCKED: registered worktree attributes could not be verified: ' + [IO.Path]::GetFileName($record.Path))
+            $failed = $true
+            continue
+        }
+        if (($registeredAttributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Write-Output ('BLOCKED: registered worktree is a reparse point: ' + [IO.Path]::GetFileName($record.Path))
+            $failed = $true
+            continue
+        }
         $treePath = [IO.Path]::GetFullPath($record.Path)
         $bareState = @(Invoke-GitText -Directory $treePath -Arguments @('rev-parse','--is-bare-repository') -Operation 'verify-worktree-kind')
         if ($bareState.Count -eq 1 -and $bareState[0] -ceq 'true') { continue }
         $relativeWorktree = [IO.Path]::GetRelativePath($adminRoot,$treePath).Replace('\','/')
         $isCurrent = $treePath.Equals($currentRoot,[StringComparison]::OrdinalIgnoreCase)
-        if ($relativeWorktree -match '^\.worktrees/T-(?<id>\d{3})$' -and $record.Branch -notmatch ('^task/T-' + $Matches.id + '(?:-|$)')) {
+        if ($relativeWorktree -match '^\.worktrees/T-(?<id>\d{3,})$' -and $record.Branch -notmatch ('^task/T-' + $Matches.id + '(?:-|$)')) {
             Write-Output ('BLOCKED: task branch/worktree ID mismatch: ' + $relativeWorktree)
             $failed = $true
             continue
@@ -210,7 +239,7 @@ try {
             $failed = $true
             continue
         }
-        Write-Output ('BLOCKED: unregistered dirty worktree (' + $statusLines.Count + ' paths): ' + $relativeWorktree)
+        Write-Output ('BLOCKED: registered dirty sibling worktree (' + $statusLines.Count + ' paths): ' + $relativeWorktree)
         $failed = $true
     }
 

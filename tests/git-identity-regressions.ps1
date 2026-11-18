@@ -6,28 +6,60 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $root = [IO.Path]::GetFullPath($TempRoot)
 [IO.Directory]::CreateDirectory($root) | Out-Null
-$scratch = Join-Path $root ('git-identity-regressions-' + [guid]::NewGuid().ToString('N'))
+$scratch = Join-Path $root ('Проверка-идентичности-Git-' + [guid]::NewGuid().ToString('N'))
 $seed = Join-Path $scratch 'seed'
 $worktree = Join-Path $scratch 'worktree'
 $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/lib/GitIdentity.psm1'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $utf8 = [Text.UTF8Encoding]::new($false)
 $passed = 0
-$envNames = @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_CEILING_DIRECTORIES',
-    'GIT_AUTHOR_NAME','GIT_AUTHOR_EMAIL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL',
-    'GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0','GIT_CONFIG_PARAMETERS','GIT_CONFIG_GLOBAL',
-    'GIT_CONFIG_NOSYSTEM')
+$envNames = @([Environment]::GetEnvironmentVariables('Process').Keys | ForEach-Object { [string]$_ } | Where-Object {
+    $_.StartsWith('GIT_',[StringComparison]::OrdinalIgnoreCase)
+} | Sort-Object -Unique)
 $savedEnv = @{}
-foreach ($name in $envNames) { $savedEnv[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
+foreach ($name in $envNames) {
+    $savedEnv[$name] = [Environment]::GetEnvironmentVariable($name,'Process')
+    Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
+}
+$remainingGitEnvironment = @([Environment]::GetEnvironmentVariables('Process').Keys | ForEach-Object { [string]$_ } | Where-Object {
+    $_.StartsWith('GIT_',[StringComparison]::OrdinalIgnoreCase)
+})
+if ($remainingGitEnvironment.Count -gt 0) { throw ('GIT_IDENTITY_TEST_ENVIRONMENT_NOT_CLEAN:' + ($remainingGitEnvironment -join ',')) }
 
-function Invoke-GitFixture([string]$Directory,[string[]]$Arguments) {
-    $output = @(& git -C $Directory @Arguments 2>&1)
-    $exitCode = $LASTEXITCODE
-    if ($exitCode -ne 0) {
-        $detail = (($output | ForEach-Object { [string]$_ }) -join ' ') -replace '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+','<redacted>'
-        throw ('GIT_FIXTURE_COMMAND_FAILED:' + $exitCode + ':' + ($Arguments -join ' ') + ':' + $detail)
+function Invoke-GitFixture([string]$Directory,[string[]]$Arguments,[hashtable]$GitEnvironment=@{}) {
+    $git = (Get-Command git -ErrorAction Stop).Source
+    if ([string]::IsNullOrWhiteSpace($script:fixtureGlobalConfig)) { throw 'GIT_FIXTURE_GLOBAL_CONFIG_UNSET' }
+    $start = [Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = $git
+    $start.UseShellExecute = $false
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    $start.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    $start.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+    $start.ArgumentList.Add('-C')
+    $start.ArgumentList.Add($Directory)
+    foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
+    foreach ($name in @($start.Environment.Keys | Where-Object { ([string]$_).StartsWith('GIT_',[StringComparison]::OrdinalIgnoreCase) })) {
+        $null = $start.Environment.Remove([string]$name)
     }
-    return (($output | ForEach-Object { [string]$_ }) -join [Environment]::NewLine).Trim()
+    $start.Environment['GIT_CONFIG_GLOBAL'] = $script:fixtureGlobalConfig
+    $start.Environment['GIT_CONFIG_NOSYSTEM'] = '1'
+    $allowedFixtureEnvironment = @('GIT_AUTHOR_NAME','GIT_AUTHOR_EMAIL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL')
+    foreach ($name in $GitEnvironment.Keys) {
+        if ($name -notin $allowedFixtureEnvironment) { throw ('GIT_FIXTURE_ENVIRONMENT_NOT_ALLOWED:' + $name) }
+        $start.Environment[$name] = [string]$GitEnvironment[$name]
+    }
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $start
+    $null = $process.Start()
+    $stdout = $process.StandardOutput.ReadToEndAsync()
+    $stderr = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 0) {
+        $detail = ($stdout.Result + ' ' + $stderr.Result) -replace '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+','<redacted>'
+        throw ('GIT_FIXTURE_COMMAND_FAILED:' + $process.ExitCode + ':' + ($Arguments -join ' ') + ':' + $detail.Trim())
+    }
+    return $stdout.Result.Trim()
 }
 function WriteText([string]$Path,[string]$Value) {
     [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Path)) | Out-Null
@@ -110,7 +142,7 @@ case "$PWSSHIM_MODE" in
                 if [ -f "$PWSSHIM_STATE" ]; then count=$(cat "$PWSSHIM_STATE"); fi
                 count=$((count + 1))
                 printf '%s' "$count" > "$PWSSHIM_STATE"
-                if [ "$count" -eq 1 ]; then exit 1; fi
+                if [ "$count" -eq 1 ]; then exit 24; fi
                 ;;
         esac
         ;;
@@ -184,12 +216,8 @@ try {
     $globalConfig = Join-Path $scratch 'global.gitconfig'
     $xdg = Join-Path $scratch 'xdg'
     [IO.Directory]::CreateDirectory($xdg) | Out-Null
-    $env:GIT_CONFIG_GLOBAL = $globalConfig
-    $env:GIT_CONFIG_NOSYSTEM = '1'
-    foreach ($name in @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_CEILING_DIRECTORIES',
-        'GIT_AUTHOR_NAME','GIT_AUTHOR_EMAIL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL','GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0','GIT_CONFIG_PARAMETERS')) {
-        Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
-    }
+    [IO.File]::WriteAllText($globalConfig,'',$utf8)
+    $script:fixtureGlobalConfig = $globalConfig
 
     Invoke-GitFixture -Directory $scratch -Arguments @('init','--quiet',$seed) | Out-Null
     Invoke-GitFixture -Directory $seed -Arguments @('config','extensions.worktreeConfig','true') | Out-Null
@@ -255,6 +283,27 @@ try {
             $env:GIT_CONFIG_VALUE_0 = $null
         }
     }
+    Case 'GIT-ID-024 indexed config override in a later slot is refused' {
+        $env:GIT_CONFIG_COUNT = '2'
+        $env:GIT_CONFIG_KEY_0 = 'core.quotepath'
+        $env:GIT_CONFIG_VALUE_0 = 'false'
+        $env:GIT_CONFIG_KEY_1 = 'user.name'
+        $env:GIT_CONFIG_VALUE_1 = 'Injected Author'
+        try {
+            try { Assert-GitWorktreeIdentity -RepositoryRoot $worktree; throw 'LATER_CONFIG_SLOT_NOT_REJECTED' }
+            catch {
+                $message = $_.Exception.Message
+                if (-not $message.Contains('GIT_IDENTITY_CONFIG_ENVIRONMENT_OVERRIDE') -or
+                    -not $message.Contains('GIT_CONFIG_KEY_1') -or
+                    $message.Contains('Injected Author')) { throw 'LATER_CONFIG_SLOT_DIAGNOSTIC_INVALID' }
+            }
+        }
+        finally {
+            foreach ($name in @('GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0','GIT_CONFIG_KEY_1','GIT_CONFIG_VALUE_1')) {
+                Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
+            }
+        }
+    }
     Case 'GIT-ID-007 correct outgoing commit and single-SHA push range pass' {
         WriteText (Join-Path $worktree 'good.txt') 'Good synthetic commit.'
         Invoke-GitFixture -Directory $worktree -Arguments @('add','good.txt') | Out-Null
@@ -284,13 +333,10 @@ try {
         Invoke-GitFixture -Directory $worktree -Arguments @('switch','--quiet','-c','task/bad-committer-name',$script:good) | Out-Null
         WriteText (Join-Path $worktree 'bad-committer-name.txt') 'Synthetic bad committer name.'
         Invoke-GitFixture -Directory $worktree -Arguments @('add','bad-committer-name.txt') | Out-Null
-        $env:GIT_COMMITTER_NAME = 'Scope Fixture'
-        $env:GIT_COMMITTER_EMAIL = '123456+synthetic-owner@users.noreply.github.com'
-        try { Invoke-GitFixture -Directory $worktree -Arguments @('commit','--quiet','-m','test: invalid committer name') | Out-Null }
-        finally {
-            Remove-Item -LiteralPath Env:GIT_COMMITTER_NAME -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath Env:GIT_COMMITTER_EMAIL -ErrorAction SilentlyContinue
-        }
+        Invoke-GitFixture -Directory $worktree -Arguments @('commit','--quiet','-m','test: invalid committer name') -GitEnvironment @{
+            GIT_COMMITTER_NAME='Scope Fixture'
+            GIT_COMMITTER_EMAIL='123456+synthetic-owner@users.noreply.github.com'
+        } | Out-Null
         $bad = Invoke-GitFixture -Directory $worktree -Arguments @('rev-parse','HEAD')
         ExpectFailure { Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @($script:good+'..'+$bad) } 'GIT_IDENTITY_COMMITTER_NAME_MISMATCH'
     }
@@ -298,13 +344,10 @@ try {
         Invoke-GitFixture -Directory $worktree -Arguments @('switch','--quiet','-c','task/bad-committer-email',$script:good) | Out-Null
         WriteText (Join-Path $worktree 'bad-committer-email.txt') 'Synthetic bad committer email.'
         Invoke-GitFixture -Directory $worktree -Arguments @('add','bad-committer-email.txt') | Out-Null
-        $env:GIT_COMMITTER_NAME = 'synthetic-owner'
-        $env:GIT_COMMITTER_EMAIL = 'fixture@example.invalid'
-        try { Invoke-GitFixture -Directory $worktree -Arguments @('commit','--quiet','-m','test: invalid committer email') | Out-Null }
-        finally {
-            Remove-Item -LiteralPath Env:GIT_COMMITTER_NAME -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath Env:GIT_COMMITTER_EMAIL -ErrorAction SilentlyContinue
-        }
+        Invoke-GitFixture -Directory $worktree -Arguments @('commit','--quiet','-m','test: invalid committer email') -GitEnvironment @{
+            GIT_COMMITTER_NAME='synthetic-owner'
+            GIT_COMMITTER_EMAIL='fixture@example.invalid'
+        } | Out-Null
         $bad = Invoke-GitFixture -Directory $worktree -Arguments @('rev-parse','HEAD')
         ExpectFailure { Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @($script:good+'..'+$bad) } 'GIT_IDENTITY_COMMITTER_EMAIL_MISMATCH'
     }
@@ -338,8 +381,9 @@ try {
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--quiet',$hookRepo) | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('config','user.name','Hook Fixture') | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('config','user.email','hook@example.invalid') | Out-Null
+        WriteText (Join-Path $hookRepo 'config/github/repository.json') (@{commitIdentity=@{login='synthetic-owner';userId='123456'}} | ConvertTo-Json -Depth 4)
         WriteText (Join-Path $hookRepo 'README.md') 'Synthetic hook fixture.'
-        Invoke-GitFixture -Directory $hookRepo -Arguments @('add','README.md') | Out-Null
+        Invoke-GitFixture -Directory $hookRepo -Arguments @('add','.') | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('commit','--quiet','-m','test: hook fixture') | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('branch','-M','main') | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('remote','add','origin',$hookRemote) | Out-Null
@@ -370,11 +414,13 @@ try {
         $result = Invoke-GitProcess -Arguments @('-C',$hookRepo,'push','origin','task/hook-a','task/hook-b') -Environment $envs
         if ($result.ExitCode -ne 0) { throw ('MULTI_REF_PUSH_HOOK_FAILED:' + $result.StdErr) }
         $calls = @((Read-PwshShimCalls -LogPath (Join-Path $scratch 'pwsh-calls.bin')).Calls)
-        if ($calls.Count -ne 3) { throw ('MULTI_REF_PWSH_CALL_COUNT_INVALID:' + $calls.Count + ':' + [string]::Join('||',@($calls | ForEach-Object { [string]::Join(' ',$_) }))) }
-        $auditCall = [string]::Join(' ',$calls[0])
+        if ($calls.Count -ne 4) { throw ('MULTI_REF_PWSH_CALL_COUNT_INVALID:' + $calls.Count + ':' + [string]::Join('||',@($calls | ForEach-Object { [string]::Join(' ',$_) }))) }
+        $contextCall = [string]::Join(' ',$calls[0])
+        if ($contextCall -notmatch 'verify-git-hook-context\.ps1') { throw 'PRE_PUSH_HOOK_CONTEXT_CHECK_MISSING' }
+        $auditCall = [string]::Join(' ',$calls[1])
         if ($auditCall -notmatch 'task-worktree-audit\.ps1.*-Mode Publish') { throw 'PRE_PUSH_WORKTREE_AUDIT_CALL_MISSING' }
-        $verifyRange = Get-PwshParameterValue -Arguments $calls[1] -Name '-CommitRange'
-        $gateRange = Get-PwshParameterValue -Arguments $calls[2] -Name '-PushRange'
+        $verifyRange = Get-PwshParameterValue -Arguments $calls[2] -Name '-CommitRange'
+        $gateRange = Get-PwshParameterValue -Arguments $calls[3] -Name '-PushRange'
         $actualRanges = @($verifyRange -split '\r?\n' | Sort-Object)
         $expectedRanges = @($hookShaA,$hookShaB | Sort-Object)
         if (Compare-Object -ReferenceObject $expectedRanges -DifferenceObject $actualRanges) { throw 'MULTI_REF_COMMIT_RANGES_NOT_PRESERVED' }
@@ -401,7 +447,10 @@ try {
         if ($result.ExitCode -eq 0) { throw 'PRE_COMMIT_OVERRIDE_WAS_NOT_BLOCKED' }
         if ((Invoke-GitFixture -Directory $hookRepo -Arguments @('rev-parse','HEAD')) -cne $before) { throw 'PRE_COMMIT_BLOCK_CREATED_COMMIT' }
         $calls = @((Read-PwshShimCalls -LogPath $logPath).Calls)
-        if ($calls.Count -ne 2 -or [string]::Join(' ',$calls[0]) -notlike '*task-worktree-audit.ps1*-Mode Commit*' -or [string]::Join(' ',$calls[1]) -notlike '*verify-git-identity.ps1*') { throw 'PRE_COMMIT_OVERRIDE_HOOK_SEQUENCE_INVALID' }
+        if ($calls.Count -ne 3 -or
+            [string]::Join(' ',$calls[0]) -notlike '*verify-git-hook-context.ps1*' -or
+            [string]::Join(' ',$calls[1]) -notlike '*task-worktree-audit.ps1*-Mode Commit*' -or
+            [string]::Join(' ',$calls[2]) -notlike '*verify-git-identity.ps1*') { throw 'PRE_COMMIT_OVERRIDE_HOOK_SEQUENCE_INVALID' }
     }
     Case 'GIT-ID-017 pre-commit dynamically repairs identity drift and rechecks' {
         WriteText (Join-Path $hookRepo 'repaired.txt') 'repaired commit'
@@ -421,12 +470,13 @@ try {
         $result = Invoke-GitProcess -Arguments @('-C',$hookRepo,'commit','-m','test: repaired hook commit') -Environment $envs
         if ($result.ExitCode -ne 0) { throw ('PRE_COMMIT_REPAIR_HOOK_FAILED:' + $result.StdErr) }
         $calls = @((Read-PwshShimCalls -LogPath $logPath).Calls)
-        if ($calls.Count -ne 4) { throw ('PRE_COMMIT_REPAIR_CALL_COUNT_INVALID:' + $calls.Count) }
+        if ($calls.Count -ne 5) { throw ('PRE_COMMIT_REPAIR_CALL_COUNT_INVALID:' + $calls.Count) }
         $sequence = @($calls | ForEach-Object { [string]::Join(' ',$_) })
-        if ($sequence[0] -notlike '*task-worktree-audit.ps1*-Mode Commit*' -or
-            $sequence[1] -notlike '*verify-git-identity.ps1*' -or
-            $sequence[2] -notlike '*configure-local.ps1*' -or
-            $sequence[3] -notlike '*verify-git-identity.ps1*') {
+        if ($sequence[0] -notlike '*verify-git-hook-context.ps1*' -or
+            $sequence[1] -notlike '*task-worktree-audit.ps1*-Mode Commit*' -or
+            $sequence[2] -notlike '*verify-git-identity.ps1*' -or
+            $sequence[3] -notlike '*configure-local.ps1*' -or
+            $sequence[4] -notlike '*verify-git-identity.ps1*') {
             throw 'PRE_COMMIT_REPAIR_HOOK_SEQUENCE_INVALID'
         }
     }
@@ -438,9 +488,11 @@ try {
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--bare','--quiet',$bareAdmin) | Out-Null
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--quiet',$bareSeed) | Out-Null
         Invoke-GitFixture -Directory $bareSeed -Arguments @('config','user.name','Bare Fixture') | Out-Null
+        WriteText (Join-Path $bareSeed 'config/github/repository.json') (@{commitIdentity=@{login='bare-owner';userId='654321'}} | ConvertTo-Json -Depth 4)
         Invoke-GitFixture -Directory $bareSeed -Arguments @('config','user.email','bare@example.invalid') | Out-Null
         WriteText (Join-Path $bareSeed 'README.md') 'Bare admin migration fixture.'
         Invoke-GitFixture -Directory $bareSeed -Arguments @('add','README.md') | Out-Null
+        Invoke-GitFixture -Directory $bareSeed -Arguments @('add','config/github/repository.json') | Out-Null
         Invoke-GitFixture -Directory $bareSeed -Arguments @('commit','--quiet','-m','test: bare seed') | Out-Null
         Invoke-GitFixture -Directory $bareSeed -Arguments @('branch','-M','main') | Out-Null
         Invoke-GitFixture -Directory $bareSeed -Arguments @('remote','add','origin',$bareAdmin) | Out-Null
@@ -475,6 +527,7 @@ try {
     Case 'GIT-ID-020 ambiguous common core.worktree fails closed without enabling extension' {
         $unsafeRoot = Join-Path $scratch 'unsafe-core-worktree'
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--quiet',$unsafeRoot) | Out-Null
+        WriteText (Join-Path $unsafeRoot 'config/github/repository.json') (@{commitIdentity=@{login='unsafe-owner';userId='987654'}} | ConvertTo-Json -Depth 4)
         Invoke-GitFixture -Directory $unsafeRoot -Arguments @('config','user.name','Unsafe Fixture') | Out-Null
         Invoke-GitFixture -Directory $unsafeRoot -Arguments @('config','user.email','unsafe@example.invalid') | Out-Null
         WriteText (Join-Path $unsafeRoot 'README.md') 'Unsafe config fixture.'
@@ -505,10 +558,40 @@ try {
             throw 'GIT_IDENTITY_NESTED_EXECUTABLE_ROOT_NOT_FOUND'
         }
     }
+    Case 'GIT-ID-023 primary config.worktree is not mistaken for bare-admin state' {
+        foreach ($scenario in @('main-first','linked-first')) {
+            $normalRoot = Join-Path $scratch ('normal-' + $scenario)
+            $firstLinked = Join-Path $scratch ('normal-' + $scenario + '-linked-one')
+            $secondLinked = Join-Path $scratch ('normal-' + $scenario + '-linked-two')
+            Invoke-GitFixture -Directory $scratch -Arguments @('init','--quiet',$normalRoot) | Out-Null
+            Invoke-GitFixture -Directory $normalRoot -Arguments @('config','user.name','Normal Fixture') | Out-Null
+            Invoke-GitFixture -Directory $normalRoot -Arguments @('config','user.email','normal@example.invalid') | Out-Null
+            WriteText (Join-Path $normalRoot 'config/github/repository.json') (@{commitIdentity=@{login='normal-owner';userId='123456'}} | ConvertTo-Json -Depth 4)
+            WriteText (Join-Path $normalRoot 'README.md') 'Normal linked worktree fixture.'
+            Invoke-GitFixture -Directory $normalRoot -Arguments @('add','.') | Out-Null
+            Invoke-GitFixture -Directory $normalRoot -Arguments @('commit','--quiet','-m','test: normal worktree fixture') | Out-Null
+            Invoke-GitFixture -Directory $normalRoot -Arguments @('branch','-M','main') | Out-Null
+            if ($scenario -ceq 'linked-first') {
+                Invoke-GitFixture -Directory $normalRoot -Arguments @('worktree','add','--quiet','-b','task/normal-one',$firstLinked,'main') | Out-Null
+                $null = Initialize-GitWorktreeConfig -RepositoryRoot $firstLinked
+            }
+            $null = Initialize-GitWorktreeConfig -RepositoryRoot $normalRoot
+            Invoke-GitFixture -Directory $normalRoot -Arguments @('worktree','add','--quiet','-b','task/normal-two',$secondLinked,'main') | Out-Null
+            $null = Initialize-GitWorktreeConfig -RepositoryRoot $secondLinked
+            if ((Invoke-GitFixture -Directory $normalRoot -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw ('PRIMARY_WORKTREE_CORE_BARE_INVALID:' + $scenario) }
+            if ((Invoke-GitFixture -Directory $secondLinked -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw ('LINKED_WORKTREE_CORE_BARE_INVALID:' + $scenario) }
+        }
+    }
     Write-Output ('GIT-IDENTITY-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {
-    foreach ($name in $envNames) { [Environment]::SetEnvironmentVariable($name,$savedEnv[$name],'Process') }
+    foreach ($entry in [Environment]::GetEnvironmentVariables('Process').GetEnumerator()) {
+        if ([string]$entry.Key -like 'GIT_*') { Remove-Item -LiteralPath ('Env:' + [string]$entry.Key) -ErrorAction SilentlyContinue }
+    }
+    foreach ($name in $envNames) {
+        if ($null -eq $savedEnv[$name]) { Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue }
+        else { [Environment]::SetEnvironmentVariable($name,$savedEnv[$name],'Process') }
+    }
     $fullRoot = [IO.Path]::GetFullPath($root).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
     $fullScratch = [IO.Path]::GetFullPath($scratch)
     if (-not $fullScratch.StartsWith($fullRoot,[StringComparison]::OrdinalIgnoreCase)) { throw 'GIT_IDENTITY_FIXTURE_CLEANUP_PATH_INVALID' }
