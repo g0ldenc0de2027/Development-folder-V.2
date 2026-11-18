@@ -31,7 +31,9 @@ $script:GitHookEnvironmentNames = @(
     'GIT_COMMON_DIR',
     'GIT_OBJECT_DIRECTORY',
     'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-    'GIT_NAMESPACE'
+    'GIT_NAMESPACE',
+    'GIT_CEILING_DIRECTORIES',
+    'GIT_DISCOVERY_ACROSS_FILESYSTEM'
 )
 $script:OriginalGitHookEnvironment = @{}
 foreach ($name in $script:GitHookEnvironmentNames) {
@@ -66,10 +68,13 @@ function Restore-GitHookEnvironment([hashtable]$Saved) {
 
 function Invoke-Git([string]$WorkingDirectory, [string[]]$Arguments) {
     $savedEnvironment = Clear-GitHookEnvironment
+    $originalOutputEncoding = [Console]::OutputEncoding
     try {
+        [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
         $output = @(& git -C $WorkingDirectory @Arguments 2>&1)
         $exitCode = $LASTEXITCODE
     } finally {
+        [Console]::OutputEncoding = $originalOutputEncoding
         Restore-GitHookEnvironment $savedEnvironment
     }
     if ($exitCode -ne 0) {
@@ -95,10 +100,21 @@ function Get-SourceGitState {
     }
 }
 
-function Assert-Scope([int]$ExpectedExit, [string]$ExpectedMessage, [string]$ExpectedSummary = '') {
+function Assert-Scope([int]$ExpectedExit, [string]$ExpectedMessage, [string]$ExpectedSummary = '', [switch]$UseFixtureGitContext) {
     $verifier = Join-Path $taskWorktree 'scripts/verify-task-scope.ps1'
     $savedEnvironment = Clear-GitHookEnvironment
     try {
+        if ($UseFixtureGitContext) {
+            $gitDir = ((Invoke-Git $taskWorktree @('rev-parse', '--path-format=absolute', '--git-dir') | Select-Object -First 1).Trim())
+            $commonDir = ((Invoke-Git $taskWorktree @('rev-parse', '--path-format=absolute', '--git-common-dir') | Select-Object -First 1).Trim())
+            $indexPath = ((Invoke-Git $taskWorktree @('rev-parse', '--path-format=absolute', '--git-path', 'index') | Select-Object -First 1).Trim())
+            [Environment]::SetEnvironmentVariable('GIT_DIR', $gitDir, 'Process')
+            [Environment]::SetEnvironmentVariable('GIT_WORK_TREE', $taskWorktree, 'Process')
+            [Environment]::SetEnvironmentVariable('GIT_INDEX_FILE', $indexPath, 'Process')
+            [Environment]::SetEnvironmentVariable('GIT_COMMON_DIR', $commonDir, 'Process')
+            [Environment]::SetEnvironmentVariable('GIT_CEILING_DIRECTORIES', $scratch, 'Process')
+            [Environment]::SetEnvironmentVariable('GIT_DISCOVERY_ACROSS_FILESYSTEM', '0', 'Process')
+        }
         $output = @(& $pwsh -NoLogo -NoProfile -File $verifier -TaskId T-008 -BaseRef main 2>&1)
         $exitCode = $LASTEXITCODE
     } finally {
@@ -218,9 +234,37 @@ try {
     Write-Text (Join-Path $taskWorktree 'spec/ТЗ.md') "Unicode path`n"
     $null = Invoke-Git $taskWorktree @('add', '--all')
     $null = Invoke-Git $taskWorktree @('commit', '-m', 'test(scope): add allowed files')
-    Assert-Scope 0 'TASK-SCOPE=PASS' 'TASK-SCOPE=PASS (2 changed paths; 3 allowed paths)'
+    Assert-Scope 0 'TASK-SCOPE=PASS' 'TASK-SCOPE=PASS (2 changed paths; 3 allowed paths)' -UseFixtureGitContext
     $passed++
-    Write-Output 'PASS: scope enumerates changes and Unicode filenames under inherited Git hook environment'
+    Write-Output 'PASS: scope accepts Unicode paths with inherited task-worktree Git context'
+
+    $originalOutputEncoding = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = [Text.Encoding]::GetEncoding(866)
+        Assert-Scope 0 'TASK-SCOPE=PASS' 'TASK-SCOPE=PASS (2 changed paths; 3 allowed paths)' -UseFixtureGitContext
+    } finally {
+        [Console]::OutputEncoding = $originalOutputEncoding
+    }
+    $passed++
+    Write-Output 'PASS: scope decodes Unicode Git paths under a non-UTF-8 console code page'
+
+    if (-not (Test-Path -LiteralPath (Join-Path $taskWorktree '.git') -PathType Leaf)) {
+        throw 'Synthetic task fixture must use a linked-worktree .git file marker.'
+    }
+    $linkedTempRoot = Join-Path $taskWorktree ('temp/T-GATE-LINKED-REJECT-' + [guid]::NewGuid().ToString('N'))
+    $gatePath = Join-Path $repoRoot 'scripts/quality-gate.ps1'
+    $gateOutput = @(& $pwsh -NoLogo -NoProfile -File $gatePath -BaseRef origin/main -TemporaryRoot $linkedTempRoot 2>&1)
+    $gateExit = $LASTEXITCODE
+    $gateText = $gateOutput -join [Environment]::NewLine
+    if (
+        $gateExit -eq 0 -or
+        -not $gateText.Contains('QUALITY-GATE: temporary root must be outside the source repository') -or
+        (Test-Path -LiteralPath $linkedTempRoot)
+    ) {
+        throw 'Quality gate must refuse a TempRoot inside a linked worktree before creating artifacts.'
+    }
+    $passed++
+    Write-Output 'PASS: quality gate refuses a TempRoot inside a linked worktree before writes'
 
     $null = Invoke-Git $taskWorktree @('branch', '-m', 'task/T-008-scope-fixture')
     Assert-Scope 0 'TASK-SCOPE=PASS' 'TASK-SCOPE=PASS (2 changed paths; 3 allowed paths)'
@@ -246,7 +290,7 @@ try {
     $passed++
     Write-Output 'PASS: scope rejects a committed out-of-scope path'
 
-    if ($passed -ne 5) { throw ('Expected 5 task-scope cases; found ' + $passed) }
+    if ($passed -ne 7) { throw ('Expected 7 task-scope cases; found ' + $passed) }
     Write-Output ("TASK-SCOPE-REGRESSIONS: {0} passed, 0 failed" -f $passed)
 } finally {
     try {

@@ -9,8 +9,15 @@ $ErrorActionPreference = 'Stop'
 & (Join-Path $PSScriptRoot 'verify-runtime.ps1') -Quiet
 
 function Invoke-Git([string[]]$Arguments) {
-    $output = @(& git @Arguments)
-    if ($LASTEXITCODE -ne 0) { throw 'Task scope check could not read Git state' }
+    $originalOutputEncoding = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+        $output = @(& git @Arguments)
+        $exitCode = $LASTEXITCODE
+    } finally {
+        [Console]::OutputEncoding = $originalOutputEncoding
+    }
+    if ($exitCode -ne 0) { throw 'Task scope check could not read Git state' }
     return $output
 }
 
@@ -51,7 +58,6 @@ foreach ($change in $changes) {
     if (-not $allowed) { $outside.Add($normalized) }
 }
 if ($outside.Count -gt 0) { throw ('Out-of-scope paths: ' + ($outside -join ', ')) }
-$status = @(& git -C $repoRoot status --porcelain=v1 --untracked-files=all)
-if ($LASTEXITCODE -ne 0) { throw 'Task scope check could not read working-tree status' }
+$status = @(Invoke-Git @('-C',$repoRoot,'status','--porcelain=v1','--untracked-files=all'))
 if ($status.Count -gt 0) { throw 'Working tree must be clean before push' }
 Write-Output ("TASK-SCOPE=PASS ({0} changed paths; {1} allowed paths)" -f $changes.Count,$scope.Count)

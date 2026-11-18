@@ -53,6 +53,19 @@
         "author:Codex:gpt-6.1-sol"
       ],
       "review": null
+    },
+    {
+      "id": "git-unicode-paths",
+      "kind": "lesson",
+      "title": "Урок: не зависеть от кодовой страницы консоли при чтении Git-путей",
+      "status": "draft",
+      "path": "knowledge/records/git-unicode-paths.md",
+      "contentSha256": "8954b0167ffb55e63cc8b90bbfd211cc3be4597eef87fa8b37771d79afcdd0c8",
+      "sources": [
+        "author:Codex:GPT-6",
+        "test:tests/task-scope-regressions.ps1:2026-11-19"
+      ],
+      "review": null
     }
   ]
 }

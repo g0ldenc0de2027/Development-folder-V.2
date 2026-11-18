@@ -5,10 +5,10 @@
 ## Unreleased
 - Регрессии Git-фикстур и quality gate проверяют TempRoot вне worktree и bare-репозиториев до создания файлов; task-scope suite сравнивает HEAD, refs, index и status исходного репозитория до и после фикстур.
 - Scratch-каталоги `.work/` и `.manus/` защищены от случайного Git-add; рекурсивные quality scans исключают только их точные сегменты, а Gitleaks остаётся включённым для всей рабочей копии.
-- Единая проверка scope принимает `task/T-NNN` и документированный lowercase slug, чтобы hook и task workflow не расходились.
+- Единая проверка scope принимает `task/T-NNN` и проверенный lowercase slug; hook отклоняет пустые, некорректные и неоднозначные сегменты имени.
 - Матрица runtime вынесена в `config/runtime-support.json`: проверенная Windows 11 x64 GA 26H2/build 26300 на `ge_release`; PowerShell 7.6 LTS 7.6.10+; CI — Windows Server 2025 build 26100.
-- Gate, scope guard и KB CLI fail-closed проверяют поддерживаемую платформу и линию PowerShell через общий runtime verifier; scope guard корректно обрабатывает Unicode-пути.
-- Усилен pre-push: только одноимённая task/T-NNN ветка, без тегов/удалений/non-fast-forward; зоны файлов сверяются с карточкой задачи.
+- Gate, scope guard и KB CLI fail-closed проверяют поддерживаемую платформу и линию PowerShell через общий runtime verifier; scope guard декодирует Unicode-пути независимо от системной кодовой страницы, что покрыто регрессией CP866.
+- Усилен pre-push: только одноимённая task/T-NNN ветка с валидным slug, без тегов/удалений/non-fast-forward; зоны файлов сверяются с карточкой задачи.
 - Исправлена передача диапазонов Git hook в PowerShell и добавлена fail-closed проверка scope.
 - KB CLI проверяет секретоподобные значения в метаданных, комплектность канонического RULES 0.2.0 и не выдаёт неполный context молча.
 - Аудит-реестр и инструкции передачи: tasks/T-008-audit-remediation.md.

@@ -151,7 +151,9 @@ if ($prePushHook -notmatch 'read -r local_ref local_sha remote_ref remote_sha' -
     throw 'Pre-push hook must pass Git-provided ref update ranges to the secret scan'
 }
 if (
-    -not $prePushHook.Contains('refs/heads/task/T-[0-9][0-9][0-9]-[a-z0-9]*') -or
+    -not $prePushHook.Contains('refs/heads/task/T-[0-9][0-9][0-9]-*') -or
+    -not $prePushHook.Contains('*[!a-z0-9-]*') -or
+    -not $prePushHook.Contains('*--*') -or
     -not $prePushHook.Contains('task_id=${task_branch%${task_branch#?????}}')
 ) {
     throw 'Pre-push hook must accept suffixed task branches and pass only the validated task ID to the scope guard'

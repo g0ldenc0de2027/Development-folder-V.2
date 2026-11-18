@@ -21,6 +21,7 @@
 - `knowledge/catalog.json`
 - `knowledge/УРОКИ.md`
 - `knowledge/records/task-isolation.md`
+- `knowledge/records/git-unicode-paths.md`
 - `docs/development.md`
 - `docs/local-knowledge.md`
 - `docs/github-workflow.md`
@@ -43,6 +44,9 @@
 - Git-fixture suite и quality gate отказываются от TempRoot внутри любого Git-репозитория (worktree или bare) до записи; quality gate принимает явный TemporaryRoot для проверки границы без изменения TEMP процесса. Fixtures запускаются только из внешнего временного корня; suite сравнивает HEAD, refs, index и status источника до и после.
 - Матрица среды вынесена в config/runtime-support.json: проверенная Windows 11 x64 GA 26H2/build 26300 на ge_release; PowerShell 7.6 LTS не ниже 7.6.10; CI — Windows Server 2025 base build 26100. Hosted runner фактически запускал 7.6.9, поэтому workflow каждый run скачивает официальный PowerShell 7.6.10 win-x64 ZIP, проверяет pinned SHA-256, версию и CI baseline, затем запускает gate явным бинарником. quality-gate, scope guard и KB CLI используют общий fail-closed runtime verifier.
 - Hook разрешает публикацию только с текущей ветки `task/T-NNN` либо валидной `task/T-NNN-<lowercase-hyphenated-slug>` в одноимённую remote branch; detached HEAD, tags, deletion, сторонний ref и non-fast-forward отклоняются.
+- Git-пути в scope guard декодируются как UTF-8 независимо от кодовой страницы консоли; регрессия CP866 использует Unicode-путь и действительный linked-worktree Git-контекст.
+- Pre-push валидирует весь slug (только lowercase ASCII, цифры и одиночные внутренние дефисы), а регрессии проверяют использование действительного контекста `GIT_CEILING_DIRECTORIES` / `GIT_DISCOVERY_ACROSS_FILESYSTEM`.
+- Quality-gate regression проверяет отказ от `TemporaryRoot` внутри linked worktree до создания артефактов.
 - Диапазоны refs передаются одним CSV аргументом и повторно разбираются quality gate. Записи hook ограничены 20 на вызов.
 - До quality gate hook вызывает scope guard. Точная зона берётся из единственной карточки `tasks/T-NNN-*.md`; dedicated linked worktree и task branch `origin/main...HEAD` проверяются с учётом rename как delete+add, дерево должно быть чистым.
 - KB secret detector проверяет свободные строковые поля каталога, возвращаемые как контекст: title, sources, reviewer и evidence.
@@ -78,6 +82,17 @@
 | F20 | P3 | Частично | Карточка фиксирует очередь аудита; единый task index и номера следующих задач синхронизировать после PR #5–#7. |
 | V2-02 | P2 | Исправляется в T-008 | Локальные `.work/` и `.manus/` игнорируются Git и исключаются только из syntax/privacy/hygiene обходов; Gitleaks сохраняет полный охват; поведение проверяется path-boundary regression. |
 | V2-19 | P2 | Исправляется в T-008 | Hook и scope guard поддерживают один документированный формат task ID и lowercase slug; поведение закреплено fixture для принятого и отклонённого имени. |
+
+## Независимая проверка GLM 5.3 (2026-11-19)
+
+Ревьюер проверил опубликованный head `dfa5f1635ecc1f7bd0612e9f72fac9794b83dc0e`, base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; run `#44391710689` был успешен на том head. Его замечания относятся к старому head и сами по себе не подтверждают кандидатные изменения ниже.
+
+| Замечание | Результат в кандидатной рабочей копии | Доказательство / остаток |
+|---|---|---|
+| Unicode Git path декодируется по кодовой странице консоли | Исправлено локально | До исправления CP866-регрессия падала; после — task-scope suite 7/7 PASS. Нужны новый hosted CI и review нового head. |
+| В тесте неполон список inherited Git hook variables | Исправлено локально | Добавлены `GIT_CEILING_DIRECTORIES` и `GIT_DISCOVERY_ACROSS_FILESYSTEM`; фикстура передаёт оба в child scope verifier в валидном linked-worktree контексте. Suite 7/7 PASS. |
+| Шаблон slug в pre-push пропускал произвольные символы после первого | Исправлено локально | Hook явно запрещает символы вне `[a-z0-9-]`, пустые/краевые/двойные дефисы; качество gate проверяет все ограничения. Поведенческий запуск всего hook с подменённым `pwsh` не выполнялся. |
+| Не было отдельной регрессии TempRoot внутри linked worktree | Исправлено локально | Suite вызывает gate с TempRoot внутри synthetic linked worktree и проверяет отказ до создания каталога. Suite 7/7 PASS. |
 
 ## Передача следующему агенту
 
