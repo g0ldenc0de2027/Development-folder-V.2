@@ -49,6 +49,25 @@
 - The missing normative Unicode display policy was accepted and corrected in FR-AOR-006; its full source basis and limits are recorded in the R7 research section.
 - Earlier reports with fingerprints 5fea239… and 64d069… apply only to their respective earlier snapshots. Fresh review must verify the exact T-016 head and current CI.
 
+## Последующий source snapshot T-013 — 2026-11-18
+
+- Исходная T-013 ветка и worktree остаются сохранёнными без reset/clean/rebase/commit/push: branch `task/T-013-agent-orchestration-research`, committed HEAD `88342060af7c6c18a163d3b6fa6727ab5c17fd7e`, base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`, два локальных commits имеют автора `Scope Fixture`. Историческое происхождение фрагментов — `UNKNOWN`.
+- Ранее скопированный recovery input остаётся прежним точным снимком: 704 bytes, Format 1 SHA-256 `39fc2f2f042d15e546b778cff626ab8e60d1eaf0adf3383b80868fb64e9cc37f`. Это не fingerprint более позднего состояния исходной рабочей копии.
+- Текущий сохранённый source snapshot T-013: семь modified paths, без staged/untracked paths; Format 1, 704 bytes, SHA-256 `91bb56d5de1822cfb64a9fad0270c83d41d5b00c110e6740d2804c9e96c2d4f3`.
+
+| Source path | SHA-256 raw bytes — snapshot 2026-11-18 |
+|---|---|
+| docs/agent-orchestration-roadmap.md | 19612a2eaa70fa4d087cd9fcb82fec9b01dd50d29a065d6c258ffd93f5571420 |
+| docs/handoff.md | 73a8b2ec08087d797a215babfdf1ba2de5463ebbdb98dd3f6d720e5503bd9764 |
+| knowledge/catalog.json | a0581b9adf5cbb8cee5f05a022bcd112e3cb58b56f5653bb15c13217418afdc6 |
+| knowledge/records/agent-orchestration-research-2026-11-16.md | 05e0e65a2a65c30ca605e7df149beb2310236d2aa06ca1cfa6104a57172ed62d |
+| spec/agent-orchestration.md | 47d7c9b0291f80d97d293197d427f86870dc2d0983b6d5ac0a5f4d864de525aa |
+| specification-system/tz_state.md | 3ed450c87b77d83742d19fe60dc5a810e341b816e2b5ab9e0fa3296429441c73 |
+| tasks/T-013-agent-orchestration-research-and-spec.md | f81b0839df6e48141ca6c1c3e9d35a85e24f5e4ef61ebf44f2ef3bd462a734fb |
+
+- Four paths (roadmap, catalog, research record, specification) retain the hashes of the original T-016 recovery input. The later T-013 edits are limited to the status/evidence documents `docs/handoff.md`, `specification-system/tz_state.md`, and the T-013 task card. They record source-local gate evidence for T-013 spec/roadmap `0.18.1-draft`, research `2.9.3`; they explicitly do not claim hosted CI or fresh independent review for those source bytes.
+- T-016 is a separately attributed recovery derivative, not a byte-for-byte copy of this later manifest: its spec/roadmap `0.18.2-draft` and research `2.9.4` include the accepted normative Unicode policy. Its gate/CI/review must be evidenced only against T-016 revisions; the local T-013 gate is not transferable evidence.
+- Disposition: retain the T-013 worktree intact as a quarantined source record. Do not stage, commit, clean, reset, or publish that branch. The three later status/evidence updates are preserved here as a separately fingerprinted historical source snapshot; T-016 remains the only recovery/integration path. If a future content comparison finds a requirement unique to the later source snapshot, add it as a scoped T-016 follow-up and validate a new revision.
 ## Acceptance
 
 1. Recovery base is exact live origin/main; the recovery commit ancestry contains no copied Scope Fixture commit objects.
