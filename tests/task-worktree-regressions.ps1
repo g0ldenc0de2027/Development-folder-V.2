@@ -17,6 +17,7 @@ $quarantineTree = Join-Path $admin '.worktrees/T-013'
 $scriptPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/task-worktree-audit.ps1'
 $hooksPath = Join-Path (Split-Path $PSScriptRoot -Parent) '.githooks'
 $configPath = Join-Path $scratch 'quarantine.json'
+$repoRoot = Split-Path $PSScriptRoot -Parent
 $utf8 = [Text.UTF8Encoding]::new($false)
 $passed = 0
 
@@ -42,8 +43,8 @@ function Invoke-NativeProcess([string]$Executable,[string[]]$Arguments,[switch]$
     $start.RedirectStandardError = $true
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     if (-not $PreserveGitContext) {
-        foreach ($name in @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_COMMON_DIR','GIT_PREFIX')) {
-            $null = $start.Environment.Remove($name)
+        foreach ($name in @($start.Environment.Keys | Where-Object { ([string]$_).StartsWith('GIT_',[StringComparison]::OrdinalIgnoreCase) })) {
+            $null = $start.Environment.Remove([string]$name)
         }
     }
     $process = [Diagnostics.Process]::new()
@@ -116,15 +117,48 @@ try {
     $emptyConfig = @{schemaVersion=1;quarantines=@()} | ConvertTo-Json -Depth 5
     [IO.File]::WriteAllText($configPath,$emptyConfig,$utf8)
 
+    Case 'production quarantine registry remains empty' {
+        $productionConfig = Get-Content -LiteralPath (Join-Path $repoRoot 'config/worktree-quarantine.json') -Raw | ConvertFrom-Json
+        if ($productionConfig.schemaVersion -ne 1 -or @($productionConfig.quarantines).Count -ne 0) { throw 'PRODUCTION_QUARANTINE_REGISTRY_MUST_BE_EMPTY' }
+    }
     Case 'clean registered worktrees pass audit' {
         $result = Assert-AuditExit 0 'CLEAN_AUDIT'
         if ($result.Output -notmatch 'WORKTREE-AUDIT=PASS') { throw 'CLEAN_AUDIT_MARKER_MISSING' }
+    }
+    Case 'missing registered worktree blocks without deleting its data' {
+        $parked = Join-Path $scratch 'parked-quarantine-worktree'
+        Move-Item -LiteralPath $quarantineTree -Destination $parked
+        try {
+            $result = Assert-AuditExit 1 'MISSING_WORKTREE_AUDIT'
+            if ($result.Output -notmatch 'registered worktree missing or prunable') { throw 'MISSING_WORKTREE_REASON_MISSING' }
+            if (-not (Test-Path -LiteralPath (Join-Path $parked 'README.md') -PathType Leaf)) { throw 'MISSING_WORKTREE_DATA_CHANGED' }
+        }
+        finally { if (Test-Path -LiteralPath $parked -PathType Container) { Move-Item -LiteralPath $parked -Destination $quarantineTree } }
+    }
+    Case 'task directory without Git registration blocks admission' {
+        $orphan = Join-Path $admin '.worktrees/T-019'
+        [IO.Directory]::CreateDirectory($orphan) | Out-Null
+        Write-Text (Join-Path $orphan 'preserve.txt') 'synthetic orphan'
+        try {
+            $result = Assert-AuditExit 1 'ORPHAN_WORKTREE_AUDIT'
+            if ($result.Output -notmatch 'unregistered task directory detected: T-019') { throw 'ORPHAN_WORKTREE_REASON_MISSING' }
+            if (-not (Test-Path -LiteralPath (Join-Path $orphan 'preserve.txt') -PathType Leaf)) { throw 'ORPHAN_WORKTREE_DATA_CHANGED' }
+        }
+        finally { if (Test-Path -LiteralPath $orphan -PathType Container) { Remove-Item -LiteralPath $orphan -Recurse -Force } }
+    }
+    Case 'task directory and branch IDs must match' {
+        Invoke-Git $mainTree @('branch','-m','task/T-019-worktree-mismatch') | Out-Null
+        try {
+            $result = Assert-AuditExit 1 'TASK_ID_MISMATCH_AUDIT'
+            if ($result.Output -notmatch 'task branch/worktree ID mismatch') { throw 'TASK_ID_MISMATCH_REASON_MISSING' }
+        }
+        finally { Invoke-Git $mainTree @('branch','-m','task/T-018-worktree-guard') | Out-Null }
     }
     Case 'fixture Git commands ignore inherited hook context' {
         $gitDir = Invoke-Git $mainTree @('rev-parse','--absolute-git-dir')
         $commonDir = Invoke-Git $mainTree @('rev-parse','--git-common-dir')
         if (-not [IO.Path]::IsPathRooted($commonDir)) { $commonDir = [IO.Path]::GetFullPath((Join-Path $mainTree $commonDir)) }
-        $names = @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_COMMON_DIR','GIT_PREFIX')
+        $names = @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_COMMON_DIR','GIT_PREFIX','GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0')
         $saved = @{}
         foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
         try {
@@ -133,6 +167,10 @@ try {
             [Environment]::SetEnvironmentVariable('GIT_INDEX_FILE',(Join-Path $gitDir 'index'),'Process')
             [Environment]::SetEnvironmentVariable('GIT_COMMON_DIR',$commonDir,'Process')
             [Environment]::SetEnvironmentVariable('GIT_PREFIX','hook-prefix/','Process')
+            [Environment]::SetEnvironmentVariable('GIT_CONFIG_COUNT','1','Process')
+            [Environment]::SetEnvironmentVariable('GIT_CONFIG_KEY_0','core.bare','Process')
+            [Environment]::SetEnvironmentVariable('GIT_CONFIG_VALUE_0','true','Process')
+            if ((Invoke-Git $mainTree @('rev-parse','--is-bare-repository')) -cne 'false') { throw 'FIXTURE_GIT_CONFIG_WAS_NOT_ISOLATED' }
             Invoke-Git $seed @('remote','add','fixture-isolation',$remote) | Out-Null
             if ((Invoke-Git $seed @('remote','get-url','fixture-isolation')) -ne $remote) { throw 'FIXTURE_GIT_CONTEXT_WAS_NOT_ISOLATED' }
             if ((Invoke-Git $admin @('remote')) -contains 'fixture-isolation') { throw 'FIXTURE_GIT_CONTEXT_MUTATED_SIBLING' }
@@ -186,7 +224,7 @@ try {
             $gitDir = Invoke-Git $mainTree @('rev-parse','--absolute-git-dir')
             $commonDir = Invoke-Git $mainTree @('rev-parse','--git-common-dir')
             if (-not [IO.Path]::IsPathRooted($commonDir)) { $commonDir = [IO.Path]::GetFullPath((Join-Path $mainTree $commonDir)) }
-            $names = @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_COMMON_DIR','GIT_PREFIX')
+            $names = @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_COMMON_DIR','GIT_PREFIX','GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0')
             $saved = @{}
             foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
             try {
@@ -195,6 +233,9 @@ try {
                 [Environment]::SetEnvironmentVariable('GIT_INDEX_FILE',(Join-Path $gitDir 'index'),'Process')
                 [Environment]::SetEnvironmentVariable('GIT_COMMON_DIR',$commonDir,'Process')
                 [Environment]::SetEnvironmentVariable('GIT_PREFIX','hook-prefix/','Process')
+                [Environment]::SetEnvironmentVariable('GIT_CONFIG_COUNT','1','Process')
+                [Environment]::SetEnvironmentVariable('GIT_CONFIG_KEY_0','core.bare','Process')
+                [Environment]::SetEnvironmentVariable('GIT_CONFIG_VALUE_0','true','Process')
                 $hookAudit = Invoke-Audit -Mode 'Commit'
                 if ($hookAudit.ExitCode -ne 0 -or $hookAudit.Output -notmatch 'STAGED_ONLY') { throw ('HOOK_GIT_CONTEXT_LEAKED:' + $hookAudit.Output + $hookAudit.Error) }
             }

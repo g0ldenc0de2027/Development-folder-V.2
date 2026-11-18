@@ -12,10 +12,16 @@
 ### Вторичная причина: hook-контекст в regression harness
 При реальном pre-push regression suite запускала fixture-команды git -C, наследуя GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_COMMON_DIR и GIT_PREFIX от hook. В результате setup тестового bare-репозитория воздействовал на настоящий локальный репозиторий: T-015 HEAD/index переключились на fixture, локальный main был заменён, и hook отказал до отправки. Backup показал, что все 66 путей последнего корректного T-015 commit 86e7f7f5bb3131f1c9fe96b04b92151a18cb85b9 на диске сохранили точные байты. После проверки резервной копии refs/HEAD/index восстановлены локально; remote не менялся. Этот случай показал, что изолировать Git-контекст должен и тестовый harness, а не только проверяемый production script.
 
+### Повторная калибровка: 2026-11-18
+
+Read-only-аудит T-015 выявил, что проверка только `git worktree list` не видит оставшийся физический каталог `.worktrees/T-NNN`, если Git его не зарегистрировал. Кроме того, удаление только пяти hook-переменных оставляло другие `GIT_*`, включая `GIT_CONFIG_COUNT`, способные подменить effective config или object store. Первая реализация очистки через `.NET SetEnvironmentVariable(name, $null, 'Process')` оставляла пустую переменную в Windows PowerShell; hook-context regression воспроизвёл `fatal: not a git repository: ''`. Исправление использует `Remove-Item Env:` с точным восстановлением исходного окружения.
+
+Закреплено: аудит сравнивает физические каталоги `.worktrees/T-NNN` со списком зарегистрированных worktrees и блокирует orphan, не изменяя данные; reparse point на корне `.worktrees` блокируется; fixture и production Git subprocesses очищают все `GIT_*`. Новые тесты покрывают пустой production quarantine, missing/prunable worktree, orphan-каталог, несоответствие ID ветки и каталога, config injection и hook context. Целевой suite прошёл 17/17; это доказывает поведение synthetic fixtures на проверенной редакции, но не исключает обход локальных hooks или гонку с внешним процессом.
+
 ## Закрепление
-- scripts/task-worktree-audit.ps1 -Mode Audit проверяет все зарегистрированные worktree, включая tracked, staged, unstaged, untracked, missing/prunable записи, связь task ID с веткой и игнорируемые .vs. Вложенные Git-вызовы временно удаляют hook variables GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_COMMON_DIR и GIT_PREFIX, затем восстанавливают исходный процессный контекст.
+- scripts/task-worktree-audit.ps1 -Mode Audit проверяет все зарегистрированные worktree, физические каталоги `.worktrees/T-NNN`, tracked, staged, unstaged, untracked, missing/prunable записи, связь task ID с веткой и игнорируемые .vs. Вложенные Git-вызовы временно удаляют все process `GIT_*` и восстанавливают исходное окружение.
 - pre-commit повторяет глобальный audit и допускает только staged write-set текущего worktree; pre-push требует чистое состояние и повторяет audit.
-- Regression suite проверяет чистые/грязные worktree, ignored .vs, пропавшие и несогласованные записи, точный synthetic quarantine, вызовы hooks, изоляцию аудитора при hook Git context и очистку этих переменных в собственных fixture subprocesses.
+- Regression suite проверяет чистые/грязные и отсутствующие worktrees, orphan-каталоги, mismatch ID, ignored .vs, точный synthetic quarantine, пустой production quarantine, hooks и изоляцию Git environment/config в fixtures и production subprocesses.
 - Создание новой задачи начинается только после успешного audit. После interruption сначала обновляется handoff и продолжается исходная задача; автоматических reset, clean, stash или удаления нет.
 
 ## T-013: проверенное восстановление

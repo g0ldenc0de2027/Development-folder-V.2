@@ -16,11 +16,12 @@ function Invoke-GitText {
         [Parameter(Mandatory)][string[]]$Arguments,
         [Parameter(Mandatory)][string]$Operation
     )
-    # Git hooks export repository-specific context; clear it so -C checks each registered worktree.
-    $gitContextNames = @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_COMMON_DIR','GIT_PREFIX')
+    # Inherited Git environment can redirect repository discovery, config, or object storage.
     $gitContext = @{}
-    foreach ($name in $gitContextNames) {
-        $gitContext[$name] = [Environment]::GetEnvironmentVariable($name,'Process')
+    foreach ($entry in [Environment]::GetEnvironmentVariables('Process').GetEnumerator()) {
+        $name = [string]$entry.Key
+        if (-not $name.StartsWith('GIT_',[StringComparison]::OrdinalIgnoreCase)) { continue }
+        $gitContext[$name] = $entry.Value
         Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
     }
     try {
@@ -28,9 +29,9 @@ function Invoke-GitText {
         $exitCode = $LASTEXITCODE
     }
     finally {
-        foreach ($name in $gitContextNames) {
-            if ($null -eq $gitContext[$name]) { Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue }
-            else { [Environment]::SetEnvironmentVariable($name,$gitContext[$name],'Process') }
+        foreach ($name in $gitContext.Keys) {
+            if ($null -eq $gitContext[$name]) { Remove-Item -LiteralPath ('Env:' + [string]$name) -ErrorAction SilentlyContinue }
+            else { [Environment]::SetEnvironmentVariable([string]$name,[string]$gitContext[$name],'Process') }
         }
     }
     if ($exitCode -ne 0) { throw ("WORKTREE_AUDIT_GIT_FAILED:${Operation} at " + [IO.Path]::GetFileName($Directory) + ": " + [string]::Join([Environment]::NewLine,@($output | ForEach-Object { [string]$_ }))) }
@@ -122,6 +123,26 @@ try {
     if ($config.schemaVersion -ne 1 -or $null -eq $config.quarantines) { throw 'WORKTREE_AUDIT_QUARANTINE_CONFIG_INVALID' }
 
     $failed = $false
+    $registeredTaskPaths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($record in $records) {
+        if (-not $record.Bare) { $null = $registeredTaskPaths.Add([IO.Path]::GetFullPath($record.Path)) }
+    }
+    $taskDirectoryRoot = Join-Path $adminRoot '.worktrees'
+    if (Test-Path -LiteralPath $taskDirectoryRoot -PathType Container) {
+        $taskRootAttributes = [IO.File]::GetAttributes($taskDirectoryRoot)
+        if (($taskRootAttributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'WORKTREE_AUDIT_TASK_ROOT_REPARSE_POINT'
+        }
+        foreach ($directory in [IO.Directory]::EnumerateDirectories($taskDirectoryRoot)) {
+            $directoryName = [IO.Path]::GetFileName($directory)
+            if ($directoryName -notmatch '^T-\d{3}$') { continue }
+            $directoryFullPath = [IO.Path]::GetFullPath($directory)
+            if (-not $registeredTaskPaths.Contains($directoryFullPath)) {
+                Write-Output ('BLOCKED: unregistered task directory detected: ' + $directoryName + ' (preserved; no cleanup performed)')
+                $failed = $true
+            }
+        }
+    }
     foreach ($record in $records) {
         if ($record.Bare) { continue }
         if ($record.Prunable -or -not (Test-Path -LiteralPath $record.Path -PathType Container)) {

@@ -47,17 +47,19 @@
 7. Полный `quality-gate.ps1 -BaseRef origin/main`, регрессии и `git diff --check` проходят. Успехи привязаны к точному HEAD/содержимому.
 8. Правила документируют безопасное автолечение только до commit при подтверждённой identity; после commit — только отдельная recovery-задача и новая история, без amend/rebase/filter/rewrite. Опубликованные T-010/T-011/T-013 refs не изменяются.
 
-9. Перед началом задачи глобальный audit обнаруживает dirty tracked/untracked worktree, missing/prunable worktree, task ID mismatch и ignored .vs. Любой непроверенный путь блокирует commit/publish.
+9. Перед началом задачи глобальный audit обнаруживает dirty tracked/untracked worktree, missing/prunable worktree, task ID mismatch, unregistered физический каталог `.worktrees/T-NNN` и ignored .vs. Любой непроверенный путь блокирует commit/publish; данные не удаляются.
 10. pre-commit разрешает только staged изменения текущего worktree и проверяет все соседние worktree; pre-push требует clean status и повторяет глобальную проверку.
 11. После архивации T-013 production registry quarantine пуст; ни одно dirty worktree не получает исключение. Regression fixtures отдельно подтверждают точную проверку Format 1 и блокировку изменённого fingerprint.
-12. Quality gate запускает synthetic regressions для bare admin, staged/unstaged/untracked, ignored .vs, точного synthetic quarantine, hook environment isolation и hooks; fixture Git subprocesses удаляют унаследованные hook-переменные, production quarantine registry пуст.
+12. Quality gate запускает synthetic regressions для bare admin, staged/unstaged/untracked, ignored .vs, точного synthetic quarantine, hook environment isolation и hooks; все унаследованные `GIT_*` переменные удаляются из fixture и audit subprocesses и восстанавливаются в вызывающем процессе.
 13. Документация задаёт обязательный audit перед ручным созданием task worktree и handoff для interruption; ограничение local hooks указано явно.
 14. Семь raw-файлов T-013 архивированы и повторно проверены: Development-Folder-V2_T-013-source-snapshot-2026-11-18_91bb56d5.zip, archive SHA-256 734f27b8027e4a0aaa2f1aeca5868ba242249766fca26e975fcb718c60602d99, Format 1 manifest SHA-256 91bb56d5de1822cfb64a9fad0270c83d41d5b00c110e6740d2804c9e96c2d4f3. Backup ref backup/2026-11-18-T013-source-base сохраняет исходный HEAD; T-013 worktree чист на том же HEAD, история не переписана.
+15. Regression cases воспроизводят и блокируют отсутствие/prunable worktree, mismatch task ID/branch и orphan task directory; проверяется, что проверка ничего не удаляет.
+16. Regression suite блокирует непустой production quarantine registry; неизвестные каталоги не добавляются в quarantine автоматически.
 
 ## Ограничения
 
 Git metadata — атрибуция, а не доказательство физического автора. Pre-commit/pre-push hooks можно обойти вне политики; они не являются серверным security boundary. Независимое ревью и hosted CI остаются отдельными gates. Неверную публичную историю не переписывать.
 
-## Следующий шаг
+## Критерий завершения
 
-Получить независимое read-only review текущего live head PR #11 от другого производителя. Исправления выполнять в этой task-ветке; после каждого нового head повторно запускать локальный gate и сверять hosted CI с точной парой head/base. Не сливать PR до успешного независимого review и зелёного CI.
+Не закрывать T-015 до публикации scoped commit и независимого read-only review именно live PR head от другого производителя. Для этой же текущей пары head/base hosted `quality-gate` должен завершиться успешно, а reviewer report обязан назвать проверенный head. Любое изменение head, base, diff или критериев приёмки аннулирует прежний review; изменение head/base требует нового hosted gate. Замечания воспроизводятся и закрываются отдельным commit в этой ветке; merge запрещён до повторного успешного review и CI.
