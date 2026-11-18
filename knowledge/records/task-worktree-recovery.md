@@ -18,6 +18,18 @@ Read-only-аудит T-015 выявил, что проверка только `g
 
 Закреплено: аудит сравнивает физические каталоги `.worktrees/T-NNN` со списком зарегистрированных worktrees и блокирует orphan, не изменяя данные; reparse point на корне `.worktrees` блокируется; fixture и production Git subprocesses очищают все `GIT_*`. Новые тесты покрывают пустой production quarantine, missing/prunable worktree, orphan-каталог, несоответствие ID ветки и каталога, config injection и hook context. Целевой suite прошёл 17/17; это доказывает поведение synthetic fixtures на проверенной редакции, но не исключает обход локальных hooks или гонку с внешним процессом.
 
+### Повторная калибровка после независимого ревью: 2026-11-18
+
+На PR #11 Antigravity проверил точный head be8860cb8f4ecfa1111420ac9ffe50c344659f57 и дал APPROVE с двумя low-наблюдениями; DeepSeek сообщил APPROVE без уязвимостей для той же пары SHA. Эти отзывы относятся только к тому head, до исправлений ниже.
+
+1. Безопасный GIT_PREFIX=config/ для вызова Git из вложенной папки отклонялся как неожиданный. Адресная проба прошла после проверки, что префикс относительный, без компонентов . или .., реально существует и остаётся внутри текущего worktree; traversal ../outside/ остаётся заблокирован.
+2. Точный quarantined-файл с кириллическим именем не совпадал с git status --porcelain, когда effective core.quotepath=true возвращал C-escaped путь. Status-вызовы теперь явно используют core.quotepath=false; manifest и сравнение путей остаются точными.
+
+Во время добавления второй регрессии был замечен отдельный дефект контроля тестов: некорректно разделённый блок пропустил исходный pre-push case, но suite завершилась с кодом 0. Оба runner теперь сравнивают число реально выполненных cases с явным ожидаемым count (25 identity, 19 worktree) до печати PASS. Путь для scratch тоже должен быть коротким: глубокий temp root вызвал Windows Filename too long / GIT_DIR too big, поэтому такой прогон считается ошибкой окружения и не свидетельствует о дефекте проверяемого кода.
+
+Targeted regression suites на исправленном кандидате прошли 25/25 и 19/19. Полный gate и новые hosted/review evidence обязаны быть привязаны к итоговому commit; изменение head делает оба прежних AI-отзыва устаревшими. Запись остаётся draft, автоматического принятия урока нет.
+
+Источники: владелец; Antigravity и DeepSeek, PR #11, 2026-11-18; задача T-015.
 ## Закрепление
 - scripts/task-worktree-audit.ps1 -Mode Audit проверяет все зарегистрированные worktree, физические каталоги `.worktrees/T-NNN`, tracked, staged, unstaged, untracked, missing/prunable записи, связь task ID с веткой и игнорируемые .vs. Вложенные Git-вызовы временно удаляют все process `GIT_*` и восстанавливают исходное окружение.
 - pre-commit повторяет глобальный audit и допускает только staged write-set текущего worktree; pre-push требует чистое состояние и повторяет audit.

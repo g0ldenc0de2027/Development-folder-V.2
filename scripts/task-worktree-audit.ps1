@@ -190,8 +190,8 @@ try {
             continue
         }
 
-        $statusLines = @(Invoke-GitText -Directory $treePath -Arguments @('status','--porcelain=v1','--untracked-files=all','--ignore-submodules=none') -Operation 'status')
-        $ignoredLines = @(Invoke-GitText -Directory $treePath -Arguments @('status','--porcelain=v1','--ignored=matching','--untracked-files=all','--ignore-submodules=none') -Operation 'ignored-status')
+        $statusLines = @(Invoke-GitText -Directory $treePath -Arguments @('-c','core.quotepath=false','status','--porcelain=v1','--untracked-files=all','--ignore-submodules=none') -Operation 'status')
+        $ignoredLines = @(Invoke-GitText -Directory $treePath -Arguments @('-c','core.quotepath=false','status','--porcelain=v1','--ignored=matching','--untracked-files=all','--ignore-submodules=none') -Operation 'ignored-status')
         $visualStudioArtifacts = @($ignoredLines | Where-Object {
             $_.StartsWith('!! ',[StringComparison]::Ordinal) -and $_.Substring(3).Trim('"') -match '(?i)(?:^|[\\/])\.vs(?:[\\/]|["]|$)'
         })

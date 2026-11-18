@@ -64,8 +64,8 @@ function Assert-AuditExit([int]$Expected,[string]$Label) {
     if ($result.ExitCode -ne $Expected) { throw ($Label + ': expected exit ' + $Expected + ', got ' + $result.ExitCode + '; ' + $result.Output + $result.Error) }
     return $result
 }
-function Write-QuarantineConfig([string]$Path,[string]$Head,[string]$Content) {
-    $relative = 'README.md'
+function Write-QuarantineConfig([string]$Path,[string]$Head,[string]$Content,[string]$RelativePath='README.md') {
+    $relative = $RelativePath
     $file = Join-Path $Path $relative
     Write-Text $file $Content
     $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -95,6 +95,7 @@ try {
     Invoke-Git $seed @('config','user.email','fixture@example.invalid') | Out-Null
     Write-Text (Join-Path $seed '.gitignore') ('.worktrees/' + [Environment]::NewLine)
     Write-Text (Join-Path $seed 'README.md') ('base' + [Environment]::NewLine)
+    Write-Text (Join-Path $seed 'данные/снимок.txt') ('baseline' + [Environment]::NewLine)
     Write-Text (Join-Path $seed 'config/worktree-quarantine.json') '{"schemaVersion":1,"quarantines":[]}'
     Invoke-Git $seed @('add','.') | Out-Null
     Invoke-Git $seed @('commit','--quiet','-m','test: seed lifecycle fixture') | Out-Null
@@ -308,6 +309,16 @@ try {
         if ($preCommitText -notmatch 'task-worktree-audit\.ps1.*-Mode Commit') { throw 'PRECOMMIT_AUDIT_WIRING_MISSING' }
         if ($prePushText -notmatch 'task-worktree-audit\.ps1.*-Mode Publish') { throw 'PREPUSH_AUDIT_WIRING_MISSING' }
     }
+    Case 'non-ASCII quarantine paths match exact Git status' {
+        $relative = 'данные/снимок.txt'
+        Write-Text (Join-Path $quarantineTree 'README.md') ('base' + [Environment]::NewLine)
+        Write-Text (Join-Path $quarantineTree $relative) ('quarantined unicode path' + [Environment]::NewLine)
+        Invoke-Git $quarantineTree @('config','--worktree','core.quotepath','true') | Out-Null
+        $head = Invoke-Git $quarantineTree @('rev-parse','HEAD')
+        $null = Write-QuarantineConfig -Path $quarantineTree -Head $head -Content ('quarantined unicode path' + [Environment]::NewLine) -RelativePath $relative
+        $result = Assert-AuditExit 0 'UNICODE_QUARANTINE_AUDIT'
+        if ($result.Output -notmatch 'QUARANTINED_READ_ONLY') { throw ('UNICODE_QUARANTINE_MARKER_MISSING:' + $result.Output + $result.Error) }
+    }
     Case 'pre-push hook blocks publishing with untracked residue' {
         Write-Text (Join-Path $mainTree 'task.txt') 'committed task output'
         Invoke-Git $mainTree @('add','task.txt') | Out-Null
@@ -333,6 +344,8 @@ try {
         Remove-Item -LiteralPath $mainHookGitIdentity -Force
         Remove-Item -LiteralPath $mainHookScripts -Force
     }
+
+    if ($passed -ne 19) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 19, got ' + $passed) }
     Write-Output ('TASK-WORKTREE-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {

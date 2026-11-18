@@ -95,7 +95,19 @@ function Assert-GitWorktreeEnvironment {
             if (-not $actual.Equals($expected,[StringComparison]::OrdinalIgnoreCase)) { throw ('GIT_IDENTITY_HOOK_' + $name + '_MISMATCH') }
         }
         $prefix = [Environment]::GetEnvironmentVariable('GIT_PREFIX','Process')
-        if (-not [string]::IsNullOrEmpty($prefix) -and $prefix -notin @('.','./','.\')) { throw 'GIT_IDENTITY_HOOK_PREFIX_UNEXPECTED' }
+        if (-not [string]::IsNullOrEmpty($prefix) -and $prefix -notin @('.','./','.\')) {
+            $normalizedPrefix = $prefix.Replace('/','\')
+            if ([IO.Path]::IsPathRooted($normalizedPrefix) -or $normalizedPrefix -match '(^|\\)\.\.?($|\\)') {
+                throw 'GIT_IDENTITY_HOOK_PREFIX_INVALID'
+            }
+            try { $prefixPath = [IO.Path]::GetFullPath((Join-Path $context.Root $normalizedPrefix)) }
+            catch { throw 'GIT_IDENTITY_HOOK_PREFIX_INVALID' }
+            $rootPrefix = $context.Root.TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+            if (-not $prefixPath.StartsWith($rootPrefix,[StringComparison]::OrdinalIgnoreCase) -or
+                -not (Test-Path -LiteralPath $prefixPath -PathType Container)) {
+                throw 'GIT_IDENTITY_HOOK_PREFIX_INVALID'
+            }
+        }
     } elseif ($null -ne [Environment]::GetEnvironmentVariable('GIT_DIR','Process') -or
               $null -ne [Environment]::GetEnvironmentVariable('GIT_WORK_TREE','Process') -or
               $null -ne [Environment]::GetEnvironmentVariable('GIT_COMMON_DIR','Process') -or

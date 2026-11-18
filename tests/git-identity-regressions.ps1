@@ -259,6 +259,31 @@ try {
     Case 'GIT-ID-004 correct isolated identity passes' {
         $null = Assert-GitWorktreeIdentity -RepositoryRoot $worktree
     }
+    Case 'GIT-ID-025 valid subdirectory hook prefix stays bound to this worktree' {
+        $gitDir = Invoke-GitFixture -Directory $worktree -Arguments @('rev-parse','--absolute-git-dir')
+        $indexFile = Invoke-GitFixture -Directory $worktree -Arguments @('rev-parse','--git-path','index')
+        $names = @('GIT_DIR','GIT_INDEX_FILE','GIT_PREFIX')
+        $saved = @{}
+        foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
+        $pushed = $false
+        try {
+            [Environment]::SetEnvironmentVariable('GIT_DIR',$gitDir,'Process')
+            [Environment]::SetEnvironmentVariable('GIT_INDEX_FILE',$indexFile,'Process')
+            [Environment]::SetEnvironmentVariable('GIT_PREFIX','config/','Process')
+            Push-Location -LiteralPath $worktree
+            $pushed = $true
+            $null = Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext
+            [Environment]::SetEnvironmentVariable('GIT_PREFIX','../outside/','Process')
+            ExpectFailure { Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext } 'GIT_IDENTITY_HOOK_PREFIX_INVALID'
+        }
+        finally {
+            if ($pushed) { Pop-Location }
+            foreach ($name in $names) {
+                if ($null -eq $saved[$name]) { Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue }
+                else { [Environment]::SetEnvironmentVariable($name,[string]$saved[$name],'Process') }
+            }
+        }
+    }
     Case 'GIT-ID-005 author environment override is refused' {
         $env:GIT_AUTHOR_NAME = 'Injected Author'
         try {
@@ -582,6 +607,7 @@ try {
             if ((Invoke-GitFixture -Directory $secondLinked -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw ('LINKED_WORKTREE_CORE_BARE_INVALID:' + $scenario) }
         }
     }
+    if ($passed -ne 25) { throw ('GIT_IDENTITY_REGRESSION_COUNT_MISMATCH: expected 25, got ' + $passed) }
     Write-Output ('GIT-IDENTITY-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {
