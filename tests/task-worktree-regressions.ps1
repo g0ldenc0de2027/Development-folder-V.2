@@ -22,22 +22,30 @@ $passed = 0
 
 function Invoke-Git {
     param([string]$Directory,[string[]]$Arguments)
-    $output = @(& git -C $Directory @Arguments 2>&1)
-    $exitCode = $LASTEXITCODE
-    if ($exitCode -ne 0) { throw ('TASK_WORKTREE_FIXTURE_GIT_FAILED:' + ($Arguments -join ' ') + [Environment]::NewLine + [string]::Join([Environment]::NewLine,@($output | ForEach-Object { [string]$_ }))) }
-    return [string]::Join([Environment]::NewLine,@($output | ForEach-Object { [string]$_ })).Trim()
+    $git = (Get-Command git -ErrorAction Stop).Source
+    $result = Invoke-NativeProcess $git (@('-C',$Directory) + $Arguments)
+    if ($result.ExitCode -ne 0) {
+        $details = [string]::Join([Environment]::NewLine,@($result.Output,$result.Error | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }))
+        throw ('TASK_WORKTREE_FIXTURE_GIT_FAILED:' + ($Arguments -join ' ') + [Environment]::NewLine + $details)
+    }
+    return $result.Output.Trim()
 }
 function Write-Text([string]$Path,[string]$Text) {
     [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Path)) | Out-Null
     [IO.File]::WriteAllText($Path,$Text,$utf8)
 }
-function Invoke-NativeProcess([string]$Executable,[string[]]$Arguments) {
+function Invoke-NativeProcess([string]$Executable,[string[]]$Arguments,[switch]$PreserveGitContext) {
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = $Executable
     $start.UseShellExecute = $false
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
+    if (-not $PreserveGitContext) {
+        foreach ($name in @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_COMMON_DIR','GIT_PREFIX')) {
+            $null = $start.Environment.Remove($name)
+        }
+    }
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $start
     $null = $process.Start()
@@ -48,7 +56,7 @@ function Invoke-NativeProcess([string]$Executable,[string[]]$Arguments) {
 }
 function Invoke-Audit([string]$Mode='Audit') {
     $pwsh = (Get-Command pwsh -ErrorAction Stop).Source
-    return Invoke-NativeProcess $pwsh @('-NoLogo','-NoProfile','-File',$scriptPath,'-Mode',$Mode,'-RepositoryRoot',$mainTree,'-QuarantineConfigPath',$configPath)
+    return Invoke-NativeProcess $pwsh @('-NoLogo','-NoProfile','-File',$scriptPath,'-Mode',$Mode,'-RepositoryRoot',$mainTree,'-QuarantineConfigPath',$configPath) -PreserveGitContext
 }
 function Assert-AuditExit([int]$Expected,[string]$Label) {
     $result = Invoke-Audit
@@ -111,6 +119,31 @@ try {
     Case 'clean registered worktrees pass audit' {
         $result = Assert-AuditExit 0 'CLEAN_AUDIT'
         if ($result.Output -notmatch 'WORKTREE-AUDIT=PASS') { throw 'CLEAN_AUDIT_MARKER_MISSING' }
+    }
+    Case 'fixture Git commands ignore inherited hook context' {
+        $gitDir = Invoke-Git $mainTree @('rev-parse','--absolute-git-dir')
+        $commonDir = Invoke-Git $mainTree @('rev-parse','--git-common-dir')
+        if (-not [IO.Path]::IsPathRooted($commonDir)) { $commonDir = [IO.Path]::GetFullPath((Join-Path $mainTree $commonDir)) }
+        $names = @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_COMMON_DIR','GIT_PREFIX')
+        $saved = @{}
+        foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
+        try {
+            [Environment]::SetEnvironmentVariable('GIT_DIR',$gitDir,'Process')
+            [Environment]::SetEnvironmentVariable('GIT_WORK_TREE',$mainTree,'Process')
+            [Environment]::SetEnvironmentVariable('GIT_INDEX_FILE',(Join-Path $gitDir 'index'),'Process')
+            [Environment]::SetEnvironmentVariable('GIT_COMMON_DIR',$commonDir,'Process')
+            [Environment]::SetEnvironmentVariable('GIT_PREFIX','hook-prefix/','Process')
+            Invoke-Git $seed @('remote','add','fixture-isolation',$remote) | Out-Null
+            if ((Invoke-Git $seed @('remote','get-url','fixture-isolation')) -ne $remote) { throw 'FIXTURE_GIT_CONTEXT_WAS_NOT_ISOLATED' }
+            if ((Invoke-Git $admin @('remote')) -contains 'fixture-isolation') { throw 'FIXTURE_GIT_CONTEXT_MUTATED_SIBLING' }
+            Invoke-Git $seed @('remote','remove','fixture-isolation') | Out-Null
+        }
+        finally {
+            foreach ($name in $names) {
+                if ($null -eq $saved[$name]) { Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue }
+                else { [Environment]::SetEnvironmentVariable($name,$saved[$name],'Process') }
+            }
+        }
     }
     Case 'tracked modifications block task admission' {
         Write-Text (Join-Path $mainTree 'README.md') ('modified' + [Environment]::NewLine)

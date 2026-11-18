@@ -5,7 +5,7 @@
 - T-013 raw snapshot: archive Development-Folder-V2_T-013-source-snapshot-2026-11-18_91bb56d5.zip; archive SHA-256 734f27b8027e4a0aaa2f1aeca5868ba242249766fca26e975fcb718c60602d99; Format 1 manifest SHA-256 91bb56d5de1822cfb64a9fad0270c83d41d5b00c110e6740d2804c9e96c2d4f3.
 - Backup ref backup/2026-11-18-T013-source-base pins original HEAD 88342060af7c6c18a163d3b6fa6727ab5c17fd7e; source worktree is clean on the same branch and HEAD; commit history is unchanged.
 - T-016 status correction is saved locally as commit e1a4aaea9ae837977f7a6e1c834e0fa2b220e475; it is not pushed, so PR #15 CI/review evidence predates that commit and must be refreshed before merge.
-- Validation on this content: quality-gate PASS; Git identity 22/22, worktree 12/12, KB 44/44, privacy/hygiene, actionlint and Gitleaks PASS. Application stack build/dependency audit is NOT COVERED because this template has no selected stack.
+- Validation on this content: quality-gate PASS; Git identity 22/22, worktree 13/13 (including simulated hook-context fixture isolation), KB 44/44, privacy/hygiene, actionlint and Gitleaks PASS. Application stack build/dependency audit is NOT COVERED because this template has no selected stack.
 - Next: refresh PR #11 metadata, hosted CI and fresh independent review for the current head SHA; keep merge blocked until all exact-SHA gates pass. Local hooks reduce accidental recurrence but cannot prevent intentional bypass or concurrent changes after audit.
 
 ---

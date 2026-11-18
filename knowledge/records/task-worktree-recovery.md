@@ -9,10 +9,13 @@
 ## Причина
 Процесс требовал начать чисто, но не запускал обязательный глобальный audit перед созданием задачи. Pre-commit и pre-push hooks проверяли отдельные свойства текущего commit/публикации, но не останавливали действие при грязном соседнем worktree. Создание worktree вручную было допустимо, однако проверка всех зарегистрированных копий и восстановление после interruption оставались процессными договорённостями. Поэтому не было раннего fail-closed сигнала, а отсутствие результата проверки можно было принять за чистое состояние.
 
+### Вторичная причина: hook-контекст в regression harness
+При реальном pre-push regression suite запускала fixture-команды git -C, наследуя GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_COMMON_DIR и GIT_PREFIX от hook. В результате setup тестового bare-репозитория воздействовал на настоящий локальный репозиторий: T-015 HEAD/index переключились на fixture, локальный main был заменён, и hook отказал до отправки. Backup показал, что все 66 путей последнего корректного T-015 commit 86e7f7f5bb3131f1c9fe96b04b92151a18cb85b9 на диске сохранили точные байты. После проверки резервной копии refs/HEAD/index восстановлены локально; remote не менялся. Этот случай показал, что изолировать Git-контекст должен и тестовый harness, а не только проверяемый production script.
+
 ## Закрепление
 - scripts/task-worktree-audit.ps1 -Mode Audit проверяет все зарегистрированные worktree, включая tracked, staged, unstaged, untracked, missing/prunable записи, связь task ID с веткой и игнорируемые .vs. Вложенные Git-вызовы временно удаляют hook variables GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_COMMON_DIR и GIT_PREFIX, затем восстанавливают исходный процессный контекст.
 - pre-commit повторяет глобальный audit и допускает только staged write-set текущего worktree; pre-push требует чистое состояние и повторяет audit.
-- Regression suite проверяет чистые/грязные worktree, ignored .vs, пропавшие и несогласованные записи, точный synthetic quarantine, вызовы hooks и изоляцию hook-provided Git context при обходе sibling worktrees.
+- Regression suite проверяет чистые/грязные worktree, ignored .vs, пропавшие и несогласованные записи, точный synthetic quarantine, вызовы hooks, изоляцию аудитора при hook Git context и очистку этих переменных в собственных fixture subprocesses.
 - Создание новой задачи начинается только после успешного audit. После interruption сначала обновляется handoff и продолжается исходная задача; автоматических reset, clean, stash или удаления нет.
 
 ## T-013: проверенное восстановление
