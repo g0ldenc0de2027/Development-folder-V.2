@@ -84,3 +84,8 @@ Scope расширен только для устранения этого LKB-0
 - Обе hard-link регрессии прошли: hard-linked catalog и внешний alias записи возвращают `KB_HARDLINK`, stdout пуст. До исправления regression для записи возвращала тело внешнего synthetic-файла. `git diff --check`: PASS, exit 0 на финальном documented diff.
 - Всегда-компилируемый P/Invoke вариант дал около 46% замедления на малом каталоге, поэтому выбран адаптивный режим: `fsutil` до 24 записей, same-handle API выше порога. Для малого текущего KB: 6 запусков после 2 прогревов, медиана 861.5 мс на parent HEAD и 965.4 мс на рабочем diff (примерно +12%); это локальная оценка, не гарантия для других дисков и систем. Отдельная 25-record регрессия покрывает native path.
 - Hosted CI и независимое review нужны на новом опубликованном SHA; старый run PR #12 относится к предшествующему head. Application stack build/dependency audit остаётся NOT COVERED, поскольку стек эталона не выбран.
+
+### CI follow-up
+
+- Hosted run [#44228007156](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44228007156) checked PR head `e19ef86865f86036cad94a48e5b6de25b3ac0ff0` against base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; event/test merge-result `d117b12cd806889cd33c217ca91f98bbeb12aaf0` has those exact parents. It failed in the external hard-link regression. The old assertion required only `KB_HARDLINK`, and the failure log did not include the actual error code or stdout length; the cause is therefore not inferred.
+- The regression now accepts either `KB_HARDLINK` or the specified `KB_LINK_ENUMERATION_UNAVAILABLE`, but only when exit is 1 and stdout is empty. The full local quality gate passed afterward; a fresh hosted run on the follow-up commit is required before merge.
