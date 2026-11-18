@@ -1,4 +1,13 @@
-# Handoff — attribution recovery T-016, 2026-11-17
+# Handoff — attribution recovery T-016, 2026-11-18
+
+- Owner-approved T-013 disposition completed: seven raw files are in archive Development-Folder-V2_T-013-source-snapshot-2026-11-18_91bb56d5.zip (archive SHA-256 734f27b8027e4a0aaa2f1aeca5868ba242249766fca26e975fcb718c60602d99; manifest SHA-256 91bb56d5de1822cfb64a9fad0270c83d41d5b00c110e6740d2804c9e96c2d4f3).
+- T-013 is clean at its original HEAD 88342060af7c6c18a163d3b6fa6727ab5c17fd7e; backup ref backup/2026-11-18-T013-source-base preserves that commit. Branch and published history were not rewritten.
+- This supersedes the prior no-reset disposition for the one explicitly approved action. Historical provenance remains UNKNOWN; T-016 remains the distinct recovery derivative.
+- The PR #15 hosted CI/review tuple in the historical text predates this status correction. Refresh both against the eventual PR head before merge.
+
+---
+
+## Historical snapshot — attribution recovery T-016, 2026-11-17
 
 - T-013 остаётся DRAFT / NOT READY; agent orchestrator/adapters не реализованы. Draft spec/roadmap 0.18.2, research 2.9.4.
 - Исходная T-013 ветка сохранена без изменений: HEAD 88342060af7c6c18a163d3b6fa6727ab5c17fd7e, два fixture-authored commits и семь modified paths. Историческая атрибуция UNKNOWN; exact input manifest 704 bytes / 39fc2f2f042d15e546b778cff626ab8e60d1eaf0adf3383b80868fb64e9cc37f. В T-016 семь файлов побайтно скопированы от origin/main f577dc70e58d75ab5fd61d0c2e712c27b590713a без переноса старых commit objects.

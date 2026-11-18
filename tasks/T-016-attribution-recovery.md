@@ -68,6 +68,17 @@
 - Four paths (roadmap, catalog, research record, specification) retain the hashes of the original T-016 recovery input. The later T-013 edits are limited to the status/evidence documents `docs/handoff.md`, `specification-system/tz_state.md`, and the T-013 task card. They record source-local gate evidence for T-013 spec/roadmap `0.18.1-draft`, research `2.9.3`; they explicitly do not claim hosted CI or fresh independent review for those source bytes.
 - T-016 is a separately attributed recovery derivative, not a byte-for-byte copy of this later manifest: its spec/roadmap `0.18.2-draft` and research `2.9.4` include the accepted normative Unicode policy. Its gate/CI/review must be evidenced only against T-016 revisions; the local T-013 gate is not transferable evidence.
 - Disposition: retain the T-013 worktree intact as a quarantined source record. Do not stage, commit, clean, reset, or publish that branch. The three later status/evidence updates are preserved here as a separately fingerprinted historical source snapshot; T-016 remains the only recovery/integration path. If a future content comparison finds a requirement unique to the later source snapshot, add it as a scoped T-016 follow-up and validate a new revision.
+
+## Owner-approved source snapshot disposition — 2026-11-18
+
+This dated update supersedes the preceding disposition that required leaving the T-013 worktree untouched. The owner explicitly approved archiving the exact seven-file raw snapshot and restoring only that worktree to its existing HEAD.
+
+- Verified archive: Development-Folder-V2_T-013-source-snapshot-2026-11-18_91bb56d5.zip; archive SHA-256 734f27b8027e4a0aaa2f1aeca5868ba242249766fca26e975fcb718c60602d99; Format 1 manifest SHA-256 91bb56d5de1822cfb64a9fad0270c83d41d5b00c110e6740d2804c9e96c2d4f3.
+- Backup ref backup/2026-11-18-T013-source-base points to the unchanged source HEAD 88342060af7c6c18a163d3b6fa6727ab5c17fd7e.
+- After archive verification and owner approval, the T-013 working tree was restored to that same HEAD; the source branch name and commit history are unchanged, and the worktree is now clean.
+- No statement here changes historical attribution: provenance of the uncommitted source remains UNKNOWN. The recovery derivative in T-016 remains separately attributed.
+- The older hosted CI/review tuple for PR #15 predates this T-016 card update; verify fresh CI and review against the eventual pushed head before merge.
+
 ## Acceptance
 
 1. Recovery base is exact live origin/main; the recovery commit ancestry contains no copied Scope Fixture commit objects.
@@ -81,4 +92,4 @@
 ## Limits and prohibited actions
 
 - This is documentation/specification recovery only. It does not implement Unicode escaping, agent coordination, ACL, adapters, or runtime checks.
-- Do not reset, clean, rebase, amend, delete, or rewrite the original T-013 branch/worktree. Do not push directly to main or merge this recovery PR.
+- The original no-reset instruction was superseded only for the exact owner-approved archive-and-reset action documented above. Do not perform further reset, clean, rebase, amend, deletion, or history rewrite on T-013. Do not push directly to main or merge this recovery PR.
