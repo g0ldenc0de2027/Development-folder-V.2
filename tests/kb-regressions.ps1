@@ -78,14 +78,14 @@ function Run([string[]]$Arguments,[int]$Expected=0,[string]$ErrorCode='') {
     if($ErrorCode -and -not $err.Contains($ErrorCode)){throw "Expected error code $ErrorCode; got $err"}
     if($exit -eq 0){return (($output -join [Environment]::NewLine)|ConvertFrom-Json -Depth 30)}
 }
-function Run-Captured([string[]]$Arguments) {
+function Run-Captured([string[]]$Arguments,[string]$Root=$fixture) {
     $start=[Diagnostics.ProcessStartInfo]::new()
     $start.FileName=$pwsh
     $start.UseShellExecute=$false
     $start.CreateNoWindow=$true
     $start.RedirectStandardOutput=$true
     $start.RedirectStandardError=$true
-    foreach($argument in (@('-NoLogo','-NoProfile','-File',$cli,'-ProjectRoot',$fixture)+$Arguments)) { $start.ArgumentList.Add([string]$argument) }
+    foreach($argument in (@('-NoLogo','-NoProfile','-File',$cli,'-ProjectRoot',$Root)+$Arguments)) { $start.ArgumentList.Add([string]$argument) }
     $process=[Diagnostics.Process]::new()
     $stdout=[IO.MemoryStream]::new()
     $stderr=[IO.MemoryStream]::new()
@@ -163,6 +163,55 @@ try {
     }
     Case 'LKB-003 traversal' { $script:catalog.records[0].path='knowledge/records/../../private.md'; Save-Catalog; $null=Run @('check') 1 'KB_PATH_INVALID' }
     Case 'LKB-003 absolute path' { $script:catalog.records[0].path=(Join-Path $scratch 'private.md'); Save-Catalog; $null=Run @('check') 1 'KB_PATH_INVALID' }
+    Case 'LKB-003 project root below a reparse ancestor is refused' {
+        $alias=Join-Path $scratch ('project-parent-link-'+[guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Junction -Path $alias -Target $scratch | Out-Null
+        $aliasRoot=Join-Path $alias (Split-Path -Leaf $fixture)
+        $result=Run-Captured @('check') $aliasRoot
+        if($result.exitCode -ne 1 -or -not $result.stderr.Contains('KB_REPARSE_POINT') -or $result.stdoutBytes.Length -ne 0){throw 'reparse ancestor refusal'}
+    }
+    Case 'LKB-003 hard-linked catalog is refused before output' {
+        $outside=Join-Path $scratch ('catalog-outside-'+[guid]::NewGuid().ToString('N')+'.json')
+        $catalogPath=Join-Path $fixture 'knowledge/catalog.json'
+        Copy-Item -LiteralPath $catalogPath -Destination $outside
+        Remove-Item -LiteralPath $catalogPath -Force
+        New-Item -ItemType HardLink -Path $catalogPath -Target $outside | Out-Null
+        $result=Run-Captured @('check')
+        if($result.exitCode -ne 1 -or -not $result.stderr.Contains('KB_HARDLINK') -or $result.stdoutBytes.Length -ne 0){throw 'hard-linked catalog refusal'}
+    }
+    Case 'LKB-003 hard-link alias to external file is refused before output' {
+        $outside=Join-Path $scratch ('outside-'+[guid]::NewGuid().ToString('N')+'.md')
+        $record=$script:catalog.records|Where-Object{$_.id -ceq 'alpha'}
+        $recordPath=Join-Path $fixture $record.path
+        Write-Text $outside 'Synthetic outside file; no real data.'
+        Remove-Item -LiteralPath $recordPath -Force
+        New-Item -ItemType HardLink -Path $recordPath -Target $outside | Out-Null
+        $record.contentSha256=Hash $recordPath
+        Save-Catalog
+        $result=Run-Captured @('get','-Id','alpha')
+        if($result.exitCode -ne 1 -or -not $result.stderr.Contains('KB_HARDLINK') -or $result.stdoutBytes.Length -ne 0){throw 'hard-link refusal'}
+    }
+    Case 'LKB-003 high-volume same-handle check refuses hard-link alias' {
+        for($i=1;$i -le 22;$i++){
+            $id='extra-{0:D2}' -f $i
+            $relative='knowledge/records/'+$id+'.md'
+            $body='Synthetic high-volume record '+$i
+            $recordPath=Join-Path $fixture $relative
+            Write-Text $recordPath $body
+            $script:catalog.records+=@{id=$id;kind='reference';title=('Extra '+$i);status='draft';path=$relative;contentSha256=(Hash $recordPath);sources=@('test:synthetic');review=$null}
+        }
+        Save-Catalog
+        $outside=Join-Path $scratch ('outside-native-'+[guid]::NewGuid().ToString('N')+'.md')
+        $record=$script:catalog.records|Where-Object{$_.id -ceq 'alpha'}
+        $recordPath=Join-Path $fixture $record.path
+        Write-Text $outside 'Synthetic outside file; no real data.'
+        Remove-Item -LiteralPath $recordPath -Force
+        New-Item -ItemType HardLink -Path $recordPath -Target $outside | Out-Null
+        $record.contentSha256=Hash $recordPath
+        Save-Catalog
+        $result=Run-Captured @('check')
+        if($result.exitCode -ne 1 -or -not $result.stderr.Contains('KB_HARDLINK') -or $result.stdoutBytes.Length -ne 0){throw 'high-volume native hard-link refusal'}
+    }
     Case 'LKB-003 oversized body' { Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') ('x'*262145); $null=Run @('check') 1 'KB_FILE_TOO_LARGE' }
     Case 'LKB-003 maximum body size is read completely' {
         $body='x'*262144

@@ -39,6 +39,14 @@ PowerShell принимает значения `Command` из `ValidateSet` бе
 4. Контракт `context -MaxBytes` и существующие проверки остаются прежними.
 5. Локальные KB-регрессии и quality gate проходят на точном HEAD/рабочем diff; scope, handoff и `git diff --check` согласованы.
 6. Fixtures моделируют полный девятифайловый пакет; сокращение lock до одного индекса, пропуск канонического модуля, изменение его байтов, отсутствие файла, незакреплённая ссылка и дубликат отклоняются ожидаемыми кодами.
+7. LKB-003 permits only supported local fixed/removable volumes. Project-root ancestors are checked for reparse points before volume detection, preventing a parent junction from redirecting volume checks. For NTFS/ReFS/UDF, `fsutil hardlink list` checks the catalog, record bodies and `.etalon.json` when there are at most 24 records; larger catalogs use link count from `GetFileInformationByHandle` on the open handle. Exactly one link is required. FAT/FAT32/exFAT are accepted because they do not support hard links; network/unknown volume, unsupported filesystem, or unavailable/ambiguous enumeration fails closed. Pinned rule files remain protected by SHA-256 lock.
+
+## Audit follow-up: hard-link alias in LKB-003 (2026-11-18)
+
+Во время полного аудита локальной БЗ synthetic NTFS fixture показал, что hard link из файла вне корня проекта в `knowledge/records` проходит reparse-проверку и `get` возвращает его тело. Это обход логической границы каталога; он не означает, что CLI является OS sandbox. Малый каталог проверяется штатной `fsutil hardlink list`; при числе записей больше 24 применяется `GetFileInformationByHandle` по открытому handle, чтобы избежать процесса на каждую запись. Microsoft описывает hard link как несколько путей к одному файлу, а справка fsutil документирует команду `list`: [Hard links and junctions](https://learn.microsoft.com/en-us/windows/win32/fileio/hard-links-and-junctions), [fsutil hardlink](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-hardlink). [Сравнение поддерживаемых функций файловых систем](https://learn.microsoft.com/en-us/windows/win32/fileio/filesystem-functionality-comparison/) подтверждает отсутствие hard links в FAT32/exFAT.
+
+Scope расширен только для устранения этого LKB-003 дефекта: `scripts/kb.ps1`, `tests/kb-regressions.ps1`, `spec/local-knowledge.md`, `docs/local-knowledge.md`, `docs/handoff.md` и эта карточка.
+
 
 ## Ограничения
 
@@ -68,3 +76,11 @@ PowerShell принимает значения `Command` из `ValidateSet` бе
 - База перед изменением: HEAD fc0d391bf1ccbeae4ddb359a348c11a25eeb26ba; origin/main f577dc70e58d75ab5fd61d0c2e712c27b590713a.
 - Полный quality gate на рабочем diff: PASS, exit 0; 53 KB regressions; шесть PowerShell files parsed; privacy 38 Markdown плюс regression source; hygiene 56 text files; Actionlint PASS; Gitleaks PASS (68 commits). git diff --check PASS.
 - Изменение кода зафиксировано как 440a792 и прошло полный local quality gate на точном committed HEAD: 53 regressions, parse/privacy/hygiene/Actionlint/Gitleaks PASS. Hosted run #44192782023 относится к более раннему head; актуальные CI и независимое review проверяйте на live PR #12.
+
+## Проверка после hard-link follow-up (2026-11-18)
+
+- Quality gate был выполнен на рабочем diff поверх parent HEAD `4860a453b241a1c7dd135e03bcadc401a5253484` и base `origin/main` `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; после фиксации у ветки будет новый commit SHA.
+- Полный `quality-gate.ps1 -BaseRef origin/main`: PASS, exit 0; 57/57 KB-регрессий; PowerShell/JSON parsing PASS; privacy — 38 Markdown и regression source; hygiene — 56 text files; Actionlint PASS; Gitleaks PASS (70 commits, рабочее дерево и push range).
+- Обе hard-link регрессии прошли: hard-linked catalog и внешний alias записи возвращают `KB_HARDLINK`, stdout пуст. До исправления regression для записи возвращала тело внешнего synthetic-файла. `git diff --check`: PASS, exit 0 на финальном documented diff.
+- Всегда-компилируемый P/Invoke вариант дал около 46% замедления на малом каталоге, поэтому выбран адаптивный режим: `fsutil` до 24 записей, same-handle API выше порога. Для малого текущего KB: 6 запусков после 2 прогревов, медиана 861.5 мс на parent HEAD и 965.4 мс на рабочем diff (примерно +12%); это локальная оценка, не гарантия для других дисков и систем. Отдельная 25-record регрессия покрывает native path.
+- Hosted CI и независимое review нужны на новом опубликованном SHA; старый run PR #12 относится к предшествующему head. Application stack build/dependency audit остаётся NOT COVERED, поскольку стек эталона не выбран.
