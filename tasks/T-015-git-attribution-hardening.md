@@ -55,7 +55,7 @@
 12. Quality gate запускает synthetic regressions для bare admin, staged/unstaged/untracked, ignored .vs, точного synthetic quarantine, hook environment isolation и hooks; все унаследованные `GIT_*` переменные удаляются из fixture и audit subprocesses и восстанавливаются в вызывающем процессе.
 13. Документация задаёт обязательный audit перед ручным созданием task worktree и handoff для interruption; ограничение local hooks указано явно.
 14. Семь raw-файлов T-013 архивированы и повторно проверены: Development-Folder-V2_T-013-source-snapshot-2026-11-18_91bb56d5.zip, archive SHA-256 734f27b8027e4a0aaa2f1aeca5868ba242249766fca26e975fcb718c60602d99, Format 1 manifest SHA-256 91bb56d5de1822cfb64a9fad0270c83d41d5b00c110e6740d2804c9e96c2d4f3. Backup ref backup/2026-11-18-T013-source-base сохраняет исходный HEAD; T-013 worktree чист на том же HEAD, история не переписана.
-15. 19 worktree regression cases воспроизводят и блокируют отсутствие/prunable worktree, mismatch task ID/branch, orphan task directory и точный quarantine с Unicode-путём при включённом Git path quoting; проверяется, что проверка ничего не удаляет.
+15. 20 worktree regression cases покрывают отсутствие/prunable worktree, mismatch task ID/branch, orphan task directory, запуск audit из unrelated cwd без RepositoryRoot и точный quarantine с Unicode-путём при включённом Git path quoting; проверяется, что проверка ничего не удаляет.
 16. Regression suite блокирует непустой production quarantine registry; неизвестные каталоги не добавляются в quarantine автоматически.
 
 ## Ограничения

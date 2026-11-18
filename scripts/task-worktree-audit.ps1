@@ -3,12 +3,15 @@
 param(
     [ValidateSet('Audit','Commit','Publish')]
     [string]$Mode = 'Audit',
-    [string]$RepositoryRoot = (Get-Location).Path,
+    [string]$RepositoryRoot,
     [string]$QuarantineConfigPath
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
+    $RepositoryRoot = Split-Path -Parent $PSScriptRoot
+}
 
 function Invoke-GitText {
     param(

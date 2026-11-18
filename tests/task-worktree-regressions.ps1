@@ -35,10 +35,11 @@ function Write-Text([string]$Path,[string]$Text) {
     [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Path)) | Out-Null
     [IO.File]::WriteAllText($Path,$Text,$utf8)
 }
-function Invoke-NativeProcess([string]$Executable,[string[]]$Arguments,[switch]$PreserveGitContext) {
+function Invoke-NativeProcess([string]$Executable,[string[]]$Arguments,[switch]$PreserveGitContext,[string]$WorkingDirectory) {
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = $Executable
     $start.UseShellExecute = $false
+    if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) { $start.WorkingDirectory = $WorkingDirectory }
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
@@ -97,6 +98,7 @@ try {
     Write-Text (Join-Path $seed 'README.md') ('base' + [Environment]::NewLine)
     Write-Text (Join-Path $seed 'данные/снимок.txt') ('baseline' + [Environment]::NewLine)
     Write-Text (Join-Path $seed 'config/worktree-quarantine.json') '{"schemaVersion":1,"quarantines":[]}'
+
     Invoke-Git $seed @('add','.') | Out-Null
     Invoke-Git $seed @('commit','--quiet','-m','test: seed lifecycle fixture') | Out-Null
     Invoke-Git $seed @('branch','-M','main') | Out-Null
@@ -115,6 +117,10 @@ try {
     [IO.Directory]::CreateDirectory((Split-Path $quarantineTree -Parent)) | Out-Null
     Invoke-Git $admin @('worktree','add','--quiet','-b','task/T-013-agent-orchestration-research',$quarantineTree,'main') | Out-Null
     Invoke-Git $quarantineTree @('config','--worktree','core.bare','false') | Out-Null
+    [IO.Directory]::CreateDirectory((Join-Path $mainTree 'scripts')) | Out-Null
+    Copy-Item -LiteralPath $scriptPath -Destination (Join-Path $mainTree 'scripts/task-worktree-audit.ps1')
+    Invoke-Git $mainTree @('add','scripts/task-worktree-audit.ps1') | Out-Null
+    Invoke-Git $mainTree @('commit','--quiet','-m','test: add audit script fixture') | Out-Null
     $emptyConfig = @{schemaVersion=1;quarantines=@()} | ConvertTo-Json -Depth 5
     [IO.File]::WriteAllText($configPath,$emptyConfig,$utf8)
 
@@ -125,6 +131,15 @@ try {
     Case 'clean registered worktrees pass audit' {
         $result = Assert-AuditExit 0 'CLEAN_AUDIT'
         if ($result.Output -notmatch 'WORKTREE-AUDIT=PASS') { throw 'CLEAN_AUDIT_MARKER_MISSING' }
+    }
+    Case 'audit defaults root to script location from unrelated working directory' {
+        $pwsh = (Get-Command pwsh -ErrorAction Stop).Source
+        $fixtureScript = Join-Path $mainTree 'scripts/task-worktree-audit.ps1'
+        $result = Invoke-NativeProcess $pwsh @('-NoLogo','-NoProfile','-File',$fixtureScript,'-Mode','Audit') -PreserveGitContext -WorkingDirectory $scratch
+        if ($result.ExitCode -ne 0) { throw ('SCRIPT_ROOT_DEFAULT_FAILED: ' + $result.Output + $result.Error) }
+        if ($result.Output -notmatch 'WORKTREE-AUDIT=PASS') { throw ('SCRIPT_ROOT_DEFAULT_MARKER_MISSING: ' + $result.Output + $result.Error) }
+        Invoke-Git $mainTree @('rm','--quiet','scripts/task-worktree-audit.ps1') | Out-Null
+        Invoke-Git $mainTree @('commit','--quiet','-m','test: remove audit script fixture') | Out-Null
     }
     Case 'missing registered worktree blocks without deleting its data' {
         $parked = Join-Path $scratch 'parked-quarantine-worktree'
@@ -345,7 +360,7 @@ try {
         Remove-Item -LiteralPath $mainHookScripts -Force
     }
 
-    if ($passed -ne 19) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 19, got ' + $passed) }
+    if ($passed -ne 20) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 20, got ' + $passed) }
     Write-Output ('TASK-WORKTREE-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {
