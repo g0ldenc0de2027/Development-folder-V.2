@@ -9,6 +9,7 @@
 
 ## Зона файлов
 
+- `.gitignore`
 - `.github/workflows/quality-gate.yml`
 - `.githooks/pre-push`
 - `AGENTS.md`
@@ -17,6 +18,9 @@
 - `scripts/verify-runtime.ps1`
 - `scripts/verify-task-scope.ps1`
 - `scripts/kb.ps1`
+- `knowledge/catalog.json`
+- `knowledge/УРОКИ.md`
+- `knowledge/records/task-isolation.md`
 - `docs/development.md`
 - `docs/local-knowledge.md`
 - `docs/github-workflow.md`
@@ -33,8 +37,12 @@
 
 ## Изменения этой ветки
 
+- Дополнение по аудиту 2026-11-18: `.work/` и `.manus/` добавлены в `.gitignore`; точные scratch-сегменты исключены из рекурсивных syntax/privacy/hygiene обходов, но Gitleaks остаётся на полном дереве.
+- Формат веток унифицирован: `task/T-NNN` и `task/T-NNN-<lowercase-hyphenated-slug>`; scope guard принимает только валидный ID и slug, pre-push передаёт задаче первые пять символов ID. Фикстуры проверяют допустимый и недопустимый формат.
+- Урок изоляции задач усилен по повторению; его catalog SHA обновлён и проверяется `kb.ps1 check`.
+- Git-fixture suite и quality gate отказываются от TempRoot внутри любого Git-репозитория (worktree или bare) до записи; quality gate принимает явный TemporaryRoot для проверки границы без изменения TEMP процесса. Fixtures запускаются только из внешнего временного корня; suite сравнивает HEAD, refs, index и status источника до и после.
 - Матрица среды вынесена в config/runtime-support.json: проверенная Windows 11 x64 GA 26H2/build 26300 на ge_release; PowerShell 7.6 LTS не ниже 7.6.10; CI — Windows Server 2025 base build 26100. Hosted runner фактически запускал 7.6.9, поэтому workflow каждый run скачивает официальный PowerShell 7.6.10 win-x64 ZIP, проверяет pinned SHA-256, версию и CI baseline, затем запускает gate явным бинарником. quality-gate, scope guard и KB CLI используют общий fail-closed runtime verifier.
-- Hook разрешает публикацию только с текущей ветки `task/T-NNN` в одноимённую remote branch; detached HEAD, tags, deletion, сторонний ref и non-fast-forward отклоняются.
+- Hook разрешает публикацию только с текущей ветки `task/T-NNN` либо валидной `task/T-NNN-<lowercase-hyphenated-slug>` в одноимённую remote branch; detached HEAD, tags, deletion, сторонний ref и non-fast-forward отклоняются.
 - Диапазоны refs передаются одним CSV аргументом и повторно разбираются quality gate. Записи hook ограничены 20 на вызов.
 - До quality gate hook вызывает scope guard. Точная зона берётся из единственной карточки `tasks/T-NNN-*.md`; dedicated linked worktree и task branch `origin/main...HEAD` проверяются с учётом rename как delete+add, дерево должно быть чистым.
 - KB secret detector проверяет свободные строковые поля каталога, возвращаемые как контекст: title, sources, reviewer и evidence.
@@ -50,7 +58,7 @@
 |---|---|---|---|
 | F01 | P1 | Исправление в T-008 | Scope guard проверяет committed diff от `origin/main`, task branch/worktree и clean state по scope единственной task card. Review и CI этой ветки обязательны перед merge. Guard процедурный: авторитетность scope карточки подтверждает owner review. |
 | F02 | P1 | Исправление в T-008 | Все диапазоны идут одним CSV argument; quality gate валидирует каждый токен. Действующая pre-push gate должна пройти перед публикацией. |
-| F03 | P1 | Исправление в T-008 | Hook отвергает detached HEAD, tags, push чужой локальной ветки и destination ref, не совпадающий с task ref. Разрешена только `task/T-NNN` в одноимённую remote ref. |
+| F03 | P1 | Исправление в T-008 | Hook отвергает detached HEAD, tags, push чужой локальной ветки и destination ref, не совпадающий с task ref. Разрешены `task/T-NNN` и валидный `task/T-NNN-<lowercase-hyphenated-slug>` в одноимённую remote ref; scope guard подтверждает точный ID. |
 | F04 | P1 | Исправление в T-008 | Существующая ветка проходит только если remote SHA ancestor локального SHA; неизвестный объект блокирует push. |
 | F05 | P1 | Исправление в T-008 | Ограниченный secret detector применяется к title, sources, review.by, review.evidence и body. Это не PII/DLP и не универсальный сканер секретов. |
 | F06 | P1 | Исправление в T-008 | Для известного sourceCollectionId RULES 0.2.0 обязательны все девять файлов. Не защищает от намеренной замены lock/package и не аутентифицирует автора. |
@@ -68,6 +76,8 @@
 | F18 | P3 | Частично | Руководство дополнено новыми error codes/context contract. Полный PowerShell comment-based help и симметричные RU/EN сценарии остаются открыты. |
 | F19 | P3 | Открыто | Согласовать смысл marker project_id и catalog projectId до межполевой проверки. |
 | F20 | P3 | Частично | Карточка фиксирует очередь аудита; единый task index и номера следующих задач синхронизировать после PR #5–#7. |
+| V2-02 | P2 | Исправляется в T-008 | Локальные `.work/` и `.manus/` игнорируются Git и исключаются только из syntax/privacy/hygiene обходов; Gitleaks сохраняет полный охват; поведение проверяется path-boundary regression. |
+| V2-19 | P2 | Исправляется в T-008 | Hook и scope guard поддерживают один документированный формат task ID и lowercase slug; поведение закреплено fixture для принятого и отклонённого имени. |
 
 ## Передача следующему агенту
 
@@ -89,6 +99,13 @@
 - Stack build/dependency audit: NOT COVERED; эталон не содержит выбранного прикладного стека.
 
 Результаты до 337de0d и hosted run #43753125152 — исторические и не доказывают проверки последующих ревизий.
+
+### Дополнение по изоляции Git-fixtures (2026-11-18)
+
+- Проверена кандидатная рабочая копия `task/T-008` с исходным HEAD `7fc1d81a89abda42e067cb24da0bdf2ee3018a59` и 14 изменёнными путями; индекс до проверки был пуст.
+- После исправления защиты временных каталогов полный локальный `quality-gate.ps1 -BaseRef origin/main -TemporaryRoot <внешний-каталог>` завершился `QUALITY-GATE=PASS`: KB-регрессии 44/44, task-scope регрессии 5/5, privacy/hygiene, actionlint и Gitleaks прошли. Gitleaks проверил рабочее дерево, историю и push range (92 достижимых коммита).
+- `git diff --check`, PowerShell AST-проверка и сверка SHA-256 lesson с `knowledge/catalog.json` прошли. Source HEAD, refs, index и status остались неизменны после fixture suites; внешний временный каталог очищен.
+- Это только локальная проверка кандидатной рабочей копии. Для нового коммита hosted CI и независимое review ещё не получены; исторический run выше их не заменяет.
 
 ## Итоговые SHA и приёмка
 

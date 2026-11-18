@@ -16,7 +16,8 @@ function Invoke-Git([string[]]$Arguments) {
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $branch = ((Invoke-Git @('-C',$repoRoot,'symbolic-ref','--quiet','--short','HEAD')) -join '').Trim()
-if ($branch -cne "task/$TaskId") { throw 'Current branch does not match the task ID' }
+$expectedBranchPattern = '^task/' + [regex]::Escape($TaskId) + '(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$'
+if ($branch -cnotmatch $expectedBranchPattern) { throw 'Current branch does not match the task ID or the documented lowercase slug format' }
 $null = Invoke-Git @('-C',$repoRoot,'merge-base',$BaseRef,'HEAD')
 $gitDir = ((Invoke-Git @('-C',$repoRoot,'rev-parse','--path-format=absolute','--git-dir')) -join '').Trim()
 $commonDir = ((Invoke-Git @('-C',$repoRoot,'rev-parse','--path-format=absolute','--git-common-dir')) -join '').Trim()

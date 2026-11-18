@@ -10,8 +10,10 @@
 4. Эталонные инструменты поддерживают только проверенную Windows 11 x64 GA 26H2/build 26300 на ветке `ge_release` из allowlist `config/runtime-support.json`; и PowerShell 7.6 LTS не ниже 7.6.10. Неизвестный release/build и preview-ветка блокируются. CI отдельно проверяется на `windows-2025` (Windows Server 2025 x64, build 26100); это не расширяет матрицу хоста разработчика. Windows 10, Windows 11 25H2 и другие неподтверждённые выпуски, ARM64, Windows Server как хост разработчика, Windows PowerShell 5.1, Linux и macOS не входят в поддерживаемую матрицу.
 
 ## Изоляция и Git
+- Синтетические Git-фикстуры и quality gate используют уникальный TempRoot вне всех worktree и bare-репозиториев; проверка выполняется до записи, удаляется только собственный временный каталог набора.
 - main защищена на GitHub; обычные обновления идут только через PR. Единственное исключение — чистый initial root commit в подтверждённо пустой origin по процедуре docs/github-workflow.md.
-- Новая работа ведется в отдельной ветке task/T-NNN и отдельном worktree; не смешивай задачи.
+- Новая работа ведется в отдельной ветке `task/T-NNN` или `task/T-NNN-<lowercase-hyphenated-slug>` и отдельном worktree; scope guard сверяет ID задачи и формат суффикса.
+- Локальные scratch-каталоги `.work/` и `.manus/` игнорируются Git и исключены только из рекурсивных syntax/privacy/hygiene обходов; secret scan продолжает проверять всю рабочую копию.
 - Перед commit проверь полный diff, статус, секреты и только точный набор файлов задачи.
 - Записывай PR head SHA, base SHA и CI merge-result SHA как отдельные значения; независимое review привязывай к head, а CI — к тестируемому merge-result этих точных head/base.
 - Сообщения commit — Conventional Commits; AI-assisted commit получает trailer Assisted-by с именем агента и моделью.

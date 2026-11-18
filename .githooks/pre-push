@@ -19,11 +19,12 @@ current_ref=$(git symbolic-ref --quiet HEAD) || {
     exit 1
 }
 case "$current_ref" in
-    refs/heads/task/T-[0-9][0-9][0-9]) ;;
-    *) echo "pre-push: only task/T-NNN branches may be pushed" >&2; exit 1 ;;
+    refs/heads/task/T-[0-9][0-9][0-9]|refs/heads/task/T-[0-9][0-9][0-9]-[a-z0-9]*) ;;
+    *) echo "pre-push: only task/T-NNN or task/T-NNN-lowercase-slug branches may be pushed" >&2; exit 1 ;;
 esac
 
-task_id=${current_ref#refs/heads/task/}
+task_branch=${current_ref#refs/heads/task/}
+task_id=${task_branch%${task_branch#?????}}
 update_count=0
 push_ranges_csv=
 while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do

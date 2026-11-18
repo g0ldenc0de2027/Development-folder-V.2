@@ -47,7 +47,7 @@
       "title": "Урок: отделять задачи до начала изменения",
       "status": "draft",
       "path": "knowledge/records/task-isolation.md",
-      "contentSha256": "b8addadc6d9b29295c2d56927a2efbaef63e2134700b8ba3dc0ed80c854eef9b",
+      "contentSha256": "a4f0dc205edb22c41a321dd38b5de08365e1be653ddc7e24393cf13498fe8348",
       "sources": [
         "owner:2026-11-15",
         "author:Codex:gpt-6.1-sol"

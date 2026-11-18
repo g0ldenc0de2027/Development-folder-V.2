@@ -3,6 +3,9 @@
 Все заметные изменения Development Folder V2 фиксируются здесь.
 
 ## Unreleased
+- Регрессии Git-фикстур и quality gate проверяют TempRoot вне worktree и bare-репозиториев до создания файлов; task-scope suite сравнивает HEAD, refs, index и status исходного репозитория до и после фикстур.
+- Scratch-каталоги `.work/` и `.manus/` защищены от случайного Git-add; рекурсивные quality scans исключают только их точные сегменты, а Gitleaks остаётся включённым для всей рабочей копии.
+- Единая проверка scope принимает `task/T-NNN` и документированный lowercase slug, чтобы hook и task workflow не расходились.
 - Матрица runtime вынесена в `config/runtime-support.json`: проверенная Windows 11 x64 GA 26H2/build 26300 на `ge_release`; PowerShell 7.6 LTS 7.6.10+; CI — Windows Server 2025 build 26100.
 - Gate, scope guard и KB CLI fail-closed проверяют поддерживаемую платформу и линию PowerShell через общий runtime verifier; scope guard корректно обрабатывает Unicode-пути.
 - Усилен pre-push: только одноимённая task/T-NNN ветка, без тегов/удалений/non-fast-forward; зоны файлов сверяются с карточкой задачи.

@@ -8,10 +8,19 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $pwsh = (Get-Command pwsh -ErrorAction Stop).Source
-$tempRootFull = [IO.Path]::GetFullPath($TempRoot).TrimEnd([char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar))
-$scratch = Join-Path $tempRootFull ('task-scope-' + [guid]::NewGuid().ToString('N'))
-$fixtureRoot = Join-Path $scratch 'repository'
-$taskWorktree = Join-Path $scratch 'task-worktree'
+$pathSeparators = [char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+$repoRootFull = [IO.Path]::GetFullPath($repoRoot).TrimEnd($pathSeparators)
+$tempRootFull = [IO.Path]::GetFullPath($TempRoot).TrimEnd($pathSeparators)
+$repositoryPrefix = $repoRootFull + [IO.Path]::DirectorySeparatorChar
+if (
+    [string]::Equals($tempRootFull, $repoRootFull, [StringComparison]::OrdinalIgnoreCase) -or
+    $tempRootFull.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)
+) {
+    throw 'Task scope regression TempRoot must be outside every Git repository'
+}
+$scratch = Join-Path $tempRootFull ('ts-' + [guid]::NewGuid().ToString('N'))
+$fixtureRoot = Join-Path $scratch 'repo'
+$taskWorktree = Join-Path $scratch 'wt'
 $utf8 = [Text.UTF8Encoding]::new($false)
 $passed = 0
 $script:GitHookEnvironmentNames = @(
@@ -28,7 +37,7 @@ $script:OriginalGitHookEnvironment = @{}
 foreach ($name in $script:GitHookEnvironmentNames) {
     $script:OriginalGitHookEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
-$sourceHeadBefore = $null
+$sourceStateBefore = $null
 
 function Write-Text([string]$Path, [string]$Value) {
     [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Path)) | Out-Null
@@ -46,10 +55,11 @@ function Clear-GitHookEnvironment {
 
 function Restore-GitHookEnvironment([hashtable]$Saved) {
     foreach ($name in $script:GitHookEnvironmentNames) {
-        if ($null -eq $Saved[$name]) {
+        $savedValue = [string]$Saved[$name]
+        if ([string]::IsNullOrEmpty($savedValue)) {
             Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
         } else {
-            [Environment]::SetEnvironmentVariable($name, $Saved[$name], 'Process')
+            [Environment]::SetEnvironmentVariable($name, $savedValue, 'Process')
         }
     }
 }
@@ -66,6 +76,23 @@ function Invoke-Git([string]$WorkingDirectory, [string[]]$Arguments) {
         throw ("Synthetic Git fixture command failed ({0}): {1}" -f ($Arguments -join ' '), ($output -join ' '))
     }
     return $output
+}
+
+function Get-SourceGitState {
+    $head = ((Invoke-Git $repoRoot @('rev-parse', 'HEAD') | Select-Object -First 1).Trim())
+    $statusLines = @(Invoke-Git $repoRoot @('status', '--porcelain=v1', '--untracked-files=all'))
+    $refsLines = @(Invoke-Git $repoRoot @('for-each-ref', '--format=%(refname) %(objectname)'))
+    $indexPath = ((Invoke-Git $repoRoot @('rev-parse', '--path-format=absolute', '--git-path', 'index') | Select-Object -First 1).Trim())
+    if (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
+        throw 'Unable to locate the source repository index for fixture isolation checks.'
+    }
+    $indexSha256 = (Get-FileHash -LiteralPath $indexPath -Algorithm SHA256).Hash
+    return [pscustomobject]@{
+        Head = $head
+        Status = [string]::Join([string][char]10, [string[]]$statusLines)
+        Refs = [string]::Join([string][char]10, [string[]]$refsLines)
+        IndexSha256 = $indexSha256
+    }
 }
 
 function Assert-Scope([int]$ExpectedExit, [string]$ExpectedMessage, [string]$ExpectedSummary = '') {
@@ -89,8 +116,59 @@ function Assert-Scope([int]$ExpectedExit, [string]$ExpectedMessage, [string]$Exp
     }
 }
 
+function Assert-TempRootOutsideGitRepositories {
+    $probe = $tempRootFull
+    while (-not [IO.Directory]::Exists($probe)) {
+        $parent = Split-Path -Parent $probe
+        if ([string]::IsNullOrWhiteSpace($parent) -or [string]::Equals($parent, $probe, [StringComparison]::OrdinalIgnoreCase)) { break }
+        $probe = $parent
+    }
+    if (-not [IO.Directory]::Exists($probe)) { throw 'Task scope regression TempRoot has no existing parent directory' }
+
+    $probeGuardNames = @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE','GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM')
+    $savedProbeEnvironment = @{}
+    foreach ($name in $probeGuardNames) {
+        $savedProbeEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+        Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+    }
+    try {
+        while ($probe) {
+            $gitMarker = Join-Path $probe '.git'
+            $bareRepositoryMarkers = (
+                (Test-Path -LiteralPath (Join-Path $probe 'HEAD') -PathType Leaf) -and
+                (Test-Path -LiteralPath (Join-Path $probe 'config') -PathType Leaf) -and
+                (Test-Path -LiteralPath (Join-Path $probe 'objects') -PathType Container) -and
+                (Test-Path -LiteralPath (Join-Path $probe 'refs') -PathType Container)
+            )
+            if ((Test-Path -LiteralPath $gitMarker) -or $bareRepositoryMarkers) {
+                throw 'Task scope regression TempRoot must be outside every Git repository'
+            }
+            $gitRoot = @(& git -C $probe rev-parse --show-toplevel 2>$null)
+            $gitRootExit = $LASTEXITCODE
+            $bareState = @(& git -C $probe rev-parse --is-bare-repository 2>$null)
+            $bareStateExit = $LASTEXITCODE
+            if ($gitRootExit -eq 0 -or ($bareStateExit -eq 0 -and ($bareState -join '').Trim() -eq 'true')) {
+                throw 'Task scope regression TempRoot must be outside every Git repository'
+            }
+            $parent = Split-Path -Parent $probe
+            if ([string]::IsNullOrWhiteSpace($parent) -or [string]::Equals($parent, $probe, [StringComparison]::OrdinalIgnoreCase)) { break }
+            $probe = $parent
+        }
+    } finally {
+        foreach ($name in $probeGuardNames) {
+            $savedValue = [string]$savedProbeEnvironment[$name]
+            if ([string]::IsNullOrEmpty($savedValue)) {
+                Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+            } else {
+                [Environment]::SetEnvironmentVariable($name, $savedValue, 'Process')
+            }
+        }
+    }
+}
+
 try {
-    $sourceHeadBefore = (Invoke-Git $repoRoot @('rev-parse', 'HEAD') | Select-Object -First 1).Trim()
+    Assert-TempRootOutsideGitRepositories
+    $sourceStateBefore = Get-SourceGitState
     $poisonRoot = Join-Path $scratch 'inherited-git-context'
     [Environment]::SetEnvironmentVariable('GIT_DIR', (Join-Path $poisonRoot 'git-dir'), 'Process')
     [Environment]::SetEnvironmentVariable('GIT_WORK_TREE', (Join-Path $poisonRoot 'work-tree'), 'Process')
@@ -144,6 +222,17 @@ try {
     $passed++
     Write-Output 'PASS: scope enumerates changes and Unicode filenames under inherited Git hook environment'
 
+    $null = Invoke-Git $taskWorktree @('branch', '-m', 'task/T-008-scope-fixture')
+    Assert-Scope 0 'TASK-SCOPE=PASS' 'TASK-SCOPE=PASS (2 changed paths; 3 allowed paths)'
+    $passed++
+    Write-Output 'PASS: scope accepts the documented task ID with a lowercase hyphenated slug'
+
+    $null = Invoke-Git $taskWorktree @('branch', '-m', 'task/T-008-scope_fixture')
+    Assert-Scope 1 'Current branch does not match the task ID'
+    $passed++
+    $null = Invoke-Git $taskWorktree @('branch', '-m', 'task/T-008-scope-fixture')
+    Write-Output 'PASS: scope rejects a malformed task slug'
+
     Write-Text (Join-Path $taskWorktree 'uncommitted.txt') "Uncommitted change`n"
     Assert-Scope 1 'Working tree must be clean before push'
     Remove-Item -LiteralPath (Join-Path $taskWorktree 'uncommitted.txt') -Force
@@ -157,12 +246,20 @@ try {
     $passed++
     Write-Output 'PASS: scope rejects a committed out-of-scope path'
 
+    if ($passed -ne 5) { throw ('Expected 5 task-scope cases; found ' + $passed) }
     Write-Output ("TASK-SCOPE-REGRESSIONS: {0} passed, 0 failed" -f $passed)
 } finally {
     try {
-        $sourceHeadAfter = (Invoke-Git $repoRoot @('rev-parse', 'HEAD') | Select-Object -First 1).Trim()
-        if ($sourceHeadBefore -and $sourceHeadAfter -ne $sourceHeadBefore) {
-            throw 'Synthetic Git fixture changed the source repository HEAD.'
+        if ($sourceStateBefore) {
+            $sourceStateAfter = Get-SourceGitState
+            if (
+                $sourceStateAfter.Head -cne $sourceStateBefore.Head -or
+                $sourceStateAfter.Status -cne $sourceStateBefore.Status -or
+                $sourceStateAfter.Refs -cne $sourceStateBefore.Refs -or
+                $sourceStateAfter.IndexSha256 -cne $sourceStateBefore.IndexSha256
+            ) {
+                throw 'Synthetic Git fixture changed source repository HEAD, refs, index, or working status.'
+            }
         }
     } finally {
         Restore-GitHookEnvironment $script:OriginalGitHookEnvironment

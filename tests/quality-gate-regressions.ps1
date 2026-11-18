@@ -2,6 +2,17 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$processEnvironment = [Environment]::GetEnvironmentVariables('Process')
+$emptyGitContext = @(
+    foreach ($name in @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE','GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM')) {
+        if ($processEnvironment.Contains($name) -and [string]::IsNullOrEmpty([string]$processEnvironment[$name])) {
+            $name
+        }
+    }
+)
+if ($emptyGitContext.Count -gt 0) {
+    throw ('Invalid empty Git context variables remain in process: ' + ($emptyGitContext -join ','))
+}
 $workflowPath = Join-Path $repoRoot '.github/workflows/quality-gate.yml'
 $workflow = Get-Content -LiteralPath $workflowPath -Raw
 $actionsPolicy = Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/actions-policy.json') -Raw | ConvertFrom-Json
@@ -139,27 +150,134 @@ $prePushHook = Get-Content -LiteralPath (Join-Path $repoRoot '.githooks/pre-push
 if ($prePushHook -notmatch 'read -r local_ref local_sha remote_ref remote_sha' -or -not $prePushHook.Contains('-PushRange')) {
     throw 'Pre-push hook must pass Git-provided ref update ranges to the secret scan'
 }
+if (
+    -not $prePushHook.Contains('refs/heads/task/T-[0-9][0-9][0-9]-[a-z0-9]*') -or
+    -not $prePushHook.Contains('task_id=${task_branch%${task_branch#?????}}')
+) {
+    throw 'Pre-push hook must accept suffixed task branches and pass only the validated task ID to the scope guard'
+}
 $directorySeparatorClass = '[/\x5c]'
-$excludedRepositoryPathPattern = '(^|' + $directorySeparatorClass + ')(\.git|\.worktrees|temp)(' + $directorySeparatorClass + '|$)'
+$excludedRepositoryPathPattern = '(^|' + $directorySeparatorClass + ')(\.git|\.worktrees|\.work|\.manus|temp)(' + $directorySeparatorClass + '|$)'
 $simulatedWorktreeRoot = Join-Path $repoRoot '.worktrees/T-SIMULATED'
 $expectedWorktreeScript = Join-Path $simulatedWorktreeRoot 'scripts/quality-gate.ps1'
 $nestedWorktreeScript = Join-Path $simulatedWorktreeRoot '.worktrees/T-OTHER/scripts/quality-gate.ps1'
+$workScratchScript = Join-Path $repoRoot '.work/T-SCRATCH/scripts/quality-gate.ps1'
+$manusScratchDocument = Join-Path $repoRoot '.manus/T-SCRATCH/private.md'
+$workflowsScript = Join-Path $repoRoot '.workflows/scripts/quality-gate.ps1'
+$manuscriptDocument = Join-Path $repoRoot '.manuscript/private.md'
 $expectedRelativePath = [System.IO.Path]::GetRelativePath($simulatedWorktreeRoot, $expectedWorktreeScript)
 $nestedRelativePath = [System.IO.Path]::GetRelativePath($simulatedWorktreeRoot, $nestedWorktreeScript)
-if ($expectedRelativePath -match $excludedRepositoryPathPattern -or $nestedRelativePath -notmatch $excludedRepositoryPathPattern) {
-    throw 'Worktree path fixture must include files at the checkout root and exclude nested worktrees'
+$workScratchRelativePath = [System.IO.Path]::GetRelativePath($repoRoot, $workScratchScript)
+$manusScratchRelativePath = [System.IO.Path]::GetRelativePath($repoRoot, $manusScratchDocument)
+$workflowsRelativePath = [System.IO.Path]::GetRelativePath($repoRoot, $workflowsScript)
+$manuscriptRelativePath = [System.IO.Path]::GetRelativePath($repoRoot, $manuscriptDocument)
+if (
+    $expectedRelativePath -match $excludedRepositoryPathPattern -or
+    $nestedRelativePath -notmatch $excludedRepositoryPathPattern -or
+    $workScratchRelativePath -notmatch $excludedRepositoryPathPattern -or
+    $manusScratchRelativePath -notmatch $excludedRepositoryPathPattern -or
+    $workflowsRelativePath -match $excludedRepositoryPathPattern -or
+    $manuscriptRelativePath -match $excludedRepositoryPathPattern
+) {
+    throw 'Repository scanner path fixtures must exclude exact local scratch directories without matching similarly named paths'
+}
+foreach ($scratchPath in @('.work/T-SCRATCH/private.md', '.manus/T-SCRATCH/private.md')) {
+    & git -C $repoRoot check-ignore --quiet -- $scratchPath 2>$null
+    $ignoreExit = $LASTEXITCODE
+    if ($ignoreExit -ne 0) {
+        $ignoreEvidence = @(& git -C $repoRoot check-ignore -v -- $scratchPath 2>&1)
+        $ignoreDiagnostic = ($ignoreEvidence -join ' ').Trim()
+        $gitEnvironment = [Environment]::GetEnvironmentVariables('Process')
+        $gitEnvironmentState = @(
+            foreach ($name in @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE','GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM')) {
+                if ($gitEnvironment.Contains($name)) {
+                    $value = [string]$gitEnvironment[$name]
+                    $state = if ($value.Length -eq 0) { 'EMPTY' } else { 'SET' }
+                } else {
+                    $state = 'UNSET'
+                }
+                $name + '=' + $state
+            }
+        ) -join ','
+        $gitProbe = @(& git -C $repoRoot rev-parse --is-inside-work-tree 2>&1)
+        $gitProbeExit = $LASTEXITCODE
+        throw ('Git must ignore local scratch path ' + $scratchPath + ' (exit ' + $ignoreExit + '; repo ' + $repoRoot + '; evidence ' + $ignoreDiagnostic + '; env ' + $gitEnvironmentState + '; repo probe exit ' + $gitProbeExit + ': ' + ($gitProbe -join ' ') + ')')
+    }
+}
+foreach ($nearMatchPath in @('.workflows/keep.md', '.manuscript/keep.md')) {
+    & git -C $repoRoot check-ignore --quiet -- $nearMatchPath 2>$null
+    if ($LASTEXITCODE -eq 0) { throw ('Git ignore must not match the similar directory ' + $nearMatchPath) }
+}
+$trackedScratchFiles = @(& git -C $repoRoot ls-files --cached -- .work/ .manus/)
+if ($LASTEXITCODE -ne 0 -or $trackedScratchFiles.Count -gt 0) {
+    throw 'Local scratch paths must not contain tracked files'
 }
 $qualityGate = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
 $qualityGatePathSeparatorClass = '[' + ([string][char]92 * 2) + '/]'
-$qualityGateExclusionPattern = '(^|' + $qualityGatePathSeparatorClass + ')(\.git|\.worktrees|temp)(' + $qualityGatePathSeparatorClass + '|$)'
+$qualityGateExclusionPattern = '(^|' + $qualityGatePathSeparatorClass + ')(\.git|\.worktrees|\.work|\.manus|temp)(' + $qualityGatePathSeparatorClass + '|$)'
+$taskScopeRegressionSource = Get-Content -LiteralPath (Join-Path $repoRoot 'tests/task-scope-regressions.ps1') -Raw
 $expectedPathFilterSource = '$relativePath -notmatch ' + [char]39 + $qualityGateExclusionPattern + [char]39
 if (
     -not $qualityGate.Contains('[System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)') -or
     -not $qualityGate.Contains($expectedPathFilterSource) -or
+    -not $qualityGate.Contains('[string]$TemporaryRoot = [System.IO.Path]::GetTempPath()') -or
+    ([regex]::Matches($qualityGate, 'Assert-TemporaryRootOutsideRepository')).Count -lt 2 -or
+    -not $taskScopeRegressionSource.Contains('Task scope regression TempRoot must be outside every Git repository') -or
     $qualityGate -notmatch 'if \(\$scriptFiles\.Count -eq 0\)'
 ) {
     throw 'Quality gate must use relative worktree path exclusions and fail when no scripts are scanned'
 }
+$scopeRegressionPwsh = (Get-Command pwsh -ErrorAction Stop).Source
+$gitCommonDirectory = ((& git -C $repoRoot rev-parse --path-format=absolute --git-common-dir 2>$null) -join '').Trim()
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $gitCommonDirectory -PathType Container)) {
+    throw 'Unable to locate the Git common directory for TempRoot safety regressions'
+}
+$unsafeScopeTempRoot = Join-Path $repoRoot ('temp/T-SCOPE-REJECT-' + [guid]::NewGuid().ToString('N'))
+$scopeOutput = @(& $scopeRegressionPwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/task-scope-regressions.ps1') -TempRoot $unsafeScopeTempRoot 2>&1)
+$scopeExit = $LASTEXITCODE
+$scopeOutputText = $scopeOutput -join [Environment]::NewLine
+if (
+    $scopeExit -eq 0 -or
+    -not $scopeOutputText.Contains('Task scope regression TempRoot must be outside every Git repository') -or
+    (Test-Path -LiteralPath $unsafeScopeTempRoot)
+) {
+    throw 'Task-scope suite must refuse an in-repository TempRoot before creating fixtures'
+}
+$unsafeBareScopeTempRoot = Join-Path $gitCommonDirectory ('T-SCOPE-REJECT-' + [guid]::NewGuid().ToString('N'))
+$scopeOutput = @(& $scopeRegressionPwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/task-scope-regressions.ps1') -TempRoot $unsafeBareScopeTempRoot 2>&1)
+$scopeExit = $LASTEXITCODE
+$scopeOutputText = $scopeOutput -join [Environment]::NewLine
+if (
+    $scopeExit -eq 0 -or
+    -not $scopeOutputText.Contains('Task scope regression TempRoot must be outside every Git repository') -or
+    (Test-Path -LiteralPath $unsafeBareScopeTempRoot)
+) {
+    throw 'Task-scope suite must refuse a TempRoot inside a bare Git repository before creating fixtures'
+}
+
+$unsafeGateTempRoot = Join-Path $repoRoot ('temp/T-GATE-REJECT-' + [guid]::NewGuid().ToString('N'))
+$gateOutput = @(& $scopeRegressionPwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'scripts/quality-gate.ps1') -BaseRef origin/main -TemporaryRoot $unsafeGateTempRoot 2>&1)
+$gateExit = $LASTEXITCODE
+$gateOutputText = $gateOutput -join [Environment]::NewLine
+if (
+    $gateExit -eq 0 -or
+    -not $gateOutputText.Contains('QUALITY-GATE: temporary root must be outside the source repository') -or
+    (Test-Path -LiteralPath $unsafeGateTempRoot)
+) {
+    throw 'Quality gate must refuse an in-repository TEMP before creating artifacts'
+}
+$unsafeBareGateTempRoot = Join-Path $gitCommonDirectory ('T-GATE-REJECT-' + [guid]::NewGuid().ToString('N'))
+$gateOutput = @(& $scopeRegressionPwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'scripts/quality-gate.ps1') -BaseRef origin/main -TemporaryRoot $unsafeBareGateTempRoot 2>&1)
+$gateExit = $LASTEXITCODE
+$gateOutputText = $gateOutput -join [Environment]::NewLine
+if (
+    $gateExit -eq 0 -or
+    -not $gateOutputText.Contains('QUALITY-GATE: temporary root must be outside the source repository') -or
+    (Test-Path -LiteralPath $unsafeBareGateTempRoot)
+) {
+    throw 'Quality gate must refuse a TEMP inside a bare Git repository before creating artifacts'
+}
+
 if ($qualityGate -notmatch '\[string\[\]\]\$PushRange' -or -not $qualityGate.Contains('--log-opts=')) {
     throw 'Quality gate must scan exact incoming push history ranges'
 }
