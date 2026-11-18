@@ -53,6 +53,30 @@
         "author:Codex:gpt-6.1-sol"
       ],
       "review": null
+    },
+    {
+      "id": "local-kb-file-ingestion",
+      "kind": "research",
+      "title": "Исследование: многоформатная локальная и портфельная БЗ",
+      "status": "draft",
+      "path": "knowledge/records/local-kb-file-ingestion-research-2026-11-18.md",
+      "contentSha256": "6768b0bed929fc3251a2e6a4d1cad62f74c6910010892e5c8290557a0e06eece",
+      "sources": [
+        "owner:2026-11-17",
+        "research:Codex-GPT-6:2026-11-18",
+        "https://github.com/docling-project/docling/commit/ce69639a64683598b915e003ee5e65b5c03454bd",
+        "https://docling-project.github.io/docling/usage/advanced_options/",
+        "https://github.com/microsoft/markitdown/commit/ed178952a6672abdfd35b5f9e76a80b6cefc086e",
+        "https://github.com/paperless-ngx/paperless-ngx/commit/7977093e83dd215be54273ccf77d2ab98be577b3",
+        "https://docs.khoj.dev/data-sources/share_your_data/",
+        "https://github.com/onyx-dot-app/onyx/commit/0ac4c33cd2f52b3536b239ce65d20c32954dee9a",
+        "https://www.sqlite.org/fts5.html",
+        "https://learn.microsoft.com/en-us/windows/win32/secauthz/appcontainer-isolation",
+        "https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects",
+        "https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/RAG_Security_Cheat_Sheet.html"
+      ],
+      "review": null
     }
   ]
 }
