@@ -19,6 +19,8 @@ $hooksPath = Join-Path (Split-Path $PSScriptRoot -Parent) '.githooks'
 $configPath = Join-Path $scratch 'quarantine.json'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $utf8 = [Text.UTF8Encoding]::new($false)
+$fixtureEmptyConfig = Join-Path $scratch 'fixture-empty.config'
+[IO.File]::WriteAllText($fixtureEmptyConfig,"# Isolated regression fixture config.`n",$utf8)
 $passed = 0
 
 function Invoke-Git {
@@ -35,7 +37,7 @@ function Write-Text([string]$Path,[string]$Text) {
     [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Path)) | Out-Null
     [IO.File]::WriteAllText($Path,$Text,$utf8)
 }
-function Invoke-NativeProcess([string]$Executable,[string[]]$Arguments,[switch]$PreserveGitContext,[string]$WorkingDirectory) {
+function Invoke-NativeProcess([string]$Executable,[string[]]$Arguments,[switch]$PreserveGitContext,[switch]$HookProcess,[string]$WorkingDirectory) {
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = $Executable
     $start.UseShellExecute = $false
@@ -48,6 +50,10 @@ function Invoke-NativeProcess([string]$Executable,[string[]]$Arguments,[switch]$
             $null = $start.Environment.Remove([string]$name)
         }
     }
+    if (-not $HookProcess) {
+        $start.Environment['GIT_CONFIG_NOSYSTEM'] = '1'
+        $start.Environment['GIT_CONFIG_GLOBAL'] = $fixtureEmptyConfig
+    }
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $start
     $null = $process.Start()
@@ -56,9 +62,9 @@ function Invoke-NativeProcess([string]$Executable,[string[]]$Arguments,[switch]$
     $process.WaitForExit()
     return [pscustomobject]@{ ExitCode=$process.ExitCode; Output=$stdoutTask.Result; Error=$stderrTask.Result }
 }
-function Invoke-Audit([string]$Mode='Audit') {
+function Invoke-Audit([string]$Mode='Audit',[string]$RepositoryRoot=$mainTree) {
     $pwsh = (Get-Command pwsh -ErrorAction Stop).Source
-    return Invoke-NativeProcess $pwsh @('-NoLogo','-NoProfile','-File',$scriptPath,'-Mode',$Mode,'-RepositoryRoot',$mainTree,'-QuarantineConfigPath',$configPath) -PreserveGitContext
+    return Invoke-NativeProcess $pwsh @('-NoLogo','-NoProfile','-File',$scriptPath,'-Mode',$Mode,'-RepositoryRoot',$RepositoryRoot,'-QuarantineConfigPath',$configPath) -PreserveGitContext
 }
 function Assert-AuditExit([int]$Expected,[string]$Label) {
     $result = Invoke-Audit
@@ -98,6 +104,7 @@ try {
     Write-Text (Join-Path $seed 'README.md') ('base' + [Environment]::NewLine)
     Write-Text (Join-Path $seed 'данные/снимок.txt') ('baseline' + [Environment]::NewLine)
     Write-Text (Join-Path $seed 'config/worktree-quarantine.json') '{"schemaVersion":1,"quarantines":[]}'
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'config/git-empty.config') -Destination (Join-Path $seed 'config/git-empty.config')
 
     Invoke-Git $seed @('add','.') | Out-Null
     Invoke-Git $seed @('commit','--quiet','-m','test: seed lifecycle fixture') | Out-Null
@@ -131,6 +138,58 @@ try {
     Case 'clean registered worktrees pass audit' {
         $result = Assert-AuditExit 0 'CLEAN_AUDIT'
         if ($result.Output -notmatch 'WORKTREE-AUDIT=PASS') { throw 'CLEAN_AUDIT_MARKER_MISSING' }
+    }
+    Case 'audit subprocess isolates system and global Git config' {
+        $auditSource = [IO.File]::ReadAllText($scriptPath)
+        if ($auditSource -notmatch "GIT_CONFIG_NOSYSTEM.*1") { throw 'AUDIT_SYSTEM_GIT_CONFIG_ISOLATION_MISSING' }
+        if (-not $auditSource.Contains('$emptyConfig = Join-Path $scriptRepositoryRoot ''config/git-empty.config''')) { throw 'AUDIT_EMPTY_GIT_CONFIG_PATH_MISSING' }
+        if ($auditSource -notmatch 'SetEnvironmentVariable\(''GIT_CONFIG_GLOBAL'',\$emptyConfig,''Process''\)') { throw 'AUDIT_GLOBAL_GIT_CONFIG_ISOLATION_MISSING' }
+        if ($auditSource -notmatch "--no-pager") { throw 'AUDIT_PAGER_ISOLATION_MISSING' }
+        if ($auditSource -notmatch "--no-optional-locks") { throw 'AUDIT_OPTIONAL_LOCK_ISOLATION_MISSING' }
+        if ($auditSource -notmatch '-c core\.fsmonitor=false') { throw 'AUDIT_REPOSITORY_FSMONITOR_ISOLATION_MISSING' }
+        foreach ($required in @(
+            'function Assert-NoReparseAncestors',
+            '$repositoryRootFull = Assert-NoReparseAncestors',
+            '$currentRoot = Assert-NoReparseAncestors',
+            '$commonDir = Assert-NoReparseAncestors',
+            '$adminRoot = Assert-NoReparseAncestors',
+            '$QuarantineConfigPath = Assert-NoReparseAncestors',
+            '$treePath = Assert-NoReparseAncestors'
+        )) {
+            if (-not $auditSource.Contains($required)) { throw ('AUDIT_REPARSE_GUARD_MISSING:' + $required) }
+        }
+    }
+    Case 'audit never executes repository-local fsmonitor commands' {
+        $marker = Join-Path $scratch 'local-fsmonitor-ran.txt'
+        $hookScript = Join-Path $scratch 'local-fsmonitor.ps1'
+        $markerLiteral = $marker.Replace("'","''")
+        $hookText = "[IO.File]::WriteAllText('$markerLiteral','invoked')" + [Environment]::NewLine + "'0'" + [Environment]::NewLine + "''" + [Environment]::NewLine
+        Write-Text $hookScript $hookText
+        $hookCommand = 'pwsh -NoLogo -NoProfile -File "' + $hookScript + '"'
+        Invoke-Git $mainTree @('config','--worktree','core.fsmonitor',$hookCommand) | Out-Null
+        $result = Invoke-Audit
+        if ($result.ExitCode -ne 0 -or $result.Output -notmatch 'WORKTREE-AUDIT=PASS') {
+            throw ('LOCAL_FSMONITOR_AUDIT_FAILED:' + $result.Output + $result.Error)
+        }
+        if (Test-Path -LiteralPath $marker) { throw 'AUDIT_EXECUTED_REPOSITORY_LOCAL_FSMONITOR' }
+        Invoke-Git $mainTree @('config','--worktree','--unset-all','core.fsmonitor') | Out-Null
+    }
+    Case 'quarantine registry rejects rooted and traversal paths' {
+        $head = Invoke-Git $quarantineTree @('rev-parse','HEAD')
+        foreach ($unsafePath in @('../outside.txt',(Join-Path $scratch 'outside.txt'))) {
+            $record = @{
+                id='T-013'; relativeWorktree='.worktrees/T-013'; branch='task/T-013-agent-orchestration-research'; head=$head
+                manifestFormat=1; manifestSize=1; manifestSha256=('0' * 64); paths=@($unsafePath); disposition='read-only-source'
+            }
+            $json = @{schemaVersion=1;quarantines=@($record)} | ConvertTo-Json -Depth 5
+            [IO.File]::WriteAllText($configPath,$json,$utf8)
+            $result = Invoke-Audit
+            $details = [string]::Join([Environment]::NewLine,@($result.Output,$result.Error))
+            if ($result.ExitCode -eq 0 -or $details -notmatch 'WORKTREE_AUDIT_QUARANTINE_PATH_INVALID') {
+                throw ('UNSAFE_QUARANTINE_PATH_ACCEPTED:' + $unsafePath + ':' + $details)
+            }
+        }
+        [IO.File]::WriteAllText($configPath,$emptyConfig,$utf8)
     }
     Case 'audit defaults root to script location from unrelated working directory' {
         $pwsh = (Get-Command pwsh -ErrorAction Stop).Source
@@ -297,7 +356,7 @@ try {
         Write-Text (Join-Path $quarantineTree 'README.md') ('staged-forbidden' + [Environment]::NewLine)
         Invoke-Git $quarantineTree @('add','README.md') | Out-Null
         $git = (Get-Command git -ErrorAction Stop).Source
-        $result = Invoke-NativeProcess $git @('-C',$quarantineTree,'commit','-m','test: must be blocked')
+        $result = Invoke-NativeProcess $git @('-C',$quarantineTree,'commit','-m','test: must be blocked') -HookProcess
         $hookText = [string]::Join([Environment]::NewLine,@($result.Output,$result.Error))
         if ($result.ExitCode -eq 0 -or $hookText -notmatch 'T-013 is a read-only recovery source') { throw ('T013_PRECOMMIT_GUARD_FAILED:' + $hookText) }
         Invoke-Git $quarantineTree @('reset','--quiet','HEAD','--','README.md') | Out-Null
@@ -308,6 +367,12 @@ try {
         Remove-Item -LiteralPath $fixtureScripts -Force
         Remove-Item -LiteralPath $fixtureGithub -Force
         $null = Write-QuarantineConfig -Path $quarantineTree -Head (Invoke-Git $quarantineTree @('rev-parse','HEAD')) -Content ('quarantined' + [Environment]::NewLine)
+    }
+    Case 'publish mode refuses the quarantined T-013 recovery branch' {
+        $result = Invoke-Audit -Mode 'Publish' -RepositoryRoot $quarantineTree
+        if ($result.ExitCode -eq 0 -or $result.Output -notmatch 'T-013 is a read-only recovery source and cannot be published') {
+            throw ('T013_PUBLISH_GUARD_FAILED:' + $result.Output + $result.Error)
+        }
     }
     Case 'dirty sibling worktree blocks publish mode while exact quarantine remains allowed' {
         Remove-Item -LiteralPath (Join-Path $mainTree 'leftover.txt') -Force -ErrorAction SilentlyContinue
@@ -350,7 +415,7 @@ try {
         [IO.Directory]::CreateDirectory($mainHookPolicy) | Out-Null
         Copy-Item -LiteralPath (Join-Path $repoRoot 'config/github/repository.json') -Destination (Join-Path $mainHookPolicy 'repository.json')
         $git = (Get-Command git -ErrorAction Stop).Source
-        $result = Invoke-NativeProcess $git @('-C',$mainTree,'push','origin','task/T-018-worktree-guard')
+        $result = Invoke-NativeProcess $git @('-C',$mainTree,'push','origin','task/T-018-worktree-guard') -HookProcess
         if ($result.ExitCode -eq 0 -or $result.Error -notmatch 'current worktree is not clean') { throw ('DIRTY_PREPUSH_GUARD_FAILED:' + $result.Error) }
         Remove-Item -LiteralPath (Join-Path $mainHookGitIdentity 'GitIdentity.psm1') -Force
         Remove-Item -LiteralPath (Join-Path $mainHookScripts 'verify-git-hook-context.ps1') -Force
@@ -360,7 +425,7 @@ try {
         Remove-Item -LiteralPath $mainHookScripts -Force
     }
 
-    if ($passed -ne 20) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 20, got ' + $passed) }
+    if ($passed -ne 24) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 24, got ' + $passed) }
     Write-Output ('TASK-WORKTREE-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {

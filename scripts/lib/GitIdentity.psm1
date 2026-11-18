@@ -87,6 +87,23 @@ function Assert-GitWorktreeEnvironment {
     if ($HookContext) {
         $actualCwd = [IO.Path]::GetFullPath((Get-Location).Path).TrimEnd('\','/')
         if (-not $actualCwd.Equals($context.Root,[StringComparison]::OrdinalIgnoreCase)) { throw 'GIT_IDENTITY_HOOK_CWD_MISMATCH' }
+        $editor = [Environment]::GetEnvironmentVariable('GIT_EDITOR','Process')
+        if (-not [string]::IsNullOrEmpty($editor) -and $editor -cne ':') { throw 'GIT_IDENTITY_HOOK_EDITOR_INVALID' }
+        $execPath = [Environment]::GetEnvironmentVariable('GIT_EXEC_PATH','Process')
+        if (-not [string]::IsNullOrWhiteSpace($execPath)) {
+            $expectedExecResult = Invoke-GitIdentityProcess -Arguments @('--exec-path')
+            if ($expectedExecResult.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($expectedExecResult.StdOut)) {
+                throw 'GIT_IDENTITY_HOOK_EXEC_PATH_UNVERIFIABLE'
+            }
+            try {
+                $actualExecPath = Convert-GitIdentityEnvironmentPath -Path $execPath -BasePath $context.Root
+                $expectedExecPath = [IO.Path]::GetFullPath($expectedExecResult.StdOut.Trim())
+            }
+            catch { throw 'GIT_IDENTITY_HOOK_EXEC_PATH_INVALID' }
+            if (-not $actualExecPath.TrimEnd('\','/').Equals($expectedExecPath.TrimEnd('\','/'),[StringComparison]::OrdinalIgnoreCase)) {
+                throw 'GIT_IDENTITY_HOOK_EXEC_PATH_MISMATCH'
+            }
+        }
         foreach ($name in @('GIT_DIR','GIT_INDEX_FILE')) {
             $value = [Environment]::GetEnvironmentVariable($name,'Process')
             if ([string]::IsNullOrWhiteSpace($value)) { continue }

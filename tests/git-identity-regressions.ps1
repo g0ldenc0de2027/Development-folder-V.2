@@ -284,6 +284,44 @@ try {
             }
         }
     }
+    Case 'GIT-ID-026 executable Git context overrides are refused in hooks' {
+        $names = @('GIT_PAGER','GIT_EDITOR','GIT_EXEC_PATH')
+        $saved = @{}
+        foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
+        $pushed = $false
+        try {
+            Push-Location -LiteralPath $worktree
+            $pushed = $true
+            [Environment]::SetEnvironmentVariable('GIT_EDITOR','pwsh -NoProfile -Command exit 0','Process')
+            ExpectFailure { Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext } 'GIT_IDENTITY_HOOK_EDITOR_INVALID'
+            [Environment]::SetEnvironmentVariable('GIT_EDITOR',':','Process')
+            $null = Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext
+            [Environment]::SetEnvironmentVariable('GIT_EDITOR',$null,'Process')
+
+            [Environment]::SetEnvironmentVariable('GIT_EXEC_PATH',(Join-Path $root 'untrusted-git-exec'),'Process')
+            ExpectFailure { Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext } 'GIT_IDENTITY_HOOK_EXEC_PATH_MISMATCH'
+            [Environment]::SetEnvironmentVariable('GIT_EXEC_PATH',(Invoke-GitFixture -Directory $worktree -Arguments @('--exec-path')),'Process')
+            $null = Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext
+            [Environment]::SetEnvironmentVariable('GIT_EXEC_PATH',$null,'Process')
+
+            [Environment]::SetEnvironmentVariable('GIT_PAGER','pwsh -NoProfile -Command exit 0','Process')
+            $null = Assert-GitWorktreeEnvironment -RepositoryRoot $worktree -HookContext
+        }
+        finally {
+            if ($pushed) { Pop-Location }
+            foreach ($name in $names) {
+                if ($null -eq $saved[$name]) { Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue }
+                else { [Environment]::SetEnvironmentVariable($name,[string]$saved[$name],'Process') }
+            }
+        }
+    }
+    Case 'quality gate validates its Git worktree context before checks' {
+        $gateSource = [IO.File]::ReadAllText((Join-Path $repoRoot 'scripts/quality-gate.ps1'))
+        if (-not $gateSource.Contains('Import-Module (Join-Path $PSScriptRoot ''lib/GitIdentity.psm1'') -Force')) { throw 'QUALITY_GATE_IDENTITY_MODULE_IMPORT_MISSING' }
+        if ($gateSource -notmatch 'Assert-GitWorktreeEnvironment -RepositoryRoot \$repoRoot -HookContext') { throw 'QUALITY_GATE_GIT_CONTEXT_CHECK_MISSING' }
+        if ([regex]::IsMatch($gateSource,'(?m)^\s*&\s*git\s+(?!--no-pager\b)[^\r\n]+')) { throw 'QUALITY_GATE_DIRECT_GIT_PAGER_NOT_DISABLED' }
+        if ([regex]::IsMatch($gateSource,'(?m)^\s*Invoke-NativeChecked -Executable \(Get-Command git\)\.Source -Arguments @\((?!''--no-pager'')')) { throw 'QUALITY_GATE_DIFF_PAGER_NOT_DISABLED' }
+    }
     Case 'GIT-ID-005 author environment override is refused' {
         $env:GIT_AUTHOR_NAME = 'Injected Author'
         try {
@@ -607,7 +645,7 @@ try {
             if ((Invoke-GitFixture -Directory $secondLinked -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw ('LINKED_WORKTREE_CORE_BARE_INVALID:' + $scenario) }
         }
     }
-    if ($passed -ne 25) { throw ('GIT_IDENTITY_REGRESSION_COUNT_MISMATCH: expected 25, got ' + $passed) }
+    if ($passed -ne 27) { throw ('GIT_IDENTITY_REGRESSION_COUNT_MISMATCH: expected 27, got ' + $passed) }
     Write-Output ('GIT-IDENTITY-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {
