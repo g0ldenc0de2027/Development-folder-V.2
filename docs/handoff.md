@@ -1,4 +1,16 @@
-# Передача работы — T-015, 2026-11-17
+# Handoff — worktree isolation and attribution, T-015, 2026-11-18
+
+- Root cause: no mandatory global worktree audit; old hooks checked current commit/push identity, not all registered trees, untracked files, or ignored .vs; bare admin root is not a worktree.
+- Fix: mandatory all-worktree admission audit, repeat fail-closed checks in pre-commit and pre-push, staged-only current-task write set, explicit interruption handoff, and regressions. Nested Git calls isolate hook-provided repository variables; no automatic cleanup or recovery action.
+- T-013 raw snapshot: archive Development-Folder-V2_T-013-source-snapshot-2026-11-18_91bb56d5.zip; archive SHA-256 734f27b8027e4a0aaa2f1aeca5868ba242249766fca26e975fcb718c60602d99; Format 1 manifest SHA-256 91bb56d5de1822cfb64a9fad0270c83d41d5b00c110e6740d2804c9e96c2d4f3.
+- Backup ref backup/2026-11-18-T013-source-base pins original HEAD 88342060af7c6c18a163d3b6fa6727ab5c17fd7e; source worktree is clean on the same branch and HEAD; commit history is unchanged.
+- T-016 status correction is saved locally as commit e1a4aaea9ae837977f7a6e1c834e0fa2b220e475; it is not pushed, so PR #15 CI/review evidence predates that commit and must be refreshed before merge.
+- Validation on this content: quality-gate PASS; Git identity 22/22, worktree 12/12, KB 44/44, privacy/hygiene, actionlint and Gitleaks PASS. Application stack build/dependency audit is NOT COVERED because this template has no selected stack.
+- Next: create the scoped T-015 commit, then refresh PR/CI/review evidence on exact current SHAs. Local hooks reduce accidental recurrence but cannot prevent intentional bypass or concurrent changes after audit.
+
+---
+
+## Historical snapshot — T-015, 2026-11-17
 
 - База task/T-015 — `ff48a0fd7a412a5112477d86dfe5ff3122709fb0`; существующий draft PR #11 до новых исправлений указывал на эту ревизию. Основной scoped-набор сохранён локальным commit `7a5ce92`; исправление regression harness ожидает отдельного commit.
 - Инициализация linked-worktree Git config безопасно разделила bare admin и T-015; все 14 linked worktrees читают `git status`. Пять worktrees сохраняют прежние правки без потерь: T-009, T-012, T-013, T-014 и T-015.

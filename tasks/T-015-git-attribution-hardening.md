@@ -28,6 +28,13 @@
 - `knowledge/catalog.json`
 - `tasks/T-015-git-attribution-hardening.md`
 - `docs/handoff.md`
+- `scripts/task-worktree-audit.ps1`
+- `tests/task-worktree-regressions.ps1`
+- `config/worktree-quarantine.json`
+- `tasks/README.md`
+- `docs/github-workflow.md`
+- `knowledge/records/task-worktree-recovery.md`
+- `knowledge/УРОКИ.md`
 
 ## Приёмка
 
@@ -39,6 +46,13 @@
 6. 22 synthetic regressions покрывают common placeholder, изоляцию, account mismatch, author/committer environment/config injection, разрешённые identity, неверные author/committer name/email, multi-ref hook execution, автокоррекцию, безопасную bare-admin migration, будущий worktree bootstrap, неоднозначный common core.worktree, нормализацию регистра login и поиск shell root при вложенном `git.exe`. Fixtures удаляются только из собственного temp-каталога.
 7. Полный `quality-gate.ps1 -BaseRef origin/main`, регрессии и `git diff --check` проходят. Успехи привязаны к точному HEAD/содержимому.
 8. Правила документируют безопасное автолечение только до commit при подтверждённой identity; после commit — только отдельная recovery-задача и новая история, без amend/rebase/filter/rewrite. Опубликованные T-010/T-011/T-013 refs не изменяются.
+
+9. Перед началом задачи глобальный audit обнаруживает dirty tracked/untracked worktree, missing/prunable worktree, task ID mismatch и ignored .vs. Любой непроверенный путь блокирует commit/publish.
+10. pre-commit разрешает только staged изменения текущего worktree и проверяет все соседние worktree; pre-push требует clean status и повторяет глобальную проверку.
+11. После архивации T-013 production registry quarantine пуст; ни одно dirty worktree не получает исключение. Regression fixtures отдельно подтверждают точную проверку Format 1 и блокировку изменённого fingerprint.
+12. Quality gate запускает synthetic regressions для bare admin, staged/unstaged/untracked, ignored .vs, точного synthetic quarantine, hook environment isolation и hooks; production quarantine registry пуст.
+13. Документация задаёт обязательный audit перед ручным созданием task worktree и handoff для interruption; ограничение local hooks указано явно.
+14. Семь raw-файлов T-013 архивированы и повторно проверены: Development-Folder-V2_T-013-source-snapshot-2026-11-18_91bb56d5.zip, archive SHA-256 734f27b8027e4a0aaa2f1aeca5868ba242249766fca26e975fcb718c60602d99, Format 1 manifest SHA-256 91bb56d5de1822cfb64a9fad0270c83d41d5b00c110e6740d2804c9e96c2d4f3. Backup ref backup/2026-11-18-T013-source-base сохраняет исходный HEAD; T-013 worktree чист на том же HEAD, история не переписана.
 
 ## Ограничения
 

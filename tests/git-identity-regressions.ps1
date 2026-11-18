@@ -370,9 +370,11 @@ try {
         $result = Invoke-GitProcess -Arguments @('-C',$hookRepo,'push','origin','task/hook-a','task/hook-b') -Environment $envs
         if ($result.ExitCode -ne 0) { throw ('MULTI_REF_PUSH_HOOK_FAILED:' + $result.StdErr) }
         $calls = @((Read-PwshShimCalls -LogPath (Join-Path $scratch 'pwsh-calls.bin')).Calls)
-        if ($calls.Count -ne 2) { throw ('MULTI_REF_PWSH_CALL_COUNT_INVALID:' + $calls.Count + ':' + [string]::Join('||',@($calls | ForEach-Object { [string]::Join(' ',$_) }))) }
-        $verifyRange = Get-PwshParameterValue -Arguments $calls[0] -Name '-CommitRange'
-        $gateRange = Get-PwshParameterValue -Arguments $calls[1] -Name '-PushRange'
+        if ($calls.Count -ne 3) { throw ('MULTI_REF_PWSH_CALL_COUNT_INVALID:' + $calls.Count + ':' + [string]::Join('||',@($calls | ForEach-Object { [string]::Join(' ',$_) }))) }
+        $auditCall = [string]::Join(' ',$calls[0])
+        if ($auditCall -notmatch 'task-worktree-audit\.ps1.*-Mode Publish') { throw 'PRE_PUSH_WORKTREE_AUDIT_CALL_MISSING' }
+        $verifyRange = Get-PwshParameterValue -Arguments $calls[1] -Name '-CommitRange'
+        $gateRange = Get-PwshParameterValue -Arguments $calls[2] -Name '-PushRange'
         $actualRanges = @($verifyRange -split '\r?\n' | Sort-Object)
         $expectedRanges = @($hookShaA,$hookShaB | Sort-Object)
         if (Compare-Object -ReferenceObject $expectedRanges -DifferenceObject $actualRanges) { throw 'MULTI_REF_COMMIT_RANGES_NOT_PRESERVED' }
@@ -399,7 +401,7 @@ try {
         if ($result.ExitCode -eq 0) { throw 'PRE_COMMIT_OVERRIDE_WAS_NOT_BLOCKED' }
         if ((Invoke-GitFixture -Directory $hookRepo -Arguments @('rev-parse','HEAD')) -cne $before) { throw 'PRE_COMMIT_BLOCK_CREATED_COMMIT' }
         $calls = @((Read-PwshShimCalls -LogPath $logPath).Calls)
-        if ($calls.Count -ne 1 -or [string]::Join(' ',$calls[0]) -notlike '*verify-git-identity.ps1*') { throw 'PRE_COMMIT_OVERRIDE_HOOK_SEQUENCE_INVALID' }
+        if ($calls.Count -ne 2 -or [string]::Join(' ',$calls[0]) -notlike '*task-worktree-audit.ps1*-Mode Commit*' -or [string]::Join(' ',$calls[1]) -notlike '*verify-git-identity.ps1*') { throw 'PRE_COMMIT_OVERRIDE_HOOK_SEQUENCE_INVALID' }
     }
     Case 'GIT-ID-017 pre-commit dynamically repairs identity drift and rechecks' {
         WriteText (Join-Path $hookRepo 'repaired.txt') 'repaired commit'
@@ -419,11 +421,12 @@ try {
         $result = Invoke-GitProcess -Arguments @('-C',$hookRepo,'commit','-m','test: repaired hook commit') -Environment $envs
         if ($result.ExitCode -ne 0) { throw ('PRE_COMMIT_REPAIR_HOOK_FAILED:' + $result.StdErr) }
         $calls = @((Read-PwshShimCalls -LogPath $logPath).Calls)
-        if ($calls.Count -ne 3) { throw ('PRE_COMMIT_REPAIR_CALL_COUNT_INVALID:' + $calls.Count) }
+        if ($calls.Count -ne 4) { throw ('PRE_COMMIT_REPAIR_CALL_COUNT_INVALID:' + $calls.Count) }
         $sequence = @($calls | ForEach-Object { [string]::Join(' ',$_) })
-        if ($sequence[0] -notlike '*verify-git-identity.ps1*' -or
-            $sequence[1] -notlike '*configure-local.ps1*' -or
-            $sequence[2] -notlike '*verify-git-identity.ps1*') {
+        if ($sequence[0] -notlike '*task-worktree-audit.ps1*-Mode Commit*' -or
+            $sequence[1] -notlike '*verify-git-identity.ps1*' -or
+            $sequence[2] -notlike '*configure-local.ps1*' -or
+            $sequence[3] -notlike '*verify-git-identity.ps1*') {
             throw 'PRE_COMMIT_REPAIR_HOOK_SEQUENCE_INVALID'
         }
     }

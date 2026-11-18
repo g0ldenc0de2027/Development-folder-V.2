@@ -6,8 +6,21 @@ repo_root=$(git rev-parse --show-toplevel) || {
     echo "pre-push: repository root could not be resolved" >&2
     exit 1
 }
+worktree_status=$(git status --porcelain=v1 --untracked-files=all --ignore-submodules=none) || {
+    echo "pre-push: current worktree status could not be verified" >&2
+    exit 1
+}
+if [ -n "$worktree_status" ]; then
+    echo "pre-push: current worktree is not clean; preserve and commit all task changes before publishing" >&2
+    exit 1
+fi
 if ! command -v pwsh >/dev/null 2>&1; then
     echo "pre-push: PowerShell 7 is required" >&2
+    exit 1
+fi
+
+if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/task-worktree-audit.ps1" -Mode Publish; then
+    echo "pre-push: task worktree audit blocked publish" >&2
     exit 1
 fi
 push_ranges=

@@ -4,8 +4,21 @@ repo_root=$(git rev-parse --show-toplevel) || {
     echo "pre-commit: repository root could not be resolved" >&2
     exit 1
 }
+branch=$(git branch --show-current) || {
+    echo "pre-commit: current branch could not be resolved" >&2
+    exit 1
+}
+if [ "$branch" = "task/T-013-agent-orchestration-research" ]; then
+    echo "pre-commit: T-013 is a quarantined read-only recovery source; commit through its recovery task" >&2
+    exit 1
+fi
 if ! command -v pwsh >/dev/null 2>&1; then
     echo "pre-commit: PowerShell 7 is required" >&2
+    exit 1
+fi
+
+if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/task-worktree-audit.ps1" -Mode Commit; then
+    echo "pre-commit: task worktree audit blocked commit" >&2
     exit 1
 fi
 if pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1"; then

@@ -68,6 +68,19 @@
         "author:Codex:GPT-6"
       ],
       "review": null
+    },
+    {
+      "id": "task-worktree-recovery",
+      "kind": "lesson",
+      "title": "Урок: глобальный контроль состояния linked worktree",
+      "status": "draft",
+      "path": "knowledge/records/task-worktree-recovery.md",
+      "contentSha256": "069592aebf7901478a6548b439223dd6415d3da72552bef42a922809b0965222",
+      "sources": [
+        "owner:2026-11-18",
+        "author:Codex:GPT-6"
+      ],
+      "review": null
     }
   ]
 }

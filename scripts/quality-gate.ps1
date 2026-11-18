@@ -99,6 +99,8 @@ try {
     }
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/git-identity-regressions.ps1') -TempRoot $temporaryRoot
     if ($LASTEXITCODE -ne 0) { throw 'Git identity regressions failed' }
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/task-worktree-regressions.ps1') -TempRoot $temporaryRoot
+    if ($LASTEXITCODE -ne 0) { throw 'Task worktree regressions failed' }
 
     Write-Output 'QUALITY-GATE: checking local knowledge and pinned rules'
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'scripts/kb.ps1') check

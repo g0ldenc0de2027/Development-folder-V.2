@@ -5,7 +5,7 @@
 
 ## Перед работой
 1. Прочитай README.md, docs/handoff.md и эту задачу.
-2. Проверь git status, активную ветку, HEAD и origin/main. Не начинай задачу в смешанном рабочем каталоге.
+2. Из чистого linked worktree проверь git status, ветку, HEAD и origin/main, затем запусти pwsh -NoLogo -NoProfile -File scripts/task-worktree-audit.ps1 -Mode Audit. Продолжай только при exit 0; bare admin root не является рабочим деревом.
 3. Уточни scope и критерии приемки. Для новой функциональности дождись READY в spec/СОСТОЯНИЕ.md.
 4. Используй Windows и PowerShell 7.4+ как поддерживаемую базовую среду, если проектная матрица явно не расширена.
 
@@ -15,10 +15,10 @@
 - Git identity задаётся только в конфиге конкретного linked worktree через git config --worktree после проверки gh api user против commitIdentity в config/github/repository.json; общую identity в common .git/config не использовать.
 - Перед commit hook проверяет effective default author/committer identity и блокирует несовпадающие identity/config environment overrides. Git может применить `git commit --author` только к создаваемому commit; поэтому каждый pre-push дополнительно проверяет author/committer metadata всех outgoing commits и блокирует отправку неверной атрибуции. Не утверждай, что `--author` всегда обнаруживается до создания локального commit.
 - До commit разрешено безопасно восстановить identity только через scripts/github/configure-local.ps1, если GitHub CLI подтверждает ожидаемые login и numeric user ID. После commit неверную атрибуцию не переписывать: сохранить refs/patch и оформить отдельную recovery-задачу с новой историей.
-- Перед commit проверь полный diff, статус, секреты и только точный набор файлов задачи.
+- Перед commit проверь полный diff, статус, секреты и только точный набор файлов задачи. pre-commit повторно аудирует все worktree и разрешает только staged изменения текущей задачи.
 - Записывай PR head SHA, base SHA и CI merge-result SHA как отдельные значения; независимое review привязывай к head, а CI — к тестируемому merge-result этих точных head/base.
 - Сообщения commit — Conventional Commits; AI-assisted commit получает trailer Assisted-by с именем агента и моделью.
-- Не используй force push, переписывание истории, обход hooks или прямую публикацию в main, кроме указанного одноразового bootstrap. Если ruleset отклоняет его, не ослабляй правила и остановись для решения владельца.
+- pre-push блокирует публикацию при dirty текущем или соседнем worktree. Не используй force push, переписывание истории, обход hooks или прямую публикацию в main, кроме указанного одноразового bootstrap. Если ruleset отклоняет его, не ослабляй правила и остановись для решения владельца.
 - Не коммить файлы вне согласованной зоны задачи. При неясном происхождении остановись и сообщи владельцу.
 
 ## Качество и безопасность
