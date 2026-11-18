@@ -237,14 +237,15 @@ try {
     }
     Case 'LKB-005 budget refusal' { $null=Run @('context','-MaxBytes','512') 1 'KB_CONTEXT_LIMIT' }
     Case 'LKB-009 search counts exact UTF-8 response bytes and refuses without partial stdout' {
-        $body='я'*200
+        $body='я'*400
         $record=$script:catalog.records|Where-Object{$_.id -ceq 'alpha'}
         Write-Text (Join-Path $fixture $record.path) $body
         $record.contentSha256=Hash (Join-Path $fixture $record.path)
         Save-Catalog
         $arguments=@('search','-Query','Title alpha','-Limit','1')
         $baseline=Run-Captured $arguments
-        if($baseline.exitCode -ne 0 -or $baseline.stdoutBytes.Length -le 512){throw 'search baseline'}
+        $errorCode=if($baseline.stderr -match '(KB_[A-Z_]+)'){$Matches[1]}else{'none'}
+        if($baseline.exitCode -ne 0 -or $baseline.stdoutBytes.Length -le 512){throw "search baseline (exit=$($baseline.exitCode); bytes=$($baseline.stdoutBytes.Length); error=$errorCode)"}
         $baselineText=$utf8.GetString($baseline.stdoutBytes)
         $computedBytes=$utf8.GetByteCount($baselineText)
         $lastByte=[int]$baseline.stdoutBytes[-1]
@@ -262,14 +263,15 @@ try {
         if($exact.exitCode -ne 0 -or $exact.stdoutBytes.Length -ne $baseline.stdoutBytes.Length -or $exactPayload.result.records[0].body -cne $body){throw 'search exact budget boundary'}
     }
     Case 'LKB-009 get refuses an oversized response with empty stdout and returns full body when budget allows' {
-        $body='й'*200
+        $body='й'*400
         $record=$script:catalog.records|Where-Object{$_.id -ceq 'alpha'}
         Write-Text (Join-Path $fixture $record.path) $body
         $record.contentSha256=Hash (Join-Path $fixture $record.path)
         Save-Catalog
         $arguments=@('get','-Id','alpha')
         $baseline=Run-Captured $arguments
-        if($baseline.exitCode -ne 0 -or $baseline.stdoutBytes.Length -le 512){throw 'get baseline'}
+        $errorCode=if($baseline.stderr -match '(KB_[A-Z_]+)'){$Matches[1]}else{'none'}
+        if($baseline.exitCode -ne 0 -or $baseline.stdoutBytes.Length -le 512){throw "get baseline (exit=$($baseline.exitCode); bytes=$($baseline.stdoutBytes.Length); error=$errorCode)"}
         $blocked=Run-Captured ($arguments+@('-MaxOutputBytes','512'))
         if($blocked.exitCode -ne 1 -or $blocked.stderr.Trim() -cne 'KB_OUTPUT_LIMIT' -or $blocked.stdoutBytes.Length -ne 0){throw 'get over-budget behavior'}
         $upperGet=Run-Captured @('GET','-Id','alpha','-MaxOutputBytes','512')
