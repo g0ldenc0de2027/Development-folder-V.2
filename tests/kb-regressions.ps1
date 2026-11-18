@@ -164,6 +164,15 @@ try {
     Case 'LKB-003 traversal' { $script:catalog.records[0].path='knowledge/records/../../private.md'; Save-Catalog; $null=Run @('check') 1 'KB_PATH_INVALID' }
     Case 'LKB-003 absolute path' { $script:catalog.records[0].path=(Join-Path $scratch 'private.md'); Save-Catalog; $null=Run @('check') 1 'KB_PATH_INVALID' }
     Case 'LKB-003 oversized body' { Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') ('x'*262145); $null=Run @('check') 1 'KB_FILE_TOO_LARGE' }
+    Case 'LKB-003 maximum body size is read completely' {
+        $body='x'*262144
+        $bodyPath=Join-Path $fixture 'knowledge/records/alpha.md'
+        Write-Text $bodyPath $body
+        $script:catalog.records[0].contentSha256=Hash $bodyPath
+        Save-Catalog
+        $result=(Run @('check')).result
+        if($result.integrity -cne 'pass' -or $result.records -ne 3){throw 'maximum body boundary'}
+    }
     Case 'LKB-003 reparse parent blocks proposal write' {
         [IO.Directory]::CreateDirectory($other)|Out-Null
         New-Item -ItemType Junction -Path (Join-Path $fixture 'data') -Target $other | Out-Null

@@ -41,7 +41,7 @@ function Read-Bytes([string]$Relative, [int]$Maximum = 262144) {
     $stream = [IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
     try {
         if ($stream.Length -gt $Maximum) { Fail 'KB_FILE_TOO_LARGE' }
-        $buffer = [byte[]]::new($Maximum + 1)
+        $buffer = [byte[]]::new([int]$stream.Length + 1)
         $count = 0
         while ($count -lt $buffer.Length) {
             $n = $stream.Read($buffer,$count,$buffer.Length-$count)

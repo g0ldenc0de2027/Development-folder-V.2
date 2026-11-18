@@ -55,3 +55,16 @@ PowerShell принимает значения `Command` из `ValidateSet` бе
 - Внутренний read-only review точного PR head `7715450d0664eb9c64a3f0e5e42eb814f187ac37` обнаружил обход: `ValidateSet` принимает команды без учёта регистра, а `-cin` пропускал `SEARCH/GET` мимо лимита. Новые фикстуры воспроизвели дефект до исправления; после замены на `-in` регрессии прошли 52/52 (exit 0).
 - Полный `pwsh -NoProfile -File scripts/quality-gate.ps1 -BaseRef origin/main` на текущем working diff поверх HEAD `7715450d0664eb9c64a3f0e5e42eb814f187ac37` и base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`: **PASS, exit 0**; KB regressions 52/52, PowerShell/JSON parse PASS, privacy 38 Markdown + regression source, hygiene 56 text files, Actionlint PASS, Gitleaks PASS (65 commits, working tree и push range). `git diff --check`: **PASS, exit 0**.
 - Hosted run `#44192782023` относится к прежнему head и fix не подтверждает. Перед merge нужны свежие CI и независимое review точного live head; стековая сборка/dependency audit не применяются к docs-only template без выбранного стека.
+
+## Поведенчески нейтральная оптимизация чтения (2026-11-18)
+
+- Read-Bytes проверяет длину открытого файла под FileShare.Read, затем выделяет буфер фактического размера плюс один байт, а не максимального лимита для каждого файла. Контракт Maximum, hash/UTF-8/secret validation и отказ для payload выше лимита не меняются.
+- Добавлена регрессия на точный верхний размер записи (262144 байта); существующая проверка размера на один байт выше сохранена.
+- Синтетический benchmark: 1000 записей × 1024 байта, каталог 354103 байта. Старый вариант: 9.60 с, working set 145.4 МиБ, private peak 82.9 МиБ; временный вариант: 8.05 с, 142.3 МиБ, 75.1 МиБ. Распознанные JSON-значения совпали. Расчётные суммарные read-buffer allocations: 250 МиБ → 0.98 МиБ. Однократный benchmark, не универсальная гарантия.
+- Ограничение T-014 сохраняется: CLI не обещает верхнюю границу совокупной внутренней памяти или сериализации для всего корпуса.
+
+## Проверка после оптимизации (2026-11-18)
+
+- База перед изменением: HEAD fc0d391bf1ccbeae4ddb359a348c11a25eeb26ba; origin/main f577dc70e58d75ab5fd61d0c2e712c27b590713a.
+- Полный quality gate на рабочем diff: PASS, exit 0; 53 KB regressions; шесть PowerShell files parsed; privacy 38 Markdown плюс regression source; hygiene 56 text files; Actionlint PASS; Gitleaks PASS (68 commits). git diff --check PASS.
+- Это локальное доказательство рабочего diff; для нового commit нужны свежие hosted CI и независимое read-only review точного head.
