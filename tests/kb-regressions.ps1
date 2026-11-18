@@ -78,13 +78,14 @@ function Run([string[]]$Arguments,[int]$Expected=0,[string]$ErrorCode='') {
     if($ErrorCode -and -not $err.Contains($ErrorCode)){throw "Expected error code $ErrorCode; got $err"}
     if($exit -eq 0){return (($output -join [Environment]::NewLine)|ConvertFrom-Json -Depth 30)}
 }
-function Run-Captured([string[]]$Arguments,[string]$Root=$fixture) {
+function Run-Captured([string[]]$Arguments,[string]$Root=$fixture,[System.Collections.IDictionary]$Environment=@{}) {
     $start=[Diagnostics.ProcessStartInfo]::new()
     $start.FileName=$pwsh
     $start.UseShellExecute=$false
     $start.CreateNoWindow=$true
     $start.RedirectStandardOutput=$true
     $start.RedirectStandardError=$true
+    foreach($name in $Environment.Keys){$start.Environment[[string]$name]=[string]$Environment[$name]}
     foreach($argument in (@('-NoLogo','-NoProfile','-File',$cli,'-ProjectRoot',$Root)+$Arguments)) { $start.ArgumentList.Add([string]$argument) }
     $process=[Diagnostics.Process]::new()
     $stdout=[IO.MemoryStream]::new()
@@ -215,6 +216,16 @@ try {
         $errorCode=if($result.stderr -match '(KB_[A-Z_]+)'){$Matches[1]}else{'none'}
         $failClosed=$errorCode -in @('KB_HARDLINK','KB_LINK_ENUMERATION_UNAVAILABLE')
         if($result.exitCode -ne 1 -or -not $failClosed -or $result.stdoutBytes.Length -ne 0){throw "high-volume hard-link refusal (exit=$($result.exitCode); error=$errorCode; stdoutBytes=$($result.stdoutBytes.Length))"}
+    }
+    Case 'LKB-003 native same-handle fallback when fsutil cannot run' {
+        $fakeWindows=Join-Path $scratch ('synthetic-windows-'+[guid]::NewGuid().ToString('N'))
+        $fakeSystem32=Join-Path $fakeWindows 'System32'
+        [IO.Directory]::CreateDirectory($fakeSystem32)|Out-Null
+        [IO.File]::WriteAllBytes((Join-Path $fakeSystem32 'fsutil.exe'),[byte[]]@(0,0,0,0))
+        $result=Run-Captured @('get','-Id','alpha') $fixture @{windir=$fakeWindows}
+        if($result.exitCode -ne 0 -or $result.stderr -match 'KB_LINK_ENUMERATION_UNAVAILABLE' -or $result.stdoutBytes.Length -eq 0){throw "native hard-link fallback (exit=$($result.exitCode); stdoutBytes=$($result.stdoutBytes.Length))"}
+        $payload=$utf8.GetString($result.stdoutBytes)|ConvertFrom-Json -Depth 30
+        if($payload.result.record.id -cne 'alpha'){throw 'native hard-link fallback record'}
     }
     Case 'LKB-003 oversized body' { Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') ('x'*262145); $null=Run @('check') 1 'KB_FILE_TOO_LARGE' }
     Case 'LKB-003 maximum body size is read completely' {

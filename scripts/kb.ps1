@@ -74,37 +74,60 @@ function Initialize-NativeLinkCounter {
     catch { $script:HardLinkMode = 'fsutil'; return }
     $script:HardLinkMode = 'native'
 }
+function Test-SingleNativeHardLink([IO.FileStream]$Stream) {
+    Initialize-NativeLinkCounter
+    if ($script:HardLinkMode -ne 'native') { return $false }
+    try { $linkCount = [DevelopmentFolder.KbFileInfo]::GetLinkCount($Stream.SafeFileHandle) }
+    catch { $script:HardLinkMode = 'fsutil'; return $false }
+    if ($linkCount -lt 1) { $script:HardLinkMode = 'fsutil'; return $false }
+    if ($linkCount -gt 1) { Fail 'KB_HARDLINK' }
+    return $true
+}
 function Assert-NoHardLinkAliases([string]$Path, [IO.FileStream]$Stream) {
     if ($script:KbVolumeFormat -in @('FAT','FAT32','EXFAT')) { return }
+    $nativeAttempted = $false
     if ($script:HardLinkMode -eq 'native') {
-        try { $linkCount = [DevelopmentFolder.KbFileInfo]::GetLinkCount($Stream.SafeFileHandle) }
-        catch { $script:HardLinkMode = 'fsutil' }
-        if ($script:HardLinkMode -eq 'native') {
-            if ($linkCount -lt 1) { $script:HardLinkMode = 'fsutil' }
-            elseif ($linkCount -gt 1) { Fail 'KB_HARDLINK' }
-            else { return }
-        }
+        $nativeAttempted = $true
+        if (Test-SingleNativeHardLink $Stream) { return }
     }
     $fsutil = Join-Path $env:windir 'System32\fsutil.exe'
-    if (-not [IO.File]::Exists($fsutil)) { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
+    if (-not [IO.File]::Exists($fsutil)) {
+        if (-not $nativeAttempted -and (Test-SingleNativeHardLink $Stream)) { return }
+        Fail 'KB_LINK_ENUMERATION_UNAVAILABLE'
+    }
     try {
         $links = @(& $fsutil hardlink list $Path 2>$null)
         $exitCode = $LASTEXITCODE
-    } catch { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
+    } catch {
+        if (-not $nativeAttempted -and (Test-SingleNativeHardLink $Stream)) { return }
+        Fail 'KB_LINK_ENUMERATION_UNAVAILABLE'
+    }
     $paths = @($links | Where-Object { $_ -is [string] -and -not [string]::IsNullOrWhiteSpace($_) })
-    if ($exitCode -ne 0 -or $paths.Count -lt 1) { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
+    if ($exitCode -ne 0 -or $paths.Count -lt 1) {
+        if (-not $nativeAttempted -and (Test-SingleNativeHardLink $Stream)) { return }
+        Fail 'KB_LINK_ENUMERATION_UNAVAILABLE'
+    }
     if ($paths.Count -gt 1) { Fail 'KB_HARDLINK' }
     $listedPath = $paths[0].Trim()
     $volumeRoot = [IO.Path]::GetPathRoot($Path)
     if ($listedPath -match '^[\\/]' -and $listedPath -notmatch '^[a-zA-Z]:[\\/]') {
-        if ($volumeRoot -notmatch '^[a-zA-Z]:\\$') { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
+        if ($volumeRoot -notmatch '^[a-zA-Z]:\\$') {
+            if (-not $nativeAttempted -and (Test-SingleNativeHardLink $Stream)) { return }
+            Fail 'KB_LINK_ENUMERATION_UNAVAILABLE'
+        }
         $listedPath = $volumeRoot.Substring(0,2) + $listedPath
     }
     try {
         $listedPath = [IO.Path]::GetFullPath($listedPath)
         $expectedPath = [IO.Path]::GetFullPath($Path)
-    } catch { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
-    if (-not [StringComparer]::OrdinalIgnoreCase.Equals($listedPath,$expectedPath)) { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
+    } catch {
+        if (-not $nativeAttempted -and (Test-SingleNativeHardLink $Stream)) { return }
+        Fail 'KB_LINK_ENUMERATION_UNAVAILABLE'
+    }
+    if (-not [StringComparer]::OrdinalIgnoreCase.Equals($listedPath,$expectedPath)) {
+        if (-not $nativeAttempted -and (Test-SingleNativeHardLink $Stream)) { return }
+        Fail 'KB_LINK_ENUMERATION_UNAVAILABLE'
+    }
 }
 function Assert-NoObviousSecret([string]$Value) {
     if ($Value -match '(?i)(-----BEGIN [A-Z ]*PRIVATE KEY|(?:api[_-]?key|password|secret|token)\s*[:=]\s*\S{8,}|ghp_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,})') { Fail 'KB_POSSIBLE_SECRET' }
