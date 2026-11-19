@@ -684,6 +684,18 @@ try {
         if ((Invoke-GitFixture -Directory $bareWorktree -Arguments @('config','--local','--get','core.bare')) -cne 'true') {
             throw 'READ_ONLY_WORKTREE_ASSERTION_MUTATED_COMMON_CORE_BARE'
         }
+        $sharedConfig = Join-Path $bareAdmin 'config'
+        $sharedConfigBefore = (Get-FileHash -LiteralPath $sharedConfig).Hash
+        $sharedLock = "$sharedConfig.lock"
+        [IO.File]::Open($sharedLock, [IO.FileMode]::CreateNew).Dispose()
+        try {
+            ExpectFailure { Initialize-GitWorktreeConfig -RepositoryRoot $bareWorktree } 'GIT_IDENTITY_CORE_BARE_MIGRATION_FAILED'
+            $adminBareAfterFailure = @(& git -C $bareWorktree config --file (Join-Path $bareAdmin 'config.worktree') --get-all core.bare)
+            if ($LASTEXITCODE -ne 1 -or $adminBareAfterFailure.Count -ne 0) { throw 'CORE_BARE_ROLLBACK_LEFT_ADMIN_OVERRIDE' }
+            if ((Get-FileHash -LiteralPath $sharedConfig).Hash -cne $sharedConfigBefore) { throw 'CORE_BARE_ROLLBACK_CHANGED_LOCKED_CONFIG' }
+        } finally {
+            [IO.File]::Delete($sharedLock)
+        }
         $null = Initialize-GitWorktreeConfig -RepositoryRoot $bareWorktree
         if ((Invoke-GitFixture -Directory $bareWorktree -Arguments @('config','--file',(Join-Path $bareAdmin 'config.worktree'),'--get','core.bare')) -cne 'true') { throw 'BARE_ADMIN_CONFIG_WORKTREE_NOT_PRESERVED' }
         if ((Invoke-GitFixture -Directory $bareWorktree -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw 'LINKED_WORKTREE_CORE_BARE_NOT_FALSE' }
