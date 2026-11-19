@@ -5,7 +5,14 @@
 База обновления: e5da775adbc5aea10f786a8be34b435de02dcfb5.
 
 После merge PR #4 карточка T-004 и handoff сохраняли статус до интеграции.
-Зона: tasks/T-004-rules-and-local-knowledge.md, docs/handoff.md и эта карточка.
-Приёмка: текущий статус и проверяемые review/CI/merge evidence отражены без
+## Зона файлов
+
+- `tasks/T-004-rules-and-local-knowledge.md`
+- `docs/handoff.md`
+- `tasks/T-007-closeout-t004.md`
+
+## Приёмка
+
+текущий статус и проверяемые review/CI/merge evidence отражены без
 потери исторических данных; непокрытые возможности не называются готовыми.
 Публичные документы не содержат локальных абсолютных путей и персональных данных.
