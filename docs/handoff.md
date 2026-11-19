@@ -1,10 +1,19 @@
 # Handoff — GitHub reliability and T-015, 2026-11-19
 
-- T-015 candidate is in .worktrees/T-015 on task/T-015-git-attribution, based on local HEAD dd371f482d9c9502c0b50ba9834ab297c6594639; no branch or remote ref has moved.
-- Live PR #11 is OPEN/Draft at head dd371f482d9c9502c0b50ba9834ab297c6594639, base f577dc70e58d75ab5fd61d0c2e712c27b590713a. Run #44363546723 is SUCCESS for that published head only; it does not validate the current uncommitted candidate.
-- The current candidate is scoped to T-015 and has passed the full local quality gate; exact counts and coverage are recorded in the T-015 card. The handoff and card are included in a final gate rerun before commit.
-- Next: run the final gate and diff checks, commit only the T-015 zone, then use ordinary push; verify the new live head, hosted CI merge-result and independent review on that exact revision. Do not merge until the new review and CI pass.
+## Evidence snapshot before the documentation follow-up
 
+- T-015 implementation commit `1c675cc61ba47b7280e3b05083ce66539bfbf4d2` was pushed to PR #11. At this snapshot PR #11 was OPEN/Draft, head `1c675cc61ba47b7280e3b05083ce66539bfbf4d2`, base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`.
+- Hosted `quality-gate` run [#44471405219](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44471405219) succeeded on event `pull_request`; checkout/test merge-result `a28d75c53172ac1bde86ed33de43ded53582d671` has exactly the stated base and head as parents.
+- Local full gate and pre-push gate passed on the implementation: identity 31/31, worktree 25/25, KB 44/44, privacy 41 Markdown files plus regression source, hygiene 69 text files, actionlint and Gitleaks PASS. Stack build/dependency audit does not apply because no application stack is selected.
+- Read-only `scripts/github/verify-settings.ps1 -RequireStatusCheck` returned `GITHUB_SETTINGS_AUDIT=PASS_WITH_RECORDED_LIMITS`; expected repository, main ruleset, Actions, Dependabot and secret-scanning settings matched. Generic GitHub secret patterns and validity checks remain disabled and are recorded limitations.
+- The repo-wide inventory found 12 open Draft PRs (#5–#16), all based on `main@f577dc70…`; green checks do not mean these tasks were reviewed, accepted, or integrated. Process task PRs sequentially against the current base.
+
+## Current acceptance rule
+
+- PR #11 remains unmerged. No GitHub-native review was present at this snapshot. After this documentation/policy update, read the live PR for the final head/base and hosted check; obtain an independent read-only review naming that exact head. Do not merge until current-head review, hosted CI, scope acceptance and integration checks all pass.
+- AGENTS.md now requires agent-owned per-run temp paths, `try/finally` cleanup and post-cleanup verification; it explicitly protects user data, inbox, backups and unowned artifacts from broad deletion.
+- Local full quality gate passed on the exact working-tree content atop local HEAD `9db737b108fedc8f5ea680484523bcaf05b4bfd9`: Git identity 31/31, task-worktree 25/25, KB 44/44, privacy 41 Markdown plus regression source, hygiene 69 text files, actionlint and Gitleaks PASS. Short external temp root was removed; HEAD, branch, refs, worktree list and status matched before/after. This is local evidence, not hosted CI for the final PR head.
+- For every action, confirm the target repository, branch, full SHA and current live remote state from the linked worktree. The bare admin repository is not a working tree. Never infer success from a stale run, an empty review decision, or a command wrapper that hides a nonzero child exit.
 
 ---
 

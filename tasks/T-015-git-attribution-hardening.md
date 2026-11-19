@@ -60,13 +60,22 @@
 17. Git errors из Windows Codex sandbox не трактуются как повреждение репозитория: если `rev-parse` работает, а `status`/`diff` выдают ошибку worktree, повторить только read-only проверку в разрешённом execution context, которому доступен exact checkout. По одной sandbox-ошибке запрещено менять Git metadata или выполнять reset/repair.
 18. Если настройка worktree config завершается посреди нескольких `git config`-записей, она может оставить частичный набор параметров; verifier обязан отказать, commit/push не продолжаются. Synthetic regression удаляет часть identity keys, подтверждает отказ verifier и проверяет convergence после повторной настройки. Recovery — после проверки authenticated identity повторно выполнить `scripts/github/configure-local.ps1 -IdentityOnly` и verifier. Автоматический rollback не выполняется: он может затереть параллельное изменение конфигурации. Это остаточный риск, а не транзакционная гарантия.
 19. Pre-push блокирует обе формы публикации ветки-источника `refs/heads/task/T-013*`: отправку защищённой локальной ветки под другим remote-именем и создание защищённого remote ref из другой локальной ветки. Synthetic test подтверждает, что оба отказа происходят до изменения fixture remote.
+20. Правило AGENTS.md требует создавать собственные временные артефакты только в уникальном per-task/per-agent/per-run корне с коротким run-id (или в проверенном внешнем temp), заранее проверять максимальную длину глубоких fixture-путей, удалять лишь точный собственный корень в `finally` и сверять остатки. Inbox, backups, recovery snapshots и неатрибуированные данные никогда не очищаются общей командой.
+21. Все изменённые текстовые файлы сохраняют repository-defined encoding/EOL; `git ls-files --eol` не показывает `w/mixed`, `git diff --check` и line-ending regression проходят.
 
-## Candidate checks — 2026-11-19
+## Published evidence checkpoint — 2026-11-19 (before the current documentation/policy follow-up)
 
-- Candidate base: branch task/T-015-git-attribution, HEAD dd371f482d9c9502c0b50ba9834ab297c6594639; origin/main is f577dc70e58d75ab5fd61d0c2e712c27b590713a.
-- Full local quality-gate command pwsh -NoLogo -NoProfile -File scripts/quality-gate.ps1 -BaseRef origin/main: PASS on the candidate before this evidence update. Identity regressions 31/31, task-worktree regressions 25/25, KB regressions 44/44, privacy covered 41 Markdown files plus regression source, hygiene checked 69 text files, actionlint PASS, Gitleaks PASS (97 reachable commits); stack build/dependency audit is NOT COVERED because the template selects no application stack.
-- The passing run does not yet validate this final documentation update; rerun the gate and git diff --check before commit. No T-015 commit or push has been made for the candidate.
-- Live PR #11 remains OPEN/Draft at published head dd371f482d9c9502c0b50ba9834ab297c6594639, base f577dc70e58d75ab5fd61d0c2e712c27b590713a. Hosted run #44363546723 succeeded on that old head only; fresh CI and independent review are required after publishing the final candidate.
+- Implementation commit `1c675cc61ba47b7280e3b05083ce66539bfbf4d2` was pushed to PR #11. At this checkpoint the live PR was OPEN/Draft, head `1c675cc61ba47b7280e3b05083ce66539bfbf4d2`, base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`.
+- Full local `pwsh -NoProfile -File scripts/quality-gate.ps1 -BaseRef origin/main` and pre-push gate passed on that implementation. Identity 31/31, task-worktree 25/25, KB 44/44, privacy 41 Markdown files plus regression source, hygiene 69 text files, actionlint and Gitleaks passed. No application stack build/dependency audit applies to this template.
+- Hosted run [#44471405219](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44471405219) was SUCCESS for `pull_request`; checked-out/tested merge-result `a28d75c53172ac1bde86ed33de43ded53582d671` has exactly base and head above as parents.
+- GitHub-native reviews were empty at this checkpoint. PR #11 remains OPEN/Draft and unmerged. The documentation/policy follow-up creates a later PR head; require a fresh hosted gate and independent read-only review of the final live head before merge. Live PR #11 is the source for the latest head/base/check status.
+
+## Локальная проверка документации и политики — 2026-11-19
+
+- Полный локальный quality gate прошёл на точном содержимом worktree поверх локального HEAD `9db737b108fedc8f5ea680484523bcaf05b4bfd9`: Git identity 31/31, worktree 25/25, KB 44/44, privacy 41 Markdown плюс regression source, hygiene 69 текстовых файлов, actionlint и Gitleaks PASS.
+- `git diff --check` и `kb.ps1 check` прошли; SHA записи совпадает с `knowledge/catalog.json`; все шесть изменённых текстовых файлов имеют `w/lf`, признаков `w/mixed` нет.
+- Gate использовал изолированный короткий внешний temp-каталог; расчётный максимальный вложенный fixture-путь — 207 символов. Каталог удалён; HEAD, ветка, status, refs и список worktrees до/после совпали.
+- Это локальное доказательство для рабочего содержимого, а не hosted CI или независимое ревью финального PR head. Pre-push и hosted CI должны проверить закоммиченный head.
 
 ## Ограничения
 
@@ -77,3 +86,10 @@ Git metadata — атрибуция, а не доказательство физ
 ## Критерий завершения
 
 Не закрывать T-015 до публикации scoped commit и независимого read-only review именно live PR head от другого производителя. Для этой же текущей пары head/base hosted `quality-gate` должен завершиться успешно, а reviewer report обязан назвать проверенный head. Любое изменение head, base, diff или критериев приёмки аннулирует прежний review; изменение head/base требует нового hosted gate. Замечания воспроизводятся и закрываются отдельным commit в этой ветке; merge запрещён до повторного успешного review и CI.
+
+## Разбор аудита Antigravity от 2026-11-19
+
+- **Подтверждено локально.** Административный корень содержит проектные файлы и каталоги .manus и .work. Bare admin предусмотрен текущей схемой. Проблема в том, что корень выглядит как рабочая копия. Первый шаг выполнен в AGENTS.md: IDE открывает зарегистрированный worktree. Следующий шаг: инвентаризировать корневые файлы по отношению к main и отдельно проверить сохранность локальных данных перед решением о переносе.
+- **Следующая интеграция.** Пересечения путей из отчёта использовать для сортировки, а конфликт проверять по актуальным diff. Сначала довести текущий PR #11 до решения на проверенной ревизии. Перед закрытием кандидата в дубликаты или снятием старого worktree подтвердить состояние PR, эквивалентность содержимого, чистоту дерева и наличие уникальных коммитов.
+- **Атрибуция.** В текущих pre-commit и pre-push нет проверки трейлеров. Следующая проверка: на изолированном fixture показать отказ для task-коммита без корректного Refs и для явно обозначенного агентского запуска без Assisted-by. Сохранить возможность коммита владельцем без ложной агентской атрибуции.
+- **Отдельные решения.** Кэш инструментов оценить по замерам, сохраняя проверку целостности. Глобальный Git config, смена корневой схемы, владение репозиторием, rulesets и историческая приватность требуют отдельных доказательств и решений. Live цифры и статусы из отчёта считать снимком, пока они не пересверены.
