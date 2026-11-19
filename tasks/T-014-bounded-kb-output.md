@@ -2,7 +2,7 @@
 
 - **Статус:** in_progress
 - **Ветка/worktree:** `task/T-014-bounded-kb-output` / `.worktrees/T-014`
-- **База:** `f577dc70e58d75ab5fd61d0c2e712c27b590713a` (`origin/main`; сверена с live `origin/main` 2026-11-17)
+- **Историческая база первых проверок:** `f577dc70e58d75ab5fd61d0c2e712c27b590713a` (`origin/main`; сверена с live `origin/main` 2026-11-17)
 - **Автор:** Codex, GPT-6
 - **Основание:** прямое поручение владельца от 2026-11-17 провести полный аудит и улучшать локальную БЗ.
 
@@ -93,3 +93,7 @@ Scope расширен только для устранения этого LKB-0
 - The hard-link guard now falls back from the native same-handle route to per-file `fsutil` if native initialization/query is unavailable; if `fsutil` also cannot enumerate reliably, it returns `KB_LINK_ENUMERATION_UNAVAILABLE` and no content. Full local quality gate on this follow-up diff passed: 57/57 regressions, parse/privacy/hygiene, Actionlint and Gitleaks. Hosted CI after this fallback change is still required.
 - Hosted run [#44230458586](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44230458586) checked head `8c4e21c676fea61a1169e6480da5b163f8dfdc84` against the same base; merge-result `45b174cee4674ca2a47f1b8e5b46efe6604fc20c` has those exact parents. Both hard-link regressions passed, then the run failed at `search baseline`; logs did not expose exit code or response length. The synthetic Unicode fixtures now use 400 characters and report exit/byte-count/error-code diagnostics if the minimum-budget baseline is too small. The full local quality gate passed on the updated T-014 worktree; a fresh hosted run is required.
 - Hosted run [#44231661160](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44231661160) checked head `3d5b507e6887ff8d6a431deecbc04e0f0178d1ed` against the same base and failed at the LKB-009 search baseline with `KB_LINK_ENUMERATION_UNAVAILABLE`, exit 1 and empty stdout. The exact failing hard-link enumeration substep is not exposed by the log. The guard now tries same-handle native link count once when `fsutil` cannot produce a complete, trustworthy answer; a regression forces `fsutil` process launch failure and verifies the native fallback. The KB regression suite now has 58 cases. The full local quality gate passed on the updated T-014 worktree. Hosted run [#44233509228](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44233509228) passed for implementation head `0f73060474898a43146b91b7e2d8e32fcb3646d6`; merge-result `a5aefdb4d3d752e27da6e6ef098963f63ed28af1` has the exact base/head parents. Consult PR #12 for hosted status on later heads; fresh independent review of the live head is still required before merge.
+
+## Синхронизация с main
+
+База интеграции 60df54b137793e24bb4094d6f084657aa3474357. Сохранены проверки runtime и метаданных из main, а также ограничение выдачи, проверка полного пакета правил и отказ на hard-link из T-014. Локальный набор KB: 58/58. Актуальные hosted CI и независимое ревью отслеживаются в PR #12.

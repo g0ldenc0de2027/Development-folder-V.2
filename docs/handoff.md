@@ -1,22 +1,53 @@
-# Handoff — T-014, 2026-11-18
+# Handoff — T-014
 
-- T-014 остаётся `in_progress`; branch `task/T-014-bounded-kb-output`; текущий follow-up содержит шесть scoped-путей поверх parent HEAD `3d5b507e6887ff8d6a431deecbc04e0f0178d1ed` и base `origin/main` `f577dc70e58d75ab5fd61d0c2e712c27b590713a`.
-- Ограниченный JSON stdout, точный девятифайловый RULES lock и read-buffer optimization прошли прежние проверки; их исторические SHA/run подробно сохранены в карточке T-014.
-- LKB-003 hard-link alias fix covers catalog, record bodies and `.etalon.json`; `fsutil` is preferred through 24 records, the same-handle API above that, and one alternate-method attempt is made if the preferred enumeration is unavailable or ambiguous. If neither method proves a single link, the CLI fails closed. Pinned rules remain SHA-256 locked; same-user filesystem races are not eliminated.
-- Hosted run #44228007156 on head `e19ef86865f86036cad94a48e5b6de25b3ac0ff0` failed in the external hard-link regression; its old assertion accepted only `KB_HARDLINK` and the log did not capture the actual returned code. It now accepts either `KB_HARDLINK` or `KB_LINK_ENUMERATION_UNAVAILABLE`, only with exit 1 and empty stdout, matching the fail-closed contract. Consult live PR #12 for the next hosted result; fresh independent review is still required.
-- Hosted run #44229305864 on head `ece47115dc98d45bd635e5638fd45dfd5a262736` failed in the 25-record regression with `KB_LINK_ENUMERATION_UNAVAILABLE`, exit 1 and empty stdout. The native route could not provide a link count on the hosted runner; its exact failing substep is not logged. A safe per-file `fsutil` fallback is now used when the native route cannot initialize/query; if both routes fail, the command remains fail-closed.
-- Hosted run #44230458586 on head `8c4e21c676fea61a1169e6480da5b163f8dfdc84` passed the hard-link regressions, then failed at `search baseline`; its log omitted exit/byte-count details. The synthetic Unicode payload was increased from 200 to 400 characters and the assertion now reports exit, byte count and stable error code. This is test-fixture hardening; the failure cause is not inferred.
-- Hosted run #44231661160 on head `3d5b507e6887ff8d6a431deecbc04e0f0178d1ed` failed at the LKB-009 search baseline with `KB_LINK_ENUMERATION_UNAVAILABLE`, exit 1 and no stdout. Its log does not identify which validation substep produced that error. T-014 now tries the same-handle count as a bounded fallback when `fsutil` cannot produce a complete result and has a synthetic regression for an unavailable `fsutil` executable; whether this resolves the hosted failure remains unverified until the next run.
-- Full local quality gate passed on the current follow-up worktree over parent HEAD `3d5b507e6887ff8d6a431deecbc04e0f0178d1ed` and base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`: 58/58 KB regressions, parse/privacy/hygiene, Actionlint, Gitleaks and `git diff --check`. Consult PR #12 for hosted status on the exact live head; do not merge without a green final-head gate and fresh independent review. Application stack build/dependency audit is NOT COVERED.
-- Six-run local KB-check median on the small corpus: 861.5 ms baseline vs 965.4 ms adaptive mode (about +12%); always-compiled P/Invoke was rejected at about +46%, while 25-record regression covers adaptive same-handle mode.
-- Hosted run #44233509228 passed for implementation head `0f73060474898a43146b91b7e2d8e32fcb3646d6`; its event/test merge-result `a5aefdb4d3d752e27da6e6ef098963f63ed28af1` has exactly base `f577dc70e58d75ab5fd61d0c2e712c27b590713a` and that head as parents. PR #12 is the source for checks on any later head. Next: obtain fresh independent review of the live PR head; do not merge before both review and exact-head gate are green. Stack build/dependency audit is NOT COVERED.
-# Handoff — T-004, 2026-11-15
+- T-014 обновляется на актуальной main. Зона, результаты прошлых проверок и критерии приёмки сохранены в карточке задачи.
+- Актуальные SHA, CI и независимое ревью отслеживаются в PR #12.
 
-- T-003 слита PR #3 в main (squash commit 9f98b28046ca605577e5a829e02818335f66174c); task/T-004 объединяется с новой main.
-- Повторная сверка: RULES 0.2.0, семь модулей, COVERAGE и schema 2 lock всего пакета; восстановлен утверждённый список языков.
-- Общая БЗ — редактируемый канон, здесь точная закреплённая копия; путь подключения произвольный и локальный.
-- Реализован файловый CLI; новые проверки охватывают весь пакет и optional/null marker. Актуальные test/CI evidence и точные SHA — PR #4.
-- Перед merge нужны свежие independent review/CI и последовательная интеграция после T-003. Swarm, прикладная матрица, security-watch и валидатор переводов ещё не готовы; детали в rules/COVERAGE.md.
+# Handoff — T-011, 2026-11-16
+
+- Общая БЗ: [PR #2](https://github.com/g0ldenc0de2027/Knowledge_Base/pull/2) — источник истины для статуса, ревизий, CI и review. Карточка задачи хранит только подписанные исторические снимки.
+- V2 replacement [PR #10](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/10) — источник истины для актуальных статуса, head/base и checks. Merge разрешается только после проверки неизменившейся пары SHA, успешного CI и независимого review на соответствующем head.
+- T-011 уточняет границы текущей и целевой БЗ, ограничения внешней передачи и спецификацию 0.5.0. Канонические правила и V2 mirror совпадают по пяти закреплённым файлам.
+- Исторические отчёты Copilot/DeepSeek и разбор их замечаний находятся в карточке T-011. Перед использованием review сверяйте его SHA с head live PR.
+- ACL, федеративный поиск, publisher, ingestion/OCR/ASR и coordinator не реализованы; portfolio workflow остаётся `DRAFT / NOT READY`; app stack audit — `NOT COVERED`.
+- Перед merge перепроверьте live PR, unresolved review threads и неизменность SHA после CI/review. Автоматическая проверка parent tuple выделена в T-012.
+
+## Исторический Handoff — T-008, 2026-11-19
+
+## Historical snapshot — GitHub reliability and T-015, 2026-11-19
+
+## Evidence snapshot before the documentation follow-up
+
+- T-015 implementation commit `1c675cc61ba47b7280e3b05083ce66539bfbf4d2` was pushed to PR #11. At this snapshot PR #11 was OPEN/Draft, head `1c675cc61ba47b7280e3b05083ce66539bfbf4d2`, base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`.
+- Hosted `quality-gate` run [#44471405219](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44471405219) succeeded on event `pull_request`; checkout/test merge-result `a28d75c53172ac1bde86ed33de43ded53582d671` has exactly the stated base and head as parents.
+- Local full gate and pre-push gate passed on the implementation: identity 31/31, worktree 25/25, KB 44/44, privacy 41 Markdown files plus regression source, hygiene 69 text files, actionlint and Gitleaks PASS. Stack build/dependency audit does not apply because no application stack is selected.
+- Read-only `scripts/github/verify-settings.ps1 -RequireStatusCheck` returned `GITHUB_SETTINGS_AUDIT=PASS_WITH_RECORDED_LIMITS`; expected repository, main ruleset, Actions, Dependabot and secret-scanning settings matched. Generic GitHub secret patterns and validity checks remain disabled and are recorded limitations.
+- The repo-wide inventory found 12 open Draft PRs (#5–#16), all based on `main@f577dc70…`; green checks do not mean these tasks were reviewed, accepted, or integrated. Process task PRs sequentially against the current base.
+
+### Acceptance rule at that snapshot
+
+- PR #11 remains unmerged. No GitHub-native review was present at this snapshot. After this documentation/policy update, read the live PR for the final head/base and hosted check; obtain an independent read-only review naming that exact head. Do not merge until current-head review, hosted CI, scope acceptance and integration checks all pass.
+- AGENTS.md now requires agent-owned per-run temp paths, `try/finally` cleanup and post-cleanup verification; it explicitly protects user data, inbox, backups and unowned artifacts from broad deletion.
+- Evidence for commit 55970f4d7db0429a2c5d9c64c7f617965d0d5815: pre-push passed with 69 local text files; hosted quality-gate #44484559621 passed on merge-result 40dccdbe36672be9c7638a745ea846396e309f2c with 65 hosted text files. These counts describe separate runs. The earlier unpublished recovery checkpoint is preserved locally and is outside this evidence.
+- For every action, confirm the target repository, branch, full SHA and current live remote state from the linked worktree. The bare admin repository is not a working tree. Never infer success from a stale run, an empty review decision, or a command wrapper that hides a nonzero child exit.
+
+---
+
+## Historical snapshot — T-015, 2026-11-17
+
+- База task/T-015 — `ff48a0fd7a412a5112477d86dfe5ff3122709fb0`; существующий draft PR #11 до новых исправлений указывал на эту ревизию. Основной scoped-набор сохранён локальным commit `7a5ce92`; исправление regression harness ожидает отдельного commit.
+- Инициализация linked-worktree Git config безопасно разделила bare admin и T-015; все 14 linked worktrees читают `git status`. Пять worktrees сохраняют прежние правки без потерь: T-009, T-012, T-013, T-014 и T-015.
+- T-015: 22/22 регрессии, полный quality gate, Git identity verifier и `git diff --check` прошли на текущем рабочем содержимом. Первая попытка pre-push корректно заблокировала публикацию из-за бага обнаружения Git shell в regression harness; поиск исправлен, добавлена проверка вложенного `git.exe`.
+- Полный gate повторён после обновления handoff и исправления harness; следующий шаг — зафиксировать только тест, карточку и handoff, затем выполнить обычный push в task/T-015. Первая публикация осталась заблокирована штатным hook, история не переписывалась и проверки не обходились.
+- После публикации проверить hosted CI на точной ревизии и запросить свежее независимое read-only review нового head. PR не сливать до нового review и зелёного CI.
+- Historical T-004/bootstrap notes below are preserved as historical records.
+## Historical snapshot — T-004, 2026-11-15
+
+- Recovery checkpoint: code commit `7483dc749dc5d35453c4532010ccec458f0dfe3e` is on `task/T-008`; the unpublished fixture-identity commit `ff6499005837312f8832b484d8fc51e52c08d628` remains preserved by backup ref `backup/2026-11-19-T-008-before-identity-repair`. The remote branch was not rewritten.
+- Local scope and pre-push checks passed on the code commit: 29/29 paths in scope, PowerShell 7.6.10, KB 44/44, task-scope 8/8, privacy/hygiene, actionlint, Gitleaks, and diff checks.
+- Hosted checkpoint: run [#44460186961](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44460186961) SUCCESS for PR head `7483dc749dc5d35453c4532010ccec458f0dfe3e`, base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; event/test merge-result `8e2e3956f9c16a216b31609120c7e5f106e27814` has exactly those parents. This is a dated checkpoint; query live PR #8 before relying on current head/checks.
+- At that checkpoint PR #8 was OPEN/Draft, unmerged, with no GitHub-native review. A fresh independent review of the live head is required before merge.
+- Read-only audit after T-008 publication: 16 registered worktrees CLEAN; T-015 alone has 9 candidate paths. Its full local gate now passes (identity 31/31, worktree 25/25, KB 44/44, privacy/hygiene, actionlint, Gitleaks); commit/publish remains pending while the handoff provenance is preserved and reconciled.
 
 ## Исторический bootstrap-снимок до слияния T-003 (не текущие статусы задач)
 
