@@ -696,6 +696,41 @@ try {
         } finally {
             [IO.File]::Delete($sharedLock)
         }
+        $identityModule = (Get-Command Initialize-GitWorktreeConfig).Module
+        $adminLock = Join-Path $bareAdmin 'config.worktree.lock'
+        # Lock the admin file only after the real Git write has succeeded, so rollback hits a real lock.
+        & $identityModule {
+            param($LockPath)
+            $script:fixtureAdminLock = $LockPath
+            $script:fixtureAdminCommand = (Get-Item Function:Invoke-GitIdentityAdminCommand).ScriptBlock
+            function script:Invoke-GitIdentityAdminCommand {
+                param([string]$GitDirectory,[string[]]$Arguments)
+                $result = & $script:fixtureAdminCommand -GitDirectory $GitDirectory -Arguments $Arguments
+                if ($Arguments.Count -eq 5 -and $Arguments[1] -ceq '--file' -and
+                    $Arguments[3] -ceq 'core.bare' -and $Arguments[4] -ceq 'true') {
+                    [IO.File]::Open($script:fixtureAdminLock, [IO.FileMode]::CreateNew).Dispose()
+                }
+                return $result
+            }
+        } $adminLock
+        try {
+            [IO.File]::Open($sharedLock, [IO.FileMode]::CreateNew).Dispose()
+            try {
+                ExpectFailure { Initialize-GitWorktreeConfig -RepositoryRoot $bareWorktree } 'GIT_IDENTITY_CORE_BARE_ROLLBACK_FAILED'
+                if (-not (Test-Path -LiteralPath $adminLock -PathType Leaf)) { throw 'CORE_BARE_ROLLBACK_LOCK_NOT_CREATED' }
+                if ((Get-FileHash -LiteralPath $sharedConfig).Hash -cne $sharedConfigBefore) { throw 'CORE_BARE_ROLLBACK_CHANGED_LOCKED_CONFIG' }
+                $retained = Invoke-GitFixture -Directory $bareWorktree -Arguments @('config','--file',(Join-Path $bareAdmin 'config.worktree'),'--get','core.bare')
+                if ($retained -cne 'true') { throw 'CORE_BARE_ROLLBACK_OVERRIDE_NOT_RETAINED' }
+            } finally {
+                [IO.File]::Delete($sharedLock)
+            }
+        } finally {
+            & $identityModule {
+                Set-Item -LiteralPath Function:script:Invoke-GitIdentityAdminCommand -Value $script:fixtureAdminCommand
+                Remove-Variable -Scope Script -Name fixtureAdminCommand,fixtureAdminLock
+            }
+            [IO.File]::Delete($adminLock)
+        }
         $null = Initialize-GitWorktreeConfig -RepositoryRoot $bareWorktree
         if ((Invoke-GitFixture -Directory $bareWorktree -Arguments @('config','--file',(Join-Path $bareAdmin 'config.worktree'),'--get','core.bare')) -cne 'true') { throw 'BARE_ADMIN_CONFIG_WORKTREE_NOT_PRESERVED' }
         if ((Invoke-GitFixture -Directory $bareWorktree -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw 'LINKED_WORKTREE_CORE_BARE_NOT_FALSE' }
