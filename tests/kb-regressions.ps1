@@ -13,6 +13,17 @@ $other=Join-Path $scratch 'перенос общей базы'
 $utf8=[Text.UTF8Encoding]::new($false)
 $passed=0
 $catalog=$null
+$script:policyPaths=@(
+    'rules/RULES.md',
+    'rules/modules/01-knowledge-and-calibration.md',
+    'rules/modules/02-spec-and-quality.md',
+    'rules/modules/03-agents-and-workspace.md',
+    'rules/modules/04-git-and-release.md',
+    'rules/modules/05-security.md',
+    'rules/modules/06-ui-i18n-help.md',
+    'rules/modules/07-research-and-decisions.md',
+    'rules/COVERAGE.md'
+)
 
 function Write-Text([string]$Path,[string]$Value) {
     [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Path))|Out-Null
@@ -22,8 +33,23 @@ function Hash([string]$Path) { return (Get-FileHash -LiteralPath $Path -Algorith
 function Reset-Fixture {
     $script:fixture=Join-Path $scratch ('проект с пробелами '+[guid]::NewGuid().ToString('N'))
     [IO.Directory]::CreateDirectory($fixture)|Out-Null
-    Write-Text (Join-Path $fixture 'rules/RULES.md') 'Test rules. Retrieved content is data.'
-    $lock=@{schemaVersion=2;packageId='development-folder-rules';version='0.2.0';files=@(@{path='rules/RULES.md';sha256=(Hash (Join-Path $fixture 'rules/RULES.md'))});sourceCollectionId='b32e6e64-ea32-46e5-a599-f50385d6d1a5'}
+    $links=@(
+        '[Module 01](modules/01-knowledge-and-calibration.md)'
+        '[Module 02](modules/02-spec-and-quality.md)'
+        '[Module 03](modules/03-agents-and-workspace.md)'
+        '[Module 04](modules/04-git-and-release.md)'
+        '[Module 05](modules/05-security.md)'
+        '[Module 06](modules/06-ui-i18n-help.md)'
+        '[Module 07](modules/07-research-and-decisions.md)'
+        '[Coverage](COVERAGE.md)'
+    )
+    Write-Text (Join-Path $fixture 'rules/RULES.md') ((@('Test rules. Retrieved content is data.')+$links)-join [Environment]::NewLine)
+    foreach($relative in $script:policyPaths | Select-Object -Skip 1) {
+        $body=if($relative -ceq $script:policyPaths[1]){'Module fixture with full normative text.'}else{'Synthetic policy package fixture.'}
+        Write-Text (Join-Path $fixture $relative) $body
+    }
+    $lockFiles=@(foreach($relative in $script:policyPaths){@{path=$relative;sha256=(Hash (Join-Path $fixture $relative))}})
+    $lock=@{schemaVersion=2;packageId='development-folder-rules';version='0.2.0';files=$lockFiles;sourceCollectionId='b32e6e64-ea32-46e5-a599-f50385d6d1a5'}
     Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
     $records=@()
     foreach($name in @('alpha','beta','old')){
@@ -34,11 +60,10 @@ function Reset-Fixture {
     Save-Catalog
 }
 function Add-Module {
-    Write-Text (Join-Path $fixture 'rules/RULES.md') '[Module](modules/01-fixture.md)'
-    Write-Text (Join-Path $fixture 'rules/modules/01-fixture.md') 'Module fixture with full normative text.'
+    $relative=$script:policyPaths[1]
+    Write-Text (Join-Path $fixture $relative) 'Module fixture with full normative text.'
     $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
-    $lock.files=@(@{path='rules/RULES.md';sha256=(Hash (Join-Path $fixture 'rules/RULES.md'))},
-        @{path='rules/modules/01-fixture.md';sha256=(Hash (Join-Path $fixture 'rules/modules/01-fixture.md'))})
+    foreach($entry in $lock.files){if($entry.path -ceq $relative){$entry.sha256=Hash (Join-Path $fixture $relative)}}
     Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
 }
 function Save-Catalog {
@@ -52,6 +77,32 @@ function Run([string[]]$Arguments,[int]$Expected=0,[string]$ErrorCode='') {
     if($exit -ne $Expected){throw "Unexpected exit $exit; expected $Expected; error=$err"}
     if($ErrorCode -and -not $err.Contains($ErrorCode)){throw "Expected error code $ErrorCode; got $err"}
     if($exit -eq 0){return (($output -join [Environment]::NewLine)|ConvertFrom-Json -Depth 30)}
+}
+function Run-Captured([string[]]$Arguments,[string]$Root=$fixture,[System.Collections.IDictionary]$Environment=@{}) {
+    $start=[Diagnostics.ProcessStartInfo]::new()
+    $start.FileName=$pwsh
+    $start.UseShellExecute=$false
+    $start.CreateNoWindow=$true
+    $start.RedirectStandardOutput=$true
+    $start.RedirectStandardError=$true
+    foreach($name in $Environment.Keys){$start.Environment[[string]$name]=[string]$Environment[$name]}
+    foreach($argument in (@('-NoLogo','-NoProfile','-File',$cli,'-ProjectRoot',$Root)+$Arguments)) { $start.ArgumentList.Add([string]$argument) }
+    $process=[Diagnostics.Process]::new()
+    $stdout=[IO.MemoryStream]::new()
+    $stderr=[IO.MemoryStream]::new()
+    try {
+        $process.StartInfo=$start
+        if(-not $process.Start()){throw 'KB_PROCESS_START_FAILED'}
+        $stdoutCopy=$process.StandardOutput.BaseStream.CopyToAsync($stdout)
+        $stderrCopy=$process.StandardError.BaseStream.CopyToAsync($stderr)
+        $process.WaitForExit()
+        [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdoutCopy,$stderrCopy))
+        return [pscustomobject]@{exitCode=$process.ExitCode;stdoutBytes=$stdout.ToArray();stderr=$utf8.GetString($stderr.ToArray())}
+    } finally {
+        $process.Dispose()
+        $stdout.Dispose()
+        $stderr.Dispose()
+    }
 }
 function Case([string]$Name,[scriptblock]$Body) {
     Reset-Fixture
@@ -113,14 +164,150 @@ try {
     }
     Case 'LKB-003 traversal' { $script:catalog.records[0].path='knowledge/records/../../private.md'; Save-Catalog; $null=Run @('check') 1 'KB_PATH_INVALID' }
     Case 'LKB-003 absolute path' { $script:catalog.records[0].path=(Join-Path $scratch 'private.md'); Save-Catalog; $null=Run @('check') 1 'KB_PATH_INVALID' }
+    Case 'LKB-003 project root below a reparse ancestor is refused' {
+        $alias=Join-Path $scratch ('project-parent-link-'+[guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Junction -Path $alias -Target $scratch | Out-Null
+        $aliasRoot=Join-Path $alias (Split-Path -Leaf $fixture)
+        $result=Run-Captured @('check') $aliasRoot
+        if($result.exitCode -ne 1 -or -not $result.stderr.Contains('KB_REPARSE_POINT') -or $result.stdoutBytes.Length -ne 0){throw 'reparse ancestor refusal'}
+    }
+    Case 'LKB-003 hard-linked catalog is refused before output' {
+        $outside=Join-Path $scratch ('catalog-outside-'+[guid]::NewGuid().ToString('N')+'.json')
+        $catalogPath=Join-Path $fixture 'knowledge/catalog.json'
+        Copy-Item -LiteralPath $catalogPath -Destination $outside
+        Remove-Item -LiteralPath $catalogPath -Force
+        New-Item -ItemType HardLink -Path $catalogPath -Target $outside | Out-Null
+        $result=Run-Captured @('check')
+        if($result.exitCode -ne 1 -or -not $result.stderr.Contains('KB_HARDLINK') -or $result.stdoutBytes.Length -ne 0){throw 'hard-linked catalog refusal'}
+    }
+    Case 'LKB-003 hard-link alias to external file is refused before output' {
+        $outside=Join-Path $scratch ('outside-'+[guid]::NewGuid().ToString('N')+'.md')
+        $record=$script:catalog.records|Where-Object{$_.id -ceq 'alpha'}
+        $recordPath=Join-Path $fixture $record.path
+        Write-Text $outside 'Synthetic outside file; no real data.'
+        Remove-Item -LiteralPath $recordPath -Force
+        New-Item -ItemType HardLink -Path $recordPath -Target $outside | Out-Null
+        $record.contentSha256=Hash $recordPath
+        Save-Catalog
+        $result=Run-Captured @('get','-Id','alpha')
+        $errorCode=if($result.stderr -match '(KB_[A-Z_]+)'){$Matches[1]}else{'none'}
+        $failClosed=$errorCode -in @('KB_HARDLINK','KB_LINK_ENUMERATION_UNAVAILABLE')
+        if($result.exitCode -ne 1 -or -not $failClosed -or $result.stdoutBytes.Length -ne 0){throw "hard-link refusal (exit=$($result.exitCode); error=$errorCode; stdoutBytes=$($result.stdoutBytes.Length))"}
+    }
+    Case 'LKB-003 high-volume hard-link guard refuses hard-link alias' {
+        for($i=1;$i -le 22;$i++){
+            $id='extra-{0:D2}' -f $i
+            $relative='knowledge/records/'+$id+'.md'
+            $body='Synthetic high-volume record '+$i
+            $recordPath=Join-Path $fixture $relative
+            Write-Text $recordPath $body
+            $script:catalog.records+=@{id=$id;kind='reference';title=('Extra '+$i);status='draft';path=$relative;contentSha256=(Hash $recordPath);sources=@('test:synthetic');review=$null}
+        }
+        Save-Catalog
+        $outside=Join-Path $scratch ('outside-native-'+[guid]::NewGuid().ToString('N')+'.md')
+        $record=$script:catalog.records|Where-Object{$_.id -ceq 'alpha'}
+        $recordPath=Join-Path $fixture $record.path
+        Write-Text $outside 'Synthetic outside file; no real data.'
+        Remove-Item -LiteralPath $recordPath -Force
+        New-Item -ItemType HardLink -Path $recordPath -Target $outside | Out-Null
+        $record.contentSha256=Hash $recordPath
+        Save-Catalog
+        $result=Run-Captured @('check')
+        $errorCode=if($result.stderr -match '(KB_[A-Z_]+)'){$Matches[1]}else{'none'}
+        $failClosed=$errorCode -in @('KB_HARDLINK','KB_LINK_ENUMERATION_UNAVAILABLE')
+        if($result.exitCode -ne 1 -or -not $failClosed -or $result.stdoutBytes.Length -ne 0){throw "high-volume hard-link refusal (exit=$($result.exitCode); error=$errorCode; stdoutBytes=$($result.stdoutBytes.Length))"}
+    }
+    Case 'LKB-003 native same-handle fallback when fsutil cannot run' {
+        $fakeWindows=Join-Path $scratch ('synthetic-windows-'+[guid]::NewGuid().ToString('N'))
+        $fakeSystem32=Join-Path $fakeWindows 'System32'
+        [IO.Directory]::CreateDirectory($fakeSystem32)|Out-Null
+        [IO.File]::WriteAllBytes((Join-Path $fakeSystem32 'fsutil.exe'),[byte[]]@(0,0,0,0))
+        $result=Run-Captured @('get','-Id','alpha') $fixture @{windir=$fakeWindows}
+        if($result.exitCode -ne 0 -or $result.stderr -match 'KB_LINK_ENUMERATION_UNAVAILABLE' -or $result.stdoutBytes.Length -eq 0){throw "native hard-link fallback (exit=$($result.exitCode); stdoutBytes=$($result.stdoutBytes.Length))"}
+        $payload=$utf8.GetString($result.stdoutBytes)|ConvertFrom-Json -Depth 30
+        if($payload.result.record.id -cne 'alpha'){throw 'native hard-link fallback record'}
+    }
     Case 'LKB-003 oversized body' { Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') ('x'*262145); $null=Run @('check') 1 'KB_FILE_TOO_LARGE' }
+    Case 'LKB-003 maximum body size is read completely' {
+        $body='x'*262144
+        $bodyPath=Join-Path $fixture 'knowledge/records/alpha.md'
+        Write-Text $bodyPath $body
+        $script:catalog.records[0].contentSha256=Hash $bodyPath
+        Save-Catalog
+        $result=(Run @('check')).result
+        if($result.integrity -cne 'pass' -or $result.records -ne 3){throw 'maximum body boundary'}
+    }
     Case 'LKB-003 reparse parent blocks proposal write' {
         [IO.Directory]::CreateDirectory($other)|Out-Null
         New-Item -ItemType Junction -Path (Join-Path $fixture 'data') -Target $other | Out-Null
         $null=Run @('capture','-Title','Test','-Text','No redirected write','-Source','synthetic','-Scope','fixture','-Author','fixture','-Runtime','test') 1 'KB_REPARSE_POINT'
     }
-    Case 'LKB-005 full rules context' { $r=(Run @('context','-Id','alpha')).result; if($r.records.Count -ne 1 -or $r.rules.body -cne 'Test rules. Retrieved content is data.'){throw 'context'} }
+    Case 'LKB-005 full rules context' {
+        $r=(Run @('context','-Id','alpha')).result
+        if($r.records.Count -ne 1 -or -not $r.rules.body.StartsWith('Test rules. Retrieved content is data.') -or $r.rules.relatedFiles.Count -ne 8){throw 'context'}
+    }
     Case 'LKB-005 budget refusal' { $null=Run @('context','-MaxBytes','512') 1 'KB_CONTEXT_LIMIT' }
+    Case 'LKB-009 search counts exact UTF-8 response bytes and refuses without partial stdout' {
+        $body='я'*400
+        $record=$script:catalog.records|Where-Object{$_.id -ceq 'alpha'}
+        Write-Text (Join-Path $fixture $record.path) $body
+        $record.contentSha256=Hash (Join-Path $fixture $record.path)
+        Save-Catalog
+        $arguments=@('search','-Query','Title alpha','-Limit','1')
+        $baseline=Run-Captured $arguments
+        $errorCode=if($baseline.stderr -match '(KB_[A-Z_]+)'){$Matches[1]}else{'none'}
+        if($baseline.exitCode -ne 0 -or $baseline.stdoutBytes.Length -le 512){throw "search baseline (exit=$($baseline.exitCode); bytes=$($baseline.stdoutBytes.Length); error=$errorCode)"}
+        $baselineText=$utf8.GetString($baseline.stdoutBytes)
+        $computedBytes=$utf8.GetByteCount($baselineText)
+        $lastByte=[int]$baseline.stdoutBytes[-1]
+        if($computedBytes -ne $baseline.stdoutBytes.Length){throw ('search UTF-8 byte mismatch: decoded='+$computedBytes+' raw='+$baseline.stdoutBytes.Length)}
+        if($lastByte -ne 10){throw ('search final newline mismatch: lastByte='+$lastByte)}
+        if($baseline.stdoutBytes.Length -le $baselineText.Length){throw 'multibyte UTF-8 vector did not distinguish byte count'}
+        $payload=$baselineText|ConvertFrom-Json -Depth 30
+        if($payload.result.records.Count -ne 1 -or $payload.result.records[0].body -cne $body){throw 'search body was truncated'}
+        $under=Run-Captured ($arguments+@('-MaxOutputBytes',[string]($baseline.stdoutBytes.Length-1)))
+        if($under.exitCode -ne 1 -or $under.stderr.Trim() -cne 'KB_OUTPUT_LIMIT' -or $under.stdoutBytes.Length -ne 0){throw 'search over-budget behavior'}
+        $upperSearch=Run-Captured @('SEARCH','-Query','Title alpha','-Limit','1','-MaxOutputBytes',[string]($baseline.stdoutBytes.Length-1))
+        if($upperSearch.exitCode -ne 1 -or $upperSearch.stderr.Trim() -cne 'KB_OUTPUT_LIMIT' -or $upperSearch.stdoutBytes.Length -ne 0){throw 'uppercase search bypassed output budget'}
+        $exact=Run-Captured ($arguments+@('-MaxOutputBytes',[string]$baseline.stdoutBytes.Length))
+        $exactPayload=$utf8.GetString($exact.stdoutBytes)|ConvertFrom-Json -Depth 30
+        if($exact.exitCode -ne 0 -or $exact.stdoutBytes.Length -ne $baseline.stdoutBytes.Length -or $exactPayload.result.records[0].body -cne $body){throw 'search exact budget boundary'}
+    }
+    Case 'LKB-009 get refuses an oversized response with empty stdout and returns full body when budget allows' {
+        $body='й'*400
+        $record=$script:catalog.records|Where-Object{$_.id -ceq 'alpha'}
+        Write-Text (Join-Path $fixture $record.path) $body
+        $record.contentSha256=Hash (Join-Path $fixture $record.path)
+        Save-Catalog
+        $arguments=@('get','-Id','alpha')
+        $baseline=Run-Captured $arguments
+        $errorCode=if($baseline.stderr -match '(KB_[A-Z_]+)'){$Matches[1]}else{'none'}
+        if($baseline.exitCode -ne 0 -or $baseline.stdoutBytes.Length -le 512){throw "get baseline (exit=$($baseline.exitCode); bytes=$($baseline.stdoutBytes.Length); error=$errorCode)"}
+        $blocked=Run-Captured ($arguments+@('-MaxOutputBytes','512'))
+        if($blocked.exitCode -ne 1 -or $blocked.stderr.Trim() -cne 'KB_OUTPUT_LIMIT' -or $blocked.stdoutBytes.Length -ne 0){throw 'get over-budget behavior'}
+        $upperGet=Run-Captured @('GET','-Id','alpha','-MaxOutputBytes','512')
+        if($upperGet.exitCode -ne 1 -or $upperGet.stderr.Trim() -cne 'KB_OUTPUT_LIMIT' -or $upperGet.stdoutBytes.Length -ne 0){throw 'uppercase get bypassed output budget'}
+        $full=Run-Captured ($arguments+@('-MaxOutputBytes',[string]$baseline.stdoutBytes.Length))
+        $payload=$utf8.GetString($full.stdoutBytes)|ConvertFrom-Json -Depth 30
+        if($full.exitCode -ne 0 -or $payload.result.record.body -cne $body){throw 'get full response with sufficient budget'}
+    }
+    Case 'LKB-009 default budget blocks a response above 128 KiB without stdout' {
+        $body='я'*70000
+        $record=$script:catalog.records|Where-Object{$_.id -ceq 'alpha'}
+        Write-Text (Join-Path $fixture $record.path) $body
+        $record.contentSha256=Hash (Join-Path $fixture $record.path)
+        Save-Catalog
+        $result=Run-Captured @('search','-Query','Title alpha','-Limit','1')
+        if($result.exitCode -ne 1 -or $result.stderr.Trim() -cne 'KB_OUTPUT_LIMIT' -or $result.stdoutBytes.Length -ne 0){throw 'default output budget'}
+    }
+    Case 'LKB-009 output budget accepts maximum and rejects values outside range' {
+        $maximum=Run-Captured @('get','-Id','alpha','-MaxOutputBytes','2097152')
+        if($maximum.exitCode -ne 0 -or $maximum.stdoutBytes.Length -eq 0){throw 'maximum output budget'}
+        foreach($invalidBudget in @('511','2097153')) {
+            $invalid=Run-Captured @('get','-Id','alpha','-MaxOutputBytes',$invalidBudget)
+            if($invalid.exitCode -eq 0 -or $invalid.stdoutBytes.Length -ne 0){throw ('invalid output budget accepted: '+$invalidBudget)}
+        }
+    }
     Case 'LKB-005 unresolved requested context is refused' { $null=Run @('context','-Id','missing') 1 'KB_NOT_FOUND' }
     Case 'LKB-005 withdrawn context prohibited' { $null=Run @('context','-IncludeWithdrawn') 1 'KB_CONTEXT_WITHDRAWN' }
     Case 'LKB-001 changed pinned rules' { Write-Text (Join-Path $fixture 'rules/RULES.md') 'Tampered'; $null=Run @('check') 1 'KB_POLICY_CHANGED' }
@@ -159,25 +346,60 @@ try {
         $r=@(& $pwsh -NoProfile -File $cli -ProjectRoot $moved check)
         if($LASTEXITCODE -ne 0 -or (($r-join [Environment]::NewLine)|ConvertFrom-Json).result.projectId -cne $script:catalog.projectId){throw 'move'}
     }
+    Case 'LKB-001 index-only policy package is refused' {
+        $indexPath=Join-Path $fixture 'rules/RULES.md'
+        Write-Text $indexPath 'Synthetic index without package links.'
+        $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
+        $lock.files=@(@{path='rules/RULES.md';sha256=(Hash $indexPath)})
+        Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
+        $null=Run @('check') 1 'KB_POLICY_LOCK'
+    }
+    Case 'LKB-001 missing pinned module is refused even when linked' {
+        $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
+        $lock.files=@($lock.files|Where-Object{$_.path -cne $script:policyPaths[1]})
+        Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
+        $null=Run @('check') 1 'KB_POLICY_LOCK'
+    }
+    Case 'LKB-001 unapproved module cannot substitute for a canonical path' {
+        $unapproved='rules/modules/99-unapproved.md'
+        Write-Text (Join-Path $fixture $unapproved) 'Unapproved replacement module.'
+        $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
+        $lock.files[1].path=$unapproved
+        $lock.files[1].sha256=Hash (Join-Path $fixture $unapproved)
+        Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
+        $null=Run @('check') 1 'KB_POLICY_LOCK'
+    }
+    Case 'LKB-001 extra locked policy path is refused' {
+        $extra='rules/modules/99-extra.md'
+        Write-Text (Join-Path $fixture $extra) 'Extra locked policy module.'
+        $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
+        $lock.files+=@(@{path=$extra;sha256=(Hash (Join-Path $fixture $extra))})
+        Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
+        $null=Run @('check') 1 'KB_POLICY_LOCK'
+    }
     Case 'LKB-001 module body is included in context' {
         Add-Module
         $r=(Run @('context','-Id','alpha')).result.rules
-        if($r.relatedFiles.Count -ne 1 -or $r.relatedFiles[0].body -cne 'Module fixture with full normative text.'){throw 'module context'}
+        $module=@($r.relatedFiles|Where-Object{$_.path -ceq $script:policyPaths[1]})
+        if($r.relatedFiles.Count -ne 8 -or $module.Count -ne 1 -or $module[0].body -cne 'Module fixture with full normative text.'){throw 'module context'}
     }
     Case 'LKB-001 modified module is refused' {
         Add-Module
-        Write-Text (Join-Path $fixture 'rules/modules/01-fixture.md') 'Changed'
+        Write-Text (Join-Path $fixture $script:policyPaths[1]) 'Changed'
         $null=Run @('check') 1 'KB_POLICY_CHANGED'
     }
     Case 'LKB-001 missing module is refused' {
         Add-Module
-        [IO.File]::Delete((Join-Path $fixture 'rules/modules/01-fixture.md'))
+        [IO.File]::Delete((Join-Path $fixture $script:policyPaths[1]))
         $null=Run @('check') 1 'KB_FILE_MISSING'
     }
     Case 'LKB-001 unpinned module link is refused' {
         Add-Module
+        $indexPath=Join-Path $fixture 'rules/RULES.md'
+        Write-Text $indexPath (([IO.File]::ReadAllText($indexPath))+[Environment]::NewLine+'[Unpinned](modules/99-unpinned.md)')
+        Write-Text (Join-Path $fixture 'rules/modules/99-unpinned.md') 'Unpinned extra module.'
         $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
-        $lock.files=@($lock.files[0])
+        $lock.files[0].sha256=Hash $indexPath
         Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
         $null=Run @('check') 1 'KB_POLICY_LINK'
     }
@@ -203,6 +425,8 @@ try {
     # Owner contract: preserve approved rule numbers and the exact ten locales.
     $modules=@(Get-ChildItem -LiteralPath (Join-Path $repo 'rules/modules') -Filter '*.md' -File)
     if($modules.Count -ne 7){throw 'owner contract: seven thematic modules'}
+    $actualPolicyPaths=@('rules/RULES.md')+@($modules|ForEach-Object{'rules/modules/'+$_.Name})+@('rules/COVERAGE.md')
+    if((@($actualPolicyPaths|Sort-Object -CaseSensitive)-join '|') -cne (@($script:policyPaths|Sort-Object -CaseSensitive)-join '|')){throw 'owner contract: exact policy package paths'}
     $all=($modules|ForEach-Object{Get-Content -LiteralPath $_.FullName -Raw}) -join [char]10
     $ids=@([regex]::Matches($all,'(?m)^## Правило (\d+)\. ')|ForEach-Object{[int]$_.Groups[1].Value}|Sort-Object)
     if(($ids -join ',') -cne ((1..20) -join ',')){throw 'owner contract: rule IDs 1..20 exactly once'}

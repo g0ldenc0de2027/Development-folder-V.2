@@ -1,16 +1,16 @@
 {
   "schemaVersion": 2,
   "packageId": "development-folder-rules",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "sourceCollectionId": "7c85d01f-3de1-4fe6-b090-960e41c20cf1",
   "files": [
     {
       "path": "rules/RULES.md",
-      "sha256": "96e6abf82bdf353516fbc6f21739e3c9a64329aef2a34a33ba170d9594e2d54c"
+      "sha256": "f2c5808b6dc4dd608c815456f4fc0dc532e96158fc5b44969bacc75fe4cabdec"
     },
     {
       "path": "rules/modules/01-knowledge-and-calibration.md",
-      "sha256": "cb0ebd9bd52af87d584d6a5219a98508c6518bb035509e55e6eee6b0bc54c5c7"
+      "sha256": "6eae2068abb0821c531cf6d4f305a40e83695bf6288b6ca41980dc5a3c7e7647"
     },
     {
       "path": "rules/modules/02-spec-and-quality.md",
@@ -34,11 +34,11 @@
     },
     {
       "path": "rules/modules/07-research-and-decisions.md",
-      "sha256": "d9995ba17e49147cd8ca271c1f1007513094a6aaa594a33512d36e68a4e2041c"
+      "sha256": "7ac06cf0c8362c8dbf3a90da6964c28363b30802167f82fce38e6ec53fff111e"
     },
     {
       "path": "rules/COVERAGE.md",
-      "sha256": "98ea16c847c6fcce4487f313aad6aee55e0af4131dd9a9cd90ff88824dba7fbb"
+      "sha256": "c1e8ae810117c797e9082f62ee4cc585d0f4a9b9a0e2327545f0b45c66abe4e3"
     }
   ]
 }

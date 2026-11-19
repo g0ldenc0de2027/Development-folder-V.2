@@ -11,11 +11,14 @@ credentials.json
 data/
 temp/
 .worktrees/
+.work/
+.manus/
 coverage/
 dist/
 build/
 artifacts/
 *.log
+.vs/
 .vscode/
 .idea/
 .DS_Store

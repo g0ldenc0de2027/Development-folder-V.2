@@ -1,12 +1,122 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+. (Join-Path $repoRoot 'scripts/ide-cache.ps1')
+$processEnvironment = [Environment]::GetEnvironmentVariables('Process')
+$emptyGitContext = @(
+    foreach ($name in @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE','GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM')) {
+        if ($processEnvironment.Contains($name) -and [string]::IsNullOrEmpty([string]$processEnvironment[$name])) {
+            $name
+        }
+    }
+)
+if ($emptyGitContext.Count -gt 0) {
+    throw ('Invalid empty Git context variables remain in process: ' + ($emptyGitContext -join ','))
+}
 $workflowPath = Join-Path $repoRoot '.github/workflows/quality-gate.yml'
 $workflow = Get-Content -LiteralPath $workflowPath -Raw
 $actionsPolicy = Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/actions-policy.json') -Raw | ConvertFrom-Json
 $tools = Get-Content -LiteralPath (Join-Path $repoRoot 'config/security/tools.json') -Raw | ConvertFrom-Json
 $developmentGuide = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/development.md') -Raw
+$runtimeVerifier = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/verify-runtime.ps1') -Raw
+$qualityGateSource = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
+$kbCliSource = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/kb.ps1') -Raw
+$agentsPolicy = Get-Content -LiteralPath (Join-Path $repoRoot 'AGENTS.md') -Raw
+$readme = Get-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Raw
+$projectSpec = Get-Content -LiteralPath (Join-Path $repoRoot 'spec/ТЗ.md') -Raw
+$kbSpec = Get-Content -LiteralPath (Join-Path $repoRoot 'spec/local-knowledge.md') -Raw
+$runtimePolicy = Get-Content -LiteralPath (Join-Path $repoRoot 'config/runtime-support.json') -Raw | ConvertFrom-Json
+$scopeVerifierSource = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/verify-task-scope.ps1') -Raw
+if ($scopeVerifierSource -notmatch '(?m)^#Requires -Version 7\.6$' -or $scopeVerifierSource -notmatch 'verify-runtime\.ps1' -or $scopeVerifierSource -notmatch 'core\.quotepath=false') {
+    throw 'Task scope guard must share the runtime baseline and preserve raw Unicode paths'
+}
+$scopeUnicodeLetterMarker = [string][char]92 + 'p{L}'
+$scopeUnicodeMarkMarker = [string][char]92 + 'p{M}'
+$scopeUnicodeNumberMarker = [string][char]92 + 'p{N}'
+if (-not $scopeVerifierSource.Contains($scopeUnicodeLetterMarker) -or -not $scopeVerifierSource.Contains($scopeUnicodeMarkMarker) -or -not $scopeVerifierSource.Contains($scopeUnicodeNumberMarker)) {
+    throw 'Task scope validator must accept Unicode letters and combining marks in relative paths'
+}
+$releasePairs = @($runtimePolicy.developerHost.supportedWindowsReleases | ForEach-Object { '{0}:{1}' -f $_.displayVersion, $_.build })
+if (
+    $runtimePolicy.schemaVersion -ne 1 -or
+    $runtimePolicy.developerHost.architecture -ne 'X64' -or
+    $runtimePolicy.developerHost.productType -ne 'WinNT' -or
+    $runtimePolicy.developerHost.installationType -ne 'Client' -or
+    $runtimePolicy.developerHost.releaseBranch -ne 'ge_release' -or
+    $runtimePolicy.powerShell.channel -ne 'LTS' -or
+    $runtimePolicy.powerShell.major -ne 7 -or
+    $runtimePolicy.powerShell.minor -ne 6 -or
+    $runtimePolicy.powerShell.minimumVersion -ne '7.6.10' -or
+    ($releasePairs -join ',') -ne '26H2:26300' -or
+    $runtimePolicy.ci.powerShell.version -ne $runtimePolicy.powerShell.minimumVersion -or
+    $runtimePolicy.ci.powerShell.asset -ne 'PowerShell-7.6.10-win-x64.zip' -or
+    $runtimePolicy.ci.powerShell.downloadUrl -ne 'https://github.com/PowerShell/PowerShell/releases/download/v7.6.10/PowerShell-7.6.10-win-x64.zip' -or
+    $runtimePolicy.ci.powerShell.sha256 -ne '7D871531806EB1646264E4BBABD9F0C30C23355591BC756BB9909448C29AE166' -or
+    $runtimePolicy.ci.provider -ne 'GitHub Actions' -or
+    $runtimePolicy.ci.runner -ne 'windows-2025' -or
+    $runtimePolicy.ci.productType -ne 'ServerNT' -or
+    $runtimePolicy.ci.build -ne 26100
+) {
+    throw 'Runtime support policy must pin current PowerShell LTS and only the verified Windows GA release/build pairs'
+}
+if (
+    $runtimeVerifier -notmatch '(?m)^#Requires -Version 7\.6$' -or
+    $runtimeVerifier -notmatch 'runtime-support\.json' -or
+    $runtimeVerifier -notmatch 'OSArchitecture' -or
+    $runtimeVerifier -notmatch 'DisplayVersion' -or
+    $runtimeVerifier -notmatch 'BuildBranch' -or
+    $runtimeVerifier -notmatch 'InstallationType' -or
+    $runtimeVerifier -notmatch '\$build -ne \[int\]\$policy\.ci\.build'
+) {
+    throw 'Runtime verifier must enforce the shared PowerShell, OS release, branch, architecture, and exact CI baseline'
+}
+$developerModeOffset = $runtimeVerifier.IndexOf("    'developer' {", [StringComparison]::Ordinal)
+$ciModeOffset = $runtimeVerifier.IndexOf("    'ci' {", [StringComparison]::Ordinal)
+if ($developerModeOffset -lt 0 -or $ciModeOffset -le $developerModeOffset) {
+    throw 'Runtime verifier must keep developer and CI platform probes separate'
+}
+$developerModeSource = $runtimeVerifier.Substring($developerModeOffset, $ciModeOffset - $developerModeOffset)
+$ciCaseMatch = [regex]::Match($runtimeVerifier, "(?ms)^    'ci' \{(?<body>.*?)^    \}\r?\n\}")
+if (-not $ciCaseMatch.Success) {
+    throw 'Runtime verifier must contain a bounded CI mode case'
+}
+$ciModeSource = $ciCaseMatch.Groups['body'].Value
+if (
+    $developerModeSource -notmatch 'DisplayVersion, CurrentBuildNumber, UBR, BuildBranch, InstallationType' -or
+    $ciModeSource -notmatch 'CurrentBuildNumber' -or
+    $ciModeSource -match 'DisplayVersion|UBR|BuildBranch|InstallationType'
+) {
+    throw 'CI runtime probe must not require Windows client-only registry fields'
+}
+if ($qualityGateSource -notmatch 'verify-runtime\.ps1' -or $kbCliSource -notmatch '(?m)^#Requires -Version 7\.6$' -or $kbCliSource -notmatch 'verify-runtime\.ps1') {
+    throw 'Quality gate and KB CLI must share the runtime verifier and require PowerShell 7.6'
+}
+if (
+    $workflow -notmatch 'runs-on: windows-2025' -or
+    $workflow -notmatch 'verify-runtime\.ps1 -Mode ci' -or
+    $workflow -notmatch 'Invoke-WebRequest.+TimeoutSec 180' -or
+    $workflow -notmatch 'Get-FileHash.+SHA256' -or
+    $workflow -notmatch '\$env:PATH = \(Split-Path -Parent \$pwshExecutable\)' -or
+    $workflow -notmatch 'quality-gate\.ps1'
+) {
+    throw 'Hosted CI must use the Windows Server 2025 runner and a SHA-256-verified pinned PowerShell runtime'
+}
+foreach ($supportDocument in @($agentsPolicy, $readme, $developmentGuide, $projectSpec, $kbSpec)) {
+    if (
+        $supportDocument -notmatch 'Windows 11 x64' -or
+        $supportDocument -notmatch '26H2' -or
+        $supportDocument -notmatch '7\.6\.10'
+    ) {
+        throw 'Every authoritative support document must state the verified Windows 11 GA release and PowerShell 7.6.10 baseline'
+    }
+}
+if (
+    $developmentGuide -notmatch '(?s)Не входят в матрицу разработчика: Windows 10.*?Windows Server 2025 x64' -or
+    $developmentGuide -match '26200 или новее|26200\+'
+) {
+    throw 'Developer guide must exclude broad build ranges and distinguish Windows Server CI from supported GA hosts'
+}
 if ($developmentGuide -notmatch '(?m)^\s+pwsh -NoProfile -File scripts/github/verify-settings\.ps1 -RequireStatusCheck\s*$') {
     throw 'Developer guide must show the live verifier in required-status mode'
 }
@@ -41,27 +151,162 @@ $prePushHook = Get-Content -LiteralPath (Join-Path $repoRoot '.githooks/pre-push
 if ($prePushHook -notmatch 'read -r local_ref local_sha remote_ref remote_sha' -or -not $prePushHook.Contains('-PushRange')) {
     throw 'Pre-push hook must pass Git-provided ref update ranges to the secret scan'
 }
+if (
+    -not $prePushHook.Contains('refs/heads/task/T-[0-9][0-9][0-9]-*') -or
+    -not $prePushHook.Contains('*[!a-z0-9-]*') -or
+    -not $prePushHook.Contains('*--*') -or
+    -not $prePushHook.Contains('task_id=${task_branch%${task_branch#?????}}')
+) {
+    throw 'Pre-push hook must accept suffixed task branches and pass only the validated task ID to the scope guard'
+}
 $directorySeparatorClass = '[/\x5c]'
-$excludedRepositoryPathPattern = '(^|' + $directorySeparatorClass + ')(\.git|\.worktrees|temp)(' + $directorySeparatorClass + '|$)'
+$excludedRepositoryPathPattern = '(^|' + $directorySeparatorClass + ')(\.git|\.worktrees|\.work|\.manus|temp)(' + $directorySeparatorClass + '|$)'
 $simulatedWorktreeRoot = Join-Path $repoRoot '.worktrees/T-SIMULATED'
 $expectedWorktreeScript = Join-Path $simulatedWorktreeRoot 'scripts/quality-gate.ps1'
 $nestedWorktreeScript = Join-Path $simulatedWorktreeRoot '.worktrees/T-OTHER/scripts/quality-gate.ps1'
+$workScratchScript = Join-Path $repoRoot '.work/T-SCRATCH/scripts/quality-gate.ps1'
+$manusScratchDocument = Join-Path $repoRoot '.manus/T-SCRATCH/private.md'
+$workflowsScript = Join-Path $repoRoot '.workflows/scripts/quality-gate.ps1'
+$manuscriptDocument = Join-Path $repoRoot '.manuscript/private.md'
 $expectedRelativePath = [System.IO.Path]::GetRelativePath($simulatedWorktreeRoot, $expectedWorktreeScript)
 $nestedRelativePath = [System.IO.Path]::GetRelativePath($simulatedWorktreeRoot, $nestedWorktreeScript)
-if ($expectedRelativePath -match $excludedRepositoryPathPattern -or $nestedRelativePath -notmatch $excludedRepositoryPathPattern) {
-    throw 'Worktree path fixture must include files at the checkout root and exclude nested worktrees'
+$workScratchRelativePath = [System.IO.Path]::GetRelativePath($repoRoot, $workScratchScript)
+$manusScratchRelativePath = [System.IO.Path]::GetRelativePath($repoRoot, $manusScratchDocument)
+$workflowsRelativePath = [System.IO.Path]::GetRelativePath($repoRoot, $workflowsScript)
+$manuscriptRelativePath = [System.IO.Path]::GetRelativePath($repoRoot, $manuscriptDocument)
+if (
+    $expectedRelativePath -match $excludedRepositoryPathPattern -or
+    $nestedRelativePath -notmatch $excludedRepositoryPathPattern -or
+    $workScratchRelativePath -notmatch $excludedRepositoryPathPattern -or
+    $manusScratchRelativePath -notmatch $excludedRepositoryPathPattern -or
+    $workflowsRelativePath -match $excludedRepositoryPathPattern -or
+    $manuscriptRelativePath -match $excludedRepositoryPathPattern
+) {
+    throw 'Repository scanner path fixtures must exclude exact local scratch directories without matching similarly named paths'
+}
+foreach ($scratchPath in @('.work/T-SCRATCH/private.md', '.manus/T-SCRATCH/private.md')) {
+    & git -C $repoRoot check-ignore --quiet -- $scratchPath 2>$null
+    $ignoreExit = $LASTEXITCODE
+    if ($ignoreExit -ne 0) {
+        $ignoreEvidence = @(& git -C $repoRoot check-ignore -v -- $scratchPath 2>&1)
+        $ignoreDiagnostic = ($ignoreEvidence -join ' ').Trim()
+        $gitEnvironment = [Environment]::GetEnvironmentVariables('Process')
+        $gitEnvironmentState = @(
+            foreach ($name in @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE','GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM')) {
+                if ($gitEnvironment.Contains($name)) {
+                    $value = [string]$gitEnvironment[$name]
+                    $state = if ($value.Length -eq 0) { 'EMPTY' } else { 'SET' }
+                } else {
+                    $state = 'UNSET'
+                }
+                $name + '=' + $state
+            }
+        ) -join ','
+        $gitProbe = @(& git -C $repoRoot rev-parse --is-inside-work-tree 2>&1)
+        $gitProbeExit = $LASTEXITCODE
+        throw ('Git must ignore local scratch path ' + $scratchPath + ' (exit ' + $ignoreExit + '; repo ' + $repoRoot + '; evidence ' + $ignoreDiagnostic + '; env ' + $gitEnvironmentState + '; repo probe exit ' + $gitProbeExit + ': ' + ($gitProbe -join ' ') + ')')
+    }
+}
+foreach ($nearMatchPath in @('.workflows/keep.md', '.manuscript/keep.md')) {
+    & git -C $repoRoot check-ignore --quiet -- $nearMatchPath 2>$null
+    if ($LASTEXITCODE -eq 0) { throw ('Git ignore must not match the similar directory ' + $nearMatchPath) }
+}
+$trackedScratchFiles = @(& git -C $repoRoot ls-files --cached -- .work/ .manus/)
+if ($LASTEXITCODE -ne 0 -or $trackedScratchFiles.Count -gt 0) {
+    throw 'Local scratch paths must not contain tracked files'
 }
 $qualityGate = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
+$gateAst = [System.Management.Automation.Language.Parser]::ParseInput($qualityGate, [ref]$null, [ref]$null)
+$scanAssignments = @($gateAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left.Extent.Text -ieq '$scriptFiles'
+}, $true))
+if ($scanAssignments.Count -ne 1) { throw 'Expected one PowerShell scan input assignment' }
+$scanAssignment = $scanAssignments[0]
+$scanExpression = $scanAssignment.Right
+if ($scanAssignment.Parent.Parent -isnot [System.Management.Automation.Language.TryStatementAst] -or
+    $scanExpression -isnot [System.Management.Automation.Language.CommandExpressionAst] -or
+    $scanExpression.Expression -isnot [System.Management.Automation.Language.ArrayExpressionAst]) {
+    throw 'PowerShell scan input must be assigned directly in the gate try block'
+}
+$scanStatements = $scanExpression.Expression.SubExpression.Statements
+if ($scanStatements.Count -ne 1 -or
+    $scanStatements[0] -isnot [System.Management.Automation.Language.PipelineAst] -or
+    $scanStatements[0].PipelineElements[0] -isnot [System.Management.Automation.Language.CommandAst] -or
+    $scanStatements[0].PipelineElements[0].GetCommandName() -ine 'Get-ProjectFiles') {
+    throw 'PowerShell scan input must start with Get-ProjectFiles'
+}
 $qualityGatePathSeparatorClass = '[' + ([string][char]92 * 2) + '/]'
-$qualityGateExclusionPattern = '(^|' + $qualityGatePathSeparatorClass + ')(\.git|\.worktrees|temp)(' + $qualityGatePathSeparatorClass + '|$)'
+$qualityGateExclusionPattern = '(^|' + $qualityGatePathSeparatorClass + ')(\.git|\.worktrees|\.work|\.manus|temp)(' + $qualityGatePathSeparatorClass + '|$)'
+$taskScopeRegressionSource = Get-Content -LiteralPath (Join-Path $repoRoot 'tests/task-scope-regressions.ps1') -Raw
 $expectedPathFilterSource = '$relativePath -notmatch ' + [char]39 + $qualityGateExclusionPattern + [char]39
 if (
     -not $qualityGate.Contains('[System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)') -or
     -not $qualityGate.Contains($expectedPathFilterSource) -or
+    -not $qualityGate.Contains('[string]$TemporaryRoot = [System.IO.Path]::GetTempPath()') -or
+    ([regex]::Matches($qualityGate, 'Assert-TemporaryRootOutsideRepository')).Count -lt 2 -or
+    -not $qualityGate.Contains('Get-ChildItem Env: | Where-Object { $_.Name -match ''^GIT_'' }') -or
+    -not $taskScopeRegressionSource.Contains('Task scope regression TempRoot must be outside every Git repository') -or
+    -not $taskScopeRegressionSource.Contains('GitConfigFingerprint') -or
+    -not $taskScopeRegressionSource.Contains('Synthetic Git fixture commit inherited untrusted identity overrides.') -or
+    -not $taskScopeRegressionSource.Contains('Unsanitized dynamic GIT_CONFIG_* poison failed its control check.') -or
+    -not $taskScopeRegressionSource.Contains('$sourceStateAfter.GitConfigFingerprint -cne $sourceStateBefore.GitConfigFingerprint') -or
     $qualityGate -notmatch 'if \(\$scriptFiles\.Count -eq 0\)'
 ) {
     throw 'Quality gate must use relative worktree path exclusions and fail when no scripts are scanned'
 }
+$scopeRegressionPwsh = (Get-Command pwsh -ErrorAction Stop).Source
+$gitCommonDirectory = ((& git -C $repoRoot rev-parse --path-format=absolute --git-common-dir 2>$null) -join '').Trim()
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $gitCommonDirectory -PathType Container)) {
+    throw 'Unable to locate the Git common directory for TempRoot safety regressions'
+}
+$unsafeScopeTempRoot = Join-Path $repoRoot ('temp/T-SCOPE-REJECT-' + [guid]::NewGuid().ToString('N'))
+$scopeOutput = @(& $scopeRegressionPwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/task-scope-regressions.ps1') -TempRoot $unsafeScopeTempRoot 2>&1)
+$scopeExit = $LASTEXITCODE
+$scopeOutputText = $scopeOutput -join [Environment]::NewLine
+if (
+    $scopeExit -eq 0 -or
+    -not $scopeOutputText.Contains('Task scope regression TempRoot must be outside every Git repository') -or
+    (Test-Path -LiteralPath $unsafeScopeTempRoot)
+) {
+    throw 'Task-scope suite must refuse an in-repository TempRoot before creating fixtures'
+}
+$unsafeBareScopeTempRoot = Join-Path $gitCommonDirectory ('T-SCOPE-REJECT-' + [guid]::NewGuid().ToString('N'))
+$scopeOutput = @(& $scopeRegressionPwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/task-scope-regressions.ps1') -TempRoot $unsafeBareScopeTempRoot 2>&1)
+$scopeExit = $LASTEXITCODE
+$scopeOutputText = $scopeOutput -join [Environment]::NewLine
+if (
+    $scopeExit -eq 0 -or
+    -not $scopeOutputText.Contains('Task scope regression TempRoot must be outside every Git repository') -or
+    (Test-Path -LiteralPath $unsafeBareScopeTempRoot)
+) {
+    throw 'Task-scope suite must refuse a TempRoot inside a bare Git repository before creating fixtures'
+}
+
+$unsafeGateTempRoot = Join-Path $repoRoot ('temp/T-GATE-REJECT-' + [guid]::NewGuid().ToString('N'))
+$gateOutput = @(& $scopeRegressionPwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'scripts/quality-gate.ps1') -BaseRef origin/main -TemporaryRoot $unsafeGateTempRoot 2>&1)
+$gateExit = $LASTEXITCODE
+$gateOutputText = $gateOutput -join [Environment]::NewLine
+if (
+    $gateExit -eq 0 -or
+    -not $gateOutputText.Contains('QUALITY-GATE: temporary root must be outside the source repository') -or
+    (Test-Path -LiteralPath $unsafeGateTempRoot)
+) {
+    throw 'Quality gate must refuse an in-repository TEMP before creating artifacts'
+}
+$unsafeBareGateTempRoot = Join-Path $gitCommonDirectory ('T-GATE-REJECT-' + [guid]::NewGuid().ToString('N'))
+$gateOutput = @(& $scopeRegressionPwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'scripts/quality-gate.ps1') -BaseRef origin/main -TemporaryRoot $unsafeBareGateTempRoot 2>&1)
+$gateExit = $LASTEXITCODE
+$gateOutputText = $gateOutput -join [Environment]::NewLine
+if (
+    $gateExit -eq 0 -or
+    -not $gateOutputText.Contains('QUALITY-GATE: temporary root must be outside the source repository') -or
+    (Test-Path -LiteralPath $unsafeBareGateTempRoot)
+) {
+    throw 'Quality gate must refuse a TEMP inside a bare Git repository before creating artifacts'
+}
+
 if ($qualityGate -notmatch '\[string\[\]\]\$PushRange' -or -not $qualityGate.Contains('--log-opts=')) {
     throw 'Quality gate must scan exact incoming push history ranges'
 }
@@ -276,12 +521,8 @@ foreach ($toolName in @('actionlint', 'gitleaks')) {
 $textExtensions = @('.md', '.json', '.yml', '.yaml', '.ps1')
 $specialTextNames = @('.gitignore', '.gitattributes', '.editorconfig', 'pre-push')
 $textFiles = @(
-    Get-ChildItem -LiteralPath $repoRoot -File -Recurse -Force |
-        Where-Object {
-            $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)
-            ($_.Extension -in $textExtensions -or $_.Name -in $specialTextNames) -and
-            $relativePath -notmatch $excludedRepositoryPathPattern
-        }
+    Get-ProjectFiles $repoRoot |
+        Where-Object { $_.Extension -in $textExtensions -or $_.Name -in $specialTextNames }
 )
 if ($textFiles.Count -eq 0) {
     throw 'Text hygiene scan found no repository files'
@@ -683,6 +924,30 @@ if ($privacyFindings.Count -gt 0) {
     throw ('Public documentation privacy checks found sensitive patterns without printing their contents: ' + ($privacyFindings -join ', '))
 }
 
+$portfolioSpec = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'spec/portfolio-kb-agent-workflow.md'))
+$portfolioState = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'specification-system/tz_state.md'))
+$portfolioVersionMatch = [regex]::Match($portfolioSpec, '(?m)^Версия: (?<version>\d+\.\d+\.\d+)\.')
+$stateVersionMatch = [regex]::Match($portfolioState, '(?m)^Спецификация: spec/portfolio-kb-agent-workflow\.md, версия (?<version>\d+\.\d+\.\d+)\.$')
+if (-not $portfolioVersionMatch.Success -or -not $stateVersionMatch.Success) {
+    throw 'Portfolio specification and state must declare parseable versions'
+}
+if ($portfolioVersionMatch.Groups['version'].Value -cne $stateVersionMatch.Groups['version'].Value) {
+    throw 'Portfolio specification version must match specification-system state'
+}
+$finalBoundaryMatch = [regex]::Match($portfolioSpec, '(?ms)^## Итоговая граница\s*\r?\n(?<body>.*)\z')
+if (-not $finalBoundaryMatch.Success -or $finalBoundaryMatch.Groups['body'].Value -match '\bтекущем T-\d+') {
+    throw 'Portfolio specification boundary must not identify a mutable task as current'
+}
+$currentHandoff = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'docs/handoff.md')) -split '(?m)^## Исторический', 2 | Select-Object -First 1
+if ($currentHandoff -match '\b[a-f0-9]{40}\b') {
+    throw 'Current handoff must not pin mutable GitHub revision or CI identifiers'
+}
+if ($currentHandoff -match '(?im)PR #\d+[^\r\n]*\b(?:Draft|open|merged|success|pending)\b') {
+    throw 'Current handoff must not freeze mutable PR or CI status'
+}
+if ($currentHandoff -notmatch '(?im)PR #10.*(?:live PR|live GitHub|источник истины)') {
+    throw 'Current handoff must direct readers to the live PR for mutable status'
+}
 $trailing = [System.Collections.Generic.List[string]]::new()
 $missingFinalNewline = [System.Collections.Generic.List[string]]::new()
 foreach ($file in $textFiles) {
