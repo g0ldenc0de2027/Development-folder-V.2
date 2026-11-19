@@ -34,7 +34,7 @@
 - `spec/local-knowledge.md`
 - `tests/quality-gate-regressions.ps1`
 - `tests/task-scope-regressions.ps1`
-- `tests/git-identity-regressions.ps1` — согласовать тест хука с публикацией одной ветки.
+- `tests/git-identity-regressions.ps1`
 - `tasks/README.md`
 - `tasks/T-008-audit-remediation.md`
 - `README.md`
