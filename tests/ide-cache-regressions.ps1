@@ -25,7 +25,7 @@ for ($dir = [IO.DirectoryInfo]::new($temp); $null -ne $dir; $dir = $dir.Parent) 
     }
 }
 if (-not [IO.Directory]::Exists($temp)) { throw 'IDE cache TempRoot must exist' }
-$fixture = Join-Path $temp ('ide-cache-test-' + [guid]::NewGuid().ToString('N'))
+$fixture = Join-Path $temp ('ide-cache-test-[p]-' + [guid]::NewGuid().ToString('N'))
 if ([Text.Encoding]::UTF8.GetByteCount((Join-Path $fixture '.git')) -gt 200) {
     throw 'IDE cache fixture would exceed the Git for Windows GIT_DIR path budget'
 }
@@ -46,7 +46,7 @@ try {
     if ($LASTEXITCODE -eq 0) { $head = $mergeParent.Trim() }
     & git -C $fixture checkout --quiet --detach $head
     if ($LASTEXITCODE -ne 0) { throw 'Fixture checkout failed' }
-    foreach ($rel in @('.gitignore','scripts/ide-cache.ps1','scripts/quality-gate.ps1','tests/quality-gate-regressions.ps1',
+    foreach ($rel in @('.gitignore','scripts/ide-cache.ps1','scripts/quality-gate.ps1','tests/quality-gate-regressions.ps1','tests/task-scope-regressions.ps1',
         'spec/portfolio-kb-agent-workflow.md','specification-system/tz_state.md','docs/handoff.md')) {
         $to=Join-Path $fixture $rel
         [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($to)) | Out-Null
@@ -124,20 +124,19 @@ public static class V2ProjectedFixture {
         [IO.Directory]::Delete($projected)
     }
 
-    $err=Join-Path $fixture 'fixture-stderr.txt'
-    $result=@(& pwsh -NoLogo -NoProfile -File (Join-Path $fixture 'tests/quality-gate-regressions.ps1') 2>$err)
-    if ($LASTEXITCODE -ne 0) { throw ('Ignored VS cache blocked hygiene: ' + [IO.File]::ReadAllText($err)) }
+    $output=@(& pwsh -NoLogo -NoProfile -File (Join-Path $fixture 'tests/quality-gate-regressions.ps1') 2>&1)
+    if ($LASTEXITCODE -ne 0) { throw ('Ignored VS cache blocked hygiene: ' + ($output -join [char]10)) }
     $normal=Join-Path $fixture 'fixture-source.json'
     [IO.File]::WriteAllText($normal,('{'+$crlf+'}'+$crlf),$utf8)
-    $result=@(& pwsh -NoLogo -NoProfile -File (Join-Path $fixture 'tests/quality-gate-regressions.ps1') 2>$err)
-    if ($LASTEXITCODE -eq 0 -or -not ([IO.File]::ReadAllText($err).Contains('Expected LF-only'))) {
+    $output=@(& pwsh -NoLogo -NoProfile -File (Join-Path $fixture 'tests/quality-gate-regressions.ps1') 2>&1)
+    if ($LASTEXITCODE -eq 0 -or -not (($output -join [char]10).Contains('Expected LF-only'))) {
         throw 'Ordinary untracked file escaped hygiene'
     }
     [IO.File]::Delete($normal)
     & git -C $fixture add -f -- 'knowledge/.vs/ProjectSettings.json'
     if ($LASTEXITCODE -ne 0) { throw 'Could not stage tracked cache fixture' }
-    $result=@(& pwsh -NoLogo -NoProfile -File (Join-Path $fixture 'tests/quality-gate-regressions.ps1') 2>$err)
-    if ($LASTEXITCODE -eq 0 -or -not ([IO.File]::ReadAllText($err).Contains('Tracked .vs cache files are not permitted'))) {
+    $output=@(& pwsh -NoLogo -NoProfile -File (Join-Path $fixture 'tests/quality-gate-regressions.ps1') 2>&1)
+    if ($LASTEXITCODE -eq 0 -or -not (($output -join [char]10).Contains('Tracked .vs cache files are not permitted'))) {
         throw 'Tracked VS cache was not rejected'
     }
     $afterHead=(& git -C $source rev-parse --verify HEAD).Trim()
@@ -148,7 +147,7 @@ public static class V2ProjectedFixture {
 } finally {
     $parent=[IO.Path]::GetFullPath($TempRoot).TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar
     $resolved=[IO.Path]::GetFullPath($fixture)
-    if ($resolved.StartsWith($parent,[StringComparison]::OrdinalIgnoreCase) -and (Split-Path $resolved -Leaf) -cmatch '^ide-cache-test-[a-f0-9]{32}$' -and (Test-Path -LiteralPath $resolved)) {
+    if ($resolved.StartsWith($parent,[StringComparison]::OrdinalIgnoreCase) -and (Split-Path $resolved -Leaf) -cmatch '^ide-cache-test-\[p\]-[a-f0-9]{32}$' -and (Test-Path -LiteralPath $resolved)) {
         $item=Get-Item -LiteralPath $resolved -Force
         if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or (Resolve-Path -LiteralPath $resolved).ProviderPath -cne $resolved) { throw 'Unsafe fixture cleanup root' }
         $links=@(Get-ChildItem -LiteralPath $resolved -Directory -Force -Recurse | Where-Object { ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 })

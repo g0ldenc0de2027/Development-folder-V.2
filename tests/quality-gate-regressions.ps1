@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $repoRoot 'scripts/ide-cache.ps1')
 $processEnvironment = [Environment]::GetEnvironmentVariables('Process')
 $emptyGitContext = @(

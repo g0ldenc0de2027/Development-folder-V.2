@@ -10,7 +10,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $temporaryBaseRoot = [System.IO.Path]::GetFullPath($TemporaryRoot)
 $temporaryRoot = Join-Path $temporaryBaseRoot ('gate-' + [guid]::NewGuid().ToString('N'))
 $taskScopeGitDirByteBudget = 200
