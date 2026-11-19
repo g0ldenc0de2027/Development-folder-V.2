@@ -35,13 +35,22 @@ if ($LASTEXITCODE -ne 0 -or $main -cne $BaseSha) { throw 'Main changed after pre
 
 $query = 'mutation($id:ID!,$head:GitObjectID!,$email:String!){mergePullRequest(input:{pullRequestId:$id,expectedHeadOid:$head,mergeMethod:SQUASH,authorEmail:$email}){pullRequest{merged mergeCommit{oid author{email}}}}}'
 $reply = & gh api --hostname github.com graphql -f "query=$query" -f "id=$($pr.id)" -f "head=$HeadSha" -f "email=$email" 2>$null
-if ($LASTEXITCODE -ne 0) {
-    & gh pr view $Number -R "github.com/$slug" --json state,mergeCommit
-    throw 'Merge response failed. Check PR state before retrying.'
+if ($LASTEXITCODE -eq 0) {
+    try {
+        $result = ($reply -join [char]10) | ConvertFrom-Json -AsHashtable
+        if ($result -is [System.Collections.IDictionary] -and -not $result['errors']) {
+            $merged = $result.data.mergePullRequest.pullRequest
+            if ($merged.merged -eq $true -and $merged.mergeCommit.oid -cmatch '^[0-9a-f]{40}$' -and
+                $merged.mergeCommit.author.email -ceq $email) {
+                Write-Output "PR #$Number merged at $($merged.mergeCommit.oid) with the expected noreply author."
+                return
+            }
+        }
+    } catch {
+        # Неполный или повреждённый ответ не определяет результат операции.
+        Write-Verbose 'The merge response could not be parsed or was incomplete.'
+    }
 }
-$result = ($reply -join [char]10) | ConvertFrom-Json -AsHashtable
-$merged = $result.data.mergePullRequest.pullRequest
-if (!$merged.merged -or $merged.mergeCommit.oid -cnotmatch '^[0-9a-f]{40}$' -or $merged.mergeCommit.author.email -cne $email) {
-    throw 'Merge result or author could not be confirmed. Check PR state before retrying.'
-}
-Write-Output "PR #$Number merged at $($merged.mergeCommit.oid) with the expected noreply author."
+
+& gh pr view $Number -R "github.com/$slug" --json state,mergeCommit 2>$null
+throw 'Squash or expected author could not be confirmed. Verify PR state before retrying.'
