@@ -1,41 +1,81 @@
 #!/bin/sh
 set -eu
-
-remote_name=${1-}
-remote_url=${2-}
-
-repo_root=$(git rev-parse --show-toplevel) || {
-    echo "pre-push: repository root could not be resolved" >&2
-    exit 1
-}
-
+remote_name=$1
+remote_url=$2
 if ! command -v pwsh >/dev/null 2>&1; then
     echo "pre-push: PowerShell 7 is required" >&2
     exit 1
 fi
-
-set --
-while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
-    if [ -z "${local_ref:-}" ] && [ -z "${local_sha:-}" ]; then
-        continue
+if ! command -v cygpath >/dev/null 2>&1; then
+    echo "pre-push: Git for Windows cygpath is required for the hook context check" >&2
+    exit 1
+fi
+hook_pwd=$(pwd -P) || {
+    echo "pre-push: current directory could not be resolved" >&2
+    exit 1
+}
+repo_root=$(cygpath -aw "$hook_pwd") || {
+    echo "pre-push: worktree path could not be converted safely" >&2
+    exit 1
+}
+if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-hook-context.ps1" -RepositoryRoot "$repo_root"; then
+    echo "pre-push: Git hook context gate blocked push" >&2
+    exit 1
+fi
+repo_root=$(git rev-parse --show-toplevel) || {
+    echo "pre-push: repository root could not be resolved" >&2
+    exit 1
+}
+worktree_status=$(git status --porcelain=v1 --untracked-files=all --ignore-submodules=none) || {
+    echo "pre-push: current worktree status could not be verified" >&2
+    exit 1
+}
+if [ -n "$worktree_status" ]; then
+    echo "pre-push: current worktree is not clean; preserve and commit all task changes before publishing" >&2
+    exit 1
+fi
+if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/task-worktree-audit.ps1" -Mode Publish; then
+    echo "pre-push: task worktree audit blocked publish" >&2
+    exit 1
+fi
+push_ranges=
+append_range() {
+    if [ -n "$push_ranges" ]; then
+        push_ranges="$push_ranges
+$1"
+    else
+        push_ranges=$1
     fi
-
-    case "${local_sha:-}" in
-        *[!0]*) ;;
-        *)
-            echo "pre-push: ref deletion or missing local object is forbidden" >&2
+}
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+    if [ -z "$local_ref" ] && [ -z "$local_sha" ]; then continue; fi
+    case "$local_ref:$remote_ref" in
+        refs/heads/task/T-013:*|refs/heads/task/T-013-*:*|*:refs/heads/task/T-013|*:refs/heads/task/T-013-*)
+            echo "pre-push: T-013 is a read-only recovery source and cannot be published" >&2
             exit 1
             ;;
     esac
-
-    case "${remote_sha:-}" in
-        *[!0]*) set -- "$@" "${remote_sha}..${local_sha}" ;;
-        *) set -- "$@" "$local_sha" ;;
+    case "$local_sha" in
+        *[!0123456789abcdefABCDEF]*|'') echo "pre-push: invalid local object ID" >&2; exit 1 ;;
+    esac
+    case "$local_sha" in
+        *[!0]*) ;;
+        *) echo "pre-push: ref deletion or missing local object is forbidden" >&2; exit 1 ;;
+    esac
+    case "$remote_sha" in
+        *[!0123456789abcdefABCDEF]*|'') echo "pre-push: invalid remote object ID" >&2; exit 1 ;;
+    esac
+    case "$remote_sha" in
+        *[!0]*) append_range "$remote_sha..$local_sha" ;;
+        *) append_range "$local_sha" ;;
     esac
 done
-
-if [ "$#" -gt 0 ]; then
-    exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -RemoteName "$remote_name" -RemoteUrl "$remote_url" -PushRange "$@"
+if [ -n "$push_ranges" ]; then
+    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name" -CommitRange "$push_ranges"
+else
+    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name"
 fi
-
+if [ -n "$push_ranges" ]; then
+    exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -RemoteName "$remote_name" -RemoteUrl "$remote_url" -PushRange "$push_ranges"
+fi
 exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -RemoteName "$remote_name" -RemoteUrl "$remote_url"
