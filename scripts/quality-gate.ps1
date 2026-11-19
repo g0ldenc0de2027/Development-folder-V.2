@@ -140,8 +140,9 @@ try {
         $null = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
     }
 
+    . (Join-Path $repoRoot 'scripts/ide-cache.ps1')
     $scriptFiles = @(
-        Get-ChildItem -LiteralPath $repoRoot -File -Recurse -Force -Filter '*.ps1' |
+        Get-ProjectFiles $repoRoot | Where-Object { $_.Extension -ieq '.ps1' } |
             Where-Object {
                 $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)
                 $relativePath -notmatch '(^|[\\/])(\.git|\.worktrees|\.work|\.manus|temp)([\\/]|$)'
@@ -172,6 +173,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Git identity regressions failed' }
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/task-worktree-regressions.ps1') -TempRoot $temporaryRoot
     if ($LASTEXITCODE -ne 0) { throw 'Task worktree regressions failed' }
+
+    Write-Output 'QUALITY-GATE: validating IDE cache isolation'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/ide-cache-regressions.ps1') -TempRoot $temporaryRoot
+    if ($LASTEXITCODE -ne 0) { throw 'IDE cache regressions failed' }
 
     if ($env:GITHUB_EVENT_NAME -ne 'pull_request') {
         Write-Output 'NOT APPLICABLE: hosted PR merge-result assertion requires pull_request event'

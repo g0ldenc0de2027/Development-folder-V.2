@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+. (Join-Path $repoRoot 'scripts/ide-cache.ps1')
 $processEnvironment = [Environment]::GetEnvironmentVariables('Process')
 $emptyGitContext = @(
     foreach ($name in @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE','GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM')) {
@@ -215,6 +216,27 @@ if ($LASTEXITCODE -ne 0 -or $trackedScratchFiles.Count -gt 0) {
     throw 'Local scratch paths must not contain tracked files'
 }
 $qualityGate = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
+$gateAst = [System.Management.Automation.Language.Parser]::ParseInput($qualityGate, [ref]$null, [ref]$null)
+$scanAssignments = @($gateAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left.Extent.Text -ieq '$scriptFiles'
+}, $true))
+if ($scanAssignments.Count -ne 1) { throw 'Expected one PowerShell scan input assignment' }
+$scanAssignment = $scanAssignments[0]
+$scanExpression = $scanAssignment.Right
+if ($scanAssignment.Parent.Parent -isnot [System.Management.Automation.Language.TryStatementAst] -or
+    $scanExpression -isnot [System.Management.Automation.Language.CommandExpressionAst] -or
+    $scanExpression.Expression -isnot [System.Management.Automation.Language.ArrayExpressionAst]) {
+    throw 'PowerShell scan input must be assigned directly in the gate try block'
+}
+$scanStatements = $scanExpression.Expression.SubExpression.Statements
+if ($scanStatements.Count -ne 1 -or
+    $scanStatements[0] -isnot [System.Management.Automation.Language.PipelineAst] -or
+    $scanStatements[0].PipelineElements[0] -isnot [System.Management.Automation.Language.CommandAst] -or
+    $scanStatements[0].PipelineElements[0].GetCommandName() -ine 'Get-ProjectFiles') {
+    throw 'PowerShell scan input must start with Get-ProjectFiles'
+}
 $qualityGatePathSeparatorClass = '[' + ([string][char]92 * 2) + '/]'
 $qualityGateExclusionPattern = '(^|' + $qualityGatePathSeparatorClass + ')(\.git|\.worktrees|\.work|\.manus|temp)(' + $qualityGatePathSeparatorClass + '|$)'
 $taskScopeRegressionSource = Get-Content -LiteralPath (Join-Path $repoRoot 'tests/task-scope-regressions.ps1') -Raw
@@ -499,12 +521,8 @@ foreach ($toolName in @('actionlint', 'gitleaks')) {
 $textExtensions = @('.md', '.json', '.yml', '.yaml', '.ps1')
 $specialTextNames = @('.gitignore', '.gitattributes', '.editorconfig', 'pre-push')
 $textFiles = @(
-    Get-ChildItem -LiteralPath $repoRoot -File -Recurse -Force |
-        Where-Object {
-            $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)
-            ($_.Extension -in $textExtensions -or $_.Name -in $specialTextNames) -and
-            $relativePath -notmatch $excludedRepositoryPathPattern
-        }
+    Get-ProjectFiles $repoRoot |
+        Where-Object { $_.Extension -in $textExtensions -or $_.Name -in $specialTextNames }
 )
 if ($textFiles.Count -eq 0) {
     throw 'Text hygiene scan found no repository files'
