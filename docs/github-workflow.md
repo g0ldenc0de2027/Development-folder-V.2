@@ -54,3 +54,12 @@ Bootstrap этап выполнил первый hosted run: `quality-gate` те
 - Неясное авторство/посторонние файлы: остановитесь; не коммитьте и не отправляйте смешанный diff.
 - Ошибка GitHub auth: проверьте gh auth status; не запрашивайте и не печатайте token.
 - Settings drift: сравните live API с config/github; намеренное отклонение оформите решением.
+
+## Squash через GraphQL с явным noreply
+
+1. Сверьте репозиторий, авторизованный аккаунт, пары head/base из принятого владельцем diff и независимого ревью, обязательный quality-gate на точном merge-result и отсутствие незакрытых обсуждений.
+2. Вызовите GitHub GraphQL mergePullRequest с mergeMethod SQUASH, pullRequestId, expectedHeadOid проверенной ветки и authorEmail с подтверждённым ID-based noreply владельца. Сразу перед вызовом заново сверяйте base. API защищает от смены head через expectedHeadOid, а актуальность относительно main обеспечивает strict required check.
+3. После вызова проверьте статус MERGED, SHA результата и домен автора. При отказе или неоднозначном ответе сначала запросите состояние PR. При несовпадении домена зафиксируйте инцидент без вывода адреса.
+4. Обновите чистую локальную main через fetch и merge --ff-only. Зафиксируйте результат CI на main отдельно от проверки PR.
+
+Процедура подтверждена на PR #5: squash a6ef3d83094b59167e83b3766e6e8a4e7cca000e, домен автора users.noreply.github.com, CI main #44510196124 SUCCESS. Справка: https://docs.github.com/en/graphql/reference/pulls#mergepullrequestinput
