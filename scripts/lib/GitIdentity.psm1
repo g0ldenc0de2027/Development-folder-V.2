@@ -320,22 +320,27 @@ function Initialize-GitWorktreeConfig {
         }
     }
 
-    $addedAdminBare = $false
     if ($hasBareAdmin) {
         if ($sharedBareValues.Count -eq 1 -and $sharedBareValues[0] -ceq 'false') { throw 'GIT_IDENTITY_ADMIN_CORE_BARE_CONFLICT' }
-        if ($adminBareValues.Count -eq 0) {
-            $null = Invoke-GitIdentityAdminCommand -GitDirectory $commonDir -Arguments @('config','--file',$adminConfigWorktree,'core.bare','true')
-            $addedAdminBare = $true
+        $migrateSharedBare = $sharedBareValues.Count -eq 1 -and $sharedBareValues[0] -ceq 'true'
+        if ($migrateSharedBare -and -not (Test-Path -LiteralPath $gitMarker -PathType Leaf)) {
+            throw 'GIT_IDENTITY_SHARED_CORE_BARE_UNSAFE'
         }
-        if ($sharedBareValues.Count -eq 1 -and $sharedBareValues[0] -ceq 'true') {
-            if (-not (Test-Path -LiteralPath $gitMarker -PathType Leaf)) {
-                if ($addedAdminBare) { & git ('--git-dir=' + $commonDir) config --file $adminConfigWorktree --unset-all core.bare 2>$null | Out-Null }
-                throw 'GIT_IDENTITY_SHARED_CORE_BARE_UNSAFE'
-            }
+        $addedAdminBare = $adminBareValues.Count -eq 0
+        if ($addedAdminBare) {
+            $null = Invoke-GitIdentityAdminCommand -GitDirectory $commonDir -Arguments @('config','--file',$adminConfigWorktree,'core.bare','true')
+        }
+        if ($migrateSharedBare) {
             try {
                 $null = Invoke-GitIdentityAdminCommand -GitDirectory $commonDir -Arguments @('config','--local','--unset-all','core.bare')
             } catch {
-                if ($addedAdminBare) { & git ('--git-dir=' + $commonDir) config --file $adminConfigWorktree --unset-all core.bare 2>$null | Out-Null }
+                if ($addedAdminBare) {
+                    try {
+                        $null = Invoke-GitIdentityAdminCommand -GitDirectory $commonDir -Arguments @('config','--file',$adminConfigWorktree,'--unset-all','core.bare')
+                    } catch {
+                        throw 'GIT_IDENTITY_CORE_BARE_ROLLBACK_FAILED'
+                    }
+                }
                 throw 'GIT_IDENTITY_CORE_BARE_MIGRATION_FAILED'
             }
         }
