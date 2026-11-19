@@ -5,7 +5,7 @@ Version: 0.1.0-draft
 Status: DRAFT / NOT READY
 Implementation admission: blocked for product features
 Infrastructure bootstrap: allowed and underway
-Open decisions: supported operating systems; stack-profile inventory; local knowledge integration; project progress/ETA model; release and backup policy.
+Open decisions: supported operating systems; stack-profile inventory; local knowledge integration; approval of the proposed project progress/ETA draft; release and backup policy.
 
 ## Допуск T-004 от 2026-11-15
 
