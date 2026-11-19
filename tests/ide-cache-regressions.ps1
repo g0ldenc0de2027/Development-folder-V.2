@@ -75,11 +75,14 @@ try {
         if (@($paths -like "$relative/*").Count -ne 0) { throw "Excluded directory enumerated: $relative" }
     }
     if ('knowledge/.vs-cache/valid.ps1' -notin $paths) { throw 'Similar directory was excluded' }
-    $junction = Join-Path $fixture 'fixture-junction'
+    $junction = Join-Path $fixture 'fixture-junction[probe]'
     New-Item -ItemType Junction -Path $junction -Target $similar | Out-Null
     try {
         $linkedPaths = @(Get-ProjectFiles $fixture | ForEach-Object FullName)
-        if ($linkedPaths -like "$junction*") { throw 'Source scan followed a junction' }
+        $junctionPrefix = $junction + [IO.Path]::DirectorySeparatorChar
+        if ($linkedPaths | Where-Object { $_.StartsWith($junctionPrefix, [StringComparison]::OrdinalIgnoreCase) }) {
+            throw 'Source scan followed a junction'
+        }
     } finally {
         [IO.Directory]::Delete($junction)
     }
