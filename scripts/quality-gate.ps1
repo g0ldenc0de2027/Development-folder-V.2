@@ -12,7 +12,8 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $temporaryBaseRoot = [System.IO.Path]::GetFullPath($TemporaryRoot)
-$temporaryRoot = Join-Path $temporaryBaseRoot ('development-folder-v2-gate-' + [guid]::NewGuid().ToString('N'))
+$temporaryRoot = Join-Path $temporaryBaseRoot ('gate-' + [guid]::NewGuid().ToString('N'))
+$taskScopeGitDirByteBudget = 200
 
 function Assert-TemporaryRootOutsideRepository {
     $separators = [char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
@@ -31,7 +32,11 @@ function Assert-TemporaryRootOutsideRepository {
     }
     if (-not [IO.Directory]::Exists($probe)) { throw 'QUALITY-GATE: temporary root has no existing parent directory' }
 
-    $gitEnvironmentNames = @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE','GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM')
+    $gitEnvironmentNames = @(
+        'GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY',
+        'GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE','GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM'
+        Get-ChildItem Env: | Where-Object { $_.Name -match '^GIT_' } | ForEach-Object Name
+    ) | Sort-Object -Unique
     $savedEnvironment = @{}
     foreach ($name in $gitEnvironmentNames) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
@@ -59,6 +64,11 @@ function Assert-TemporaryRootOutsideRepository {
             $parent = Split-Path -Parent $probe
             if ([string]::IsNullOrWhiteSpace($parent) -or [string]::Equals($parent, $probe, [StringComparison]::OrdinalIgnoreCase)) { break }
             $probe = $parent
+        }
+        $gitDirProbe = [IO.Path]::GetFullPath((Join-Path $temporaryRoot ('ts-' + ('0' * 32) + '\repo\.git\worktrees\wt')))
+        $gitDirUtf8Bytes = [Text.Encoding]::UTF8.GetByteCount($gitDirProbe)
+        if ($gitDirUtf8Bytes -gt $taskScopeGitDirByteBudget) {
+            throw ("QUALITY-GATE: temporary root would exceed Git for Windows GIT_DIR limit ({0} UTF-8 bytes); choose a shorter TemporaryRoot." -f $taskScopeGitDirByteBudget)
         }
     } finally {
         foreach ($name in $gitEnvironmentNames) {

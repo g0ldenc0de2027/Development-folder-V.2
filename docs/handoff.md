@@ -1,10 +1,9 @@
-# Handoff — T-004, 2026-11-15
+# Handoff — T-008, 2026-11-19
 
-- T-003 слита PR #3 в main (squash commit 9f98b28046ca605577e5a829e02818335f66174c); task/T-004 объединяется с новой main.
-- Повторная сверка: RULES 0.2.0, семь модулей, COVERAGE и schema 2 lock всего пакета; восстановлен утверждённый список языков.
-- Общая БЗ — редактируемый канон, здесь точная закреплённая копия; путь подключения произвольный и локальный.
-- Реализован файловый CLI; новые проверки охватывают весь пакет и optional/null marker. Актуальные test/CI evidence и точные SHA — PR #4.
-- Перед merge нужны свежие independent review/CI и последовательная интеграция после T-003. Swarm, прикладная матрица, security-watch и валидатор переводов ещё не готовы; детали в rules/COVERAGE.md.
+- Current T-008 state: branch task/T-008 HEAD and origin/task/T-008 are e8653345c5a62382be02bf8957e459a4def28e6a; backup ref backup/2026-11-19-T-008-before-identity-repair retains ff6499005837312f8832b484d8fc51e52c08d628. The mixed reset preserved file content; 11 local paths (9 modified, 2 untracked), no new commit/push.
+- Воспроизведена причина Git fatal: внешний TempRoot давал GIT_DIR 221 UTF-8 byte при 196 символах .NET. Gate использует короткий корень и fail-fast проверку 200-байтового бюджета до записи.
+- Исторический full gate PASS был на pre-recovery candidate ff6499005837312f8832b484d8fc51e52c08d628 и не подтверждает текущие 11 путей. Read-only T-015 audit сейчас BLOCKED только из-за T-008 (11 путей) и T-015 (9); остальные 15 registered worktrees, включая main, CLEAN. T-015 targeted suites 31/31 и 25/25; его полный gate ещё не выполнен. Сначала завершить T-008, затем повторить audit.
+- Live PR #8 read-only: OPEN/Draft, head e8653345c5a62382be02bf8957e459a4def28e6a, base f577dc70e58d75ab5fd61d0c2e712c27b590713a. Run #44402452200 SUCCESS на merge-result 66c80a08d0f4f8569efd0c6e944a9b0dc8ba3cc0 с точными родителями base/head. GitHub-native reviews: 0; независимое review этого head требуется до merge.
 
 ## Исторический bootstrap-снимок до слияния T-003 (не текущие статусы задач)
 

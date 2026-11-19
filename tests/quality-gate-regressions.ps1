@@ -224,7 +224,12 @@ if (
     -not $qualityGate.Contains($expectedPathFilterSource) -or
     -not $qualityGate.Contains('[string]$TemporaryRoot = [System.IO.Path]::GetTempPath()') -or
     ([regex]::Matches($qualityGate, 'Assert-TemporaryRootOutsideRepository')).Count -lt 2 -or
+    -not $qualityGate.Contains('Get-ChildItem Env: | Where-Object { $_.Name -match ''^GIT_'' }') -or
     -not $taskScopeRegressionSource.Contains('Task scope regression TempRoot must be outside every Git repository') -or
+    -not $taskScopeRegressionSource.Contains('GitConfigFingerprint') -or
+    -not $taskScopeRegressionSource.Contains('Synthetic Git fixture commit inherited untrusted identity overrides.') -or
+    -not $taskScopeRegressionSource.Contains('Unsanitized dynamic GIT_CONFIG_* poison failed its control check.') -or
+    -not $taskScopeRegressionSource.Contains('$sourceStateAfter.GitConfigFingerprint -cne $sourceStateBefore.GitConfigFingerprint') -or
     $qualityGate -notmatch 'if \(\$scriptFiles\.Count -eq 0\)'
 ) {
     throw 'Quality gate must use relative worktree path exclusions and fail when no scripts are scanned'

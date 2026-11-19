@@ -3,6 +3,8 @@
 Все заметные изменения Development Folder V2 фиксируются здесь.
 
 ## Unreleased
+- Git for Windows TempRoot сначала проверяется на границу репозитория, затем по UTF-8 byte budget fixture GIT_DIR; длинный Unicode путь блокируется до записей.
+- Git-fixture regression сверяет config/config.worktree и очищает унаследованные GIT_* переменные, чтобы незаметное загрязнение общего config не повторилось.
 - Регрессии Git-фикстур и quality gate проверяют TempRoot вне worktree и bare-репозиториев до создания файлов; task-scope suite сравнивает HEAD, refs, index и status исходного репозитория до и после фикстур.
 - Scratch-каталоги `.work/` и `.manus/` защищены от случайного Git-add; рекурсивные quality scans исключают только их точные сегменты, а Gitleaks остаётся включённым для всей рабочей копии.
 - Единая проверка scope принимает `task/T-NNN` и проверенный lowercase slug; hook отклоняет пустые, некорректные и неоднозначные сегменты имени.

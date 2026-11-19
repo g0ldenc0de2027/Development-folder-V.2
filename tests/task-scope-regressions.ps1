@@ -36,10 +36,21 @@ $script:GitHookEnvironmentNames = @(
     'GIT_DISCOVERY_ACROSS_FILESYSTEM'
 )
 $script:OriginalGitHookEnvironment = @{}
-foreach ($name in $script:GitHookEnvironmentNames) {
+$startupGitEnvironmentNames = @(
+    $script:GitHookEnvironmentNames
+    Get-ChildItem Env: | Where-Object { $_.Name -match '^GIT_' } | ForEach-Object Name
+) | Sort-Object -Unique
+foreach ($name in $startupGitEnvironmentNames) {
     $script:OriginalGitHookEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 $sourceStateBefore = $null
+
+function Get-GitHookEnvironmentNames {
+    $currentGitEnvironmentNames = @(
+        Get-ChildItem Env: | Where-Object { $_.Name -match '^GIT_' } | ForEach-Object Name
+    )
+    return @($script:GitHookEnvironmentNames + $currentGitEnvironmentNames | Sort-Object -Unique)
+}
 
 function Write-Text([string]$Path, [string]$Value) {
     [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Path)) | Out-Null
@@ -48,7 +59,7 @@ function Write-Text([string]$Path, [string]$Value) {
 
 function Clear-GitHookEnvironment {
     $saved = @{}
-    foreach ($name in $script:GitHookEnvironmentNames) {
+    foreach ($name in (Get-GitHookEnvironmentNames)) {
         $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
         Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
     }
@@ -56,8 +67,13 @@ function Clear-GitHookEnvironment {
 }
 
 function Restore-GitHookEnvironment([hashtable]$Saved) {
-    foreach ($name in $script:GitHookEnvironmentNames) {
-        $savedValue = [string]$Saved[$name]
+    $restoreNames = @(
+        $script:GitHookEnvironmentNames
+        $Saved.Keys
+        Get-ChildItem Env: | Where-Object { $_.Name -match '^GIT_' } | ForEach-Object Name
+    ) | Sort-Object -Unique
+    foreach ($name in $restoreNames) {
+        $savedValue = if ($Saved.ContainsKey($name)) { [string]$Saved[$name] } else { '' }
         if ([string]::IsNullOrEmpty($savedValue)) {
             Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
         } else {
@@ -92,11 +108,22 @@ function Get-SourceGitState {
         throw 'Unable to locate the source repository index for fixture isolation checks.'
     }
     $indexSha256 = (Get-FileHash -LiteralPath $indexPath -Algorithm SHA256).Hash
+    $gitConfigFingerprints = @(
+        foreach ($configName in @('config', 'config.worktree')) {
+            $configPath = ((Invoke-Git $repoRoot @('rev-parse', '--path-format=absolute', '--git-path', $configName) | Select-Object -First 1).Trim())
+            if (Test-Path -LiteralPath $configPath -PathType Leaf) {
+                '{0}:{1}' -f $configName, (Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash
+            } else {
+                '{0}:missing' -f $configName
+            }
+        }
+    )
     return [pscustomobject]@{
         Head = $head
         Status = [string]::Join([string][char]10, [string[]]$statusLines)
         Refs = [string]::Join([string][char]10, [string[]]$refsLines)
         IndexSha256 = $indexSha256
+        GitConfigFingerprint = [string]::Join('|', [string[]]$gitConfigFingerprints)
     }
 }
 
@@ -122,7 +149,7 @@ function Assert-Scope([int]$ExpectedExit, [string]$ExpectedMessage, [string]$Exp
     }
     $joined = $output -join [Environment]::NewLine
     if ($exitCode -ne $ExpectedExit) {
-        throw "Scope verifier returned exit $exitCode; expected $ExpectedExit."
+        throw "Scope verifier returned exit $exitCode; expected $ExpectedExit. Output: $joined"
     }
     if ($ExpectedMessage -and -not $joined.Contains($ExpectedMessage)) {
         throw 'Scope verifier returned an unexpected result.'
@@ -141,7 +168,7 @@ function Assert-TempRootOutsideGitRepositories {
     }
     if (-not [IO.Directory]::Exists($probe)) { throw 'Task scope regression TempRoot has no existing parent directory' }
 
-    $probeGuardNames = @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE','GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM')
+    $probeGuardNames = @(Get-GitHookEnvironmentNames)
     $savedProbeEnvironment = @{}
     foreach ($name in $probeGuardNames) {
         $savedProbeEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
@@ -184,6 +211,11 @@ function Assert-TempRootOutsideGitRepositories {
 
 try {
     Assert-TempRootOutsideGitRepositories
+    $fixtureGitDirProbe = [IO.Path]::GetFullPath((Join-Path $scratch 'repo\.git\worktrees\wt'))
+    $fixtureGitDirUtf8Bytes = [Text.Encoding]::UTF8.GetByteCount($fixtureGitDirProbe)
+    if ($fixtureGitDirUtf8Bytes -gt 200) {
+        throw ("Task scope regression TempRoot would exceed Git for Windows GIT_DIR limit: {0} UTF-8 bytes; maximum is 200." -f $fixtureGitDirUtf8Bytes)
+    }
     $sourceStateBefore = Get-SourceGitState
     $poisonRoot = Join-Path $scratch 'inherited-git-context'
     [Environment]::SetEnvironmentVariable('GIT_DIR', (Join-Path $poisonRoot 'git-dir'), 'Process')
@@ -194,6 +226,13 @@ try {
     [Environment]::SetEnvironmentVariable('GIT_OBJECT_DIRECTORY', (Join-Path $poisonRoot 'objects'), 'Process')
     [Environment]::SetEnvironmentVariable('GIT_ALTERNATE_OBJECT_DIRECTORIES', (Join-Path $poisonRoot 'alternates'), 'Process')
     [Environment]::SetEnvironmentVariable('GIT_NAMESPACE', 'poison', 'Process')
+    [Environment]::SetEnvironmentVariable('GIT_CONFIG_COUNT', '1', 'Process')
+    [Environment]::SetEnvironmentVariable('GIT_CONFIG_KEY_0', 'user.name', 'Process')
+    [Environment]::SetEnvironmentVariable('GIT_CONFIG_VALUE_0', 'Synthetic Config Fixture', 'Process')
+    [Environment]::SetEnvironmentVariable('GIT_AUTHOR_NAME', 'Synthetic Author Fixture', 'Process')
+    [Environment]::SetEnvironmentVariable('GIT_AUTHOR_EMAIL', ('synthetic-author' + [char]64 + 'example.invalid'), 'Process')
+    [Environment]::SetEnvironmentVariable('GIT_COMMITTER_NAME', 'Synthetic Committer Fixture', 'Process')
+    [Environment]::SetEnvironmentVariable('GIT_COMMITTER_EMAIL', ('synthetic-committer' + [char]64 + 'example.invalid'), 'Process')
 
     [IO.Directory]::CreateDirectory($fixtureRoot) | Out-Null
     [IO.Directory]::CreateDirectory((Join-Path $fixtureRoot 'scripts')) | Out-Null
@@ -218,8 +257,52 @@ try {
     $null = Invoke-Git $fixtureRoot @('config', 'user.name', 'Scope Fixture')
     $fixtureEmail = 'scope-fixture' + [char]64 + 'example.invalid'
     $null = Invoke-Git $fixtureRoot @('config', 'user.email', $fixtureEmail)
+    $identityPoisonNames = @(
+        'GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0',
+        'GIT_AUTHOR_NAME','GIT_AUTHOR_EMAIL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL'
+    )
+    $savedIdentityControlEnvironment = @{}
+    foreach ($name in (Get-GitHookEnvironmentNames)) {
+        $savedIdentityControlEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+        if ($identityPoisonNames -cnotcontains $name) {
+            Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+        }
+    }
+    try {
+        $controlConfigName = (@(& git -C $fixtureRoot config user.name 2>&1) -join [Environment]::NewLine).Trim()
+        $controlExit = $LASTEXITCODE
+        if ($controlExit -ne 0 -or $controlConfigName -cne 'Synthetic Config Fixture') {
+            throw 'Unsanitized dynamic GIT_CONFIG_* poison failed its control check.'
+        }
+        $controlAuthor = (@(& git -C $fixtureRoot var GIT_AUTHOR_IDENT 2>&1) -join [Environment]::NewLine).Trim()
+        $controlExit = $LASTEXITCODE
+        if ($controlExit -ne 0 -or $controlAuthor -cnotmatch '^Synthetic Author Fixture <synthetic-author@example[.]invalid> [0-9]+ [+-][0-9]{4}$') {
+            throw 'Unsanitized GIT_AUTHOR_* poison failed its control check.'
+        }
+        $controlCommitter = (@(& git -C $fixtureRoot var GIT_COMMITTER_IDENT 2>&1) -join [Environment]::NewLine).Trim()
+        $controlExit = $LASTEXITCODE
+        if ($controlExit -ne 0 -or $controlCommitter -cnotmatch '^Synthetic Committer Fixture <synthetic-committer@example[.]invalid> [0-9]+ [+-][0-9]{4}$') {
+            throw 'Unsanitized GIT_COMMITTER_* poison failed its control check.'
+        }
+    } finally {
+        Restore-GitHookEnvironment $savedIdentityControlEnvironment
+    }
+    Write-Output 'PASS: unsanitized dynamic GIT_* identity controls were effective'
     $null = Invoke-Git $fixtureRoot @('add', '--all')
     $null = Invoke-Git $fixtureRoot @('commit', '-m', 'test(scope): seed fixture')
+    $fixtureIdentity = @(
+        Invoke-Git $fixtureRoot @('show', '-s', '--format=%an%n%ae%n%cn%n%ce', 'HEAD') |
+            ForEach-Object { $_.Trim() }
+    )
+    $expectedFixtureIdentity = @('Scope Fixture', $fixtureEmail, 'Scope Fixture', $fixtureEmail)
+    if (
+        $fixtureIdentity.Count -ne $expectedFixtureIdentity.Count -or
+        [string]::Join('|', [string[]]$fixtureIdentity) -cne
+            [string]::Join('|', [string[]]$expectedFixtureIdentity)
+    ) {
+        throw 'Synthetic Git fixture commit inherited untrusted identity overrides.'
+    }
+    Write-Output 'PASS: synthetic GIT_* identity overrides did not reach fixture commit'
     $actualFixtureRoot = (Invoke-Git $fixtureRoot @('rev-parse', '--show-toplevel') | Select-Object -First 1).Trim()
     if ([IO.Path]::GetFullPath($actualFixtureRoot) -ne [IO.Path]::GetFullPath($fixtureRoot)) {
         throw 'Synthetic Git fixture resolved outside its temporary repository.'
@@ -264,6 +347,31 @@ try {
         throw 'Quality gate must refuse a TempRoot inside a linked worktree before creating artifacts.'
     }
     $passed++
+    $longTempRoot = Join-Path $scratch ('я' * 80)
+    $taskSuitePath = Join-Path $PSScriptRoot 'task-scope-regressions.ps1'
+    $longTaskOutput = @(& $pwsh -NoLogo -NoProfile -File $taskSuitePath -TempRoot $longTempRoot 2>&1)
+    $longTaskExit = $LASTEXITCODE
+    $longTaskText = $longTaskOutput -join [Environment]::NewLine
+    if (
+        $longTaskExit -eq 0 -or
+        -not $longTaskText.Contains('Task scope regression TempRoot would exceed Git for Windows GIT_DIR limit') -or
+        (Test-Path -LiteralPath $longTempRoot)
+    ) {
+        throw 'Task-scope regressions must refuse a multibyte TempRoot above the Git GIT_DIR byte budget before writes.'
+    }
+
+    $longGateOutput = @(& $pwsh -NoLogo -NoProfile -File $gatePath -TemporaryRoot $longTempRoot 2>&1)
+    $longGateExit = $LASTEXITCODE
+    $longGateText = $longGateOutput -join [Environment]::NewLine
+    if (
+        $longGateExit -eq 0 -or
+        -not $longGateText.Contains('QUALITY-GATE: temporary root would exceed Git for Windows GIT_DIR limit') -or
+        (Test-Path -LiteralPath $longTempRoot)
+    ) {
+        throw 'Quality gate must refuse a multibyte TempRoot above the Git GIT_DIR byte budget before writes.'
+    }
+    $passed++
+    Write-Output 'PASS: task-scope and quality gates refuse long UTF-8 Git paths before writes'
     Write-Output 'PASS: quality gate refuses a TempRoot inside a linked worktree before writes'
 
     $null = Invoke-Git $taskWorktree @('branch', '-m', 'task/T-008-scope-fixture')
@@ -290,7 +398,7 @@ try {
     $passed++
     Write-Output 'PASS: scope rejects a committed out-of-scope path'
 
-    if ($passed -ne 7) { throw ('Expected 7 task-scope cases; found ' + $passed) }
+    if ($passed -ne 8) { throw ('Expected 8 task-scope cases; found ' + $passed) }
     Write-Output ("TASK-SCOPE-REGRESSIONS: {0} passed, 0 failed" -f $passed)
 } finally {
     try {
@@ -300,10 +408,12 @@ try {
                 $sourceStateAfter.Head -cne $sourceStateBefore.Head -or
                 $sourceStateAfter.Status -cne $sourceStateBefore.Status -or
                 $sourceStateAfter.Refs -cne $sourceStateBefore.Refs -or
-                $sourceStateAfter.IndexSha256 -cne $sourceStateBefore.IndexSha256
+                $sourceStateAfter.IndexSha256 -cne $sourceStateBefore.IndexSha256 -or
+                $sourceStateAfter.GitConfigFingerprint -cne $sourceStateBefore.GitConfigFingerprint
             ) {
-                throw 'Synthetic Git fixture changed source repository HEAD, refs, index, or working status.'
+                throw 'Synthetic Git fixture changed source repository HEAD, refs, index, working status, or Git config.'
             }
+            Write-Output 'PASS: task-scope fixtures preserved source Git config and metadata'
         }
     } finally {
         Restore-GitHookEnvironment $script:OriginalGitHookEnvironment

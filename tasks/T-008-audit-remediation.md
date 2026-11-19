@@ -22,7 +22,10 @@
 - `knowledge/УРОКИ.md`
 - `knowledge/records/task-isolation.md`
 - `knowledge/records/git-unicode-paths.md`
+- `knowledge/records/git-windows-path-budget.md`
+- `knowledge/records/git-fixture-config-isolation.md`
 - `docs/development.md`
+- `docs/handoff.md`
 - `docs/local-knowledge.md`
 - `docs/github-workflow.md`
 - `docs/roadmap.md`
@@ -42,9 +45,11 @@
 - Формат веток унифицирован: `task/T-NNN` и `task/T-NNN-<lowercase-hyphenated-slug>`; scope guard принимает только валидный ID и slug, pre-push передаёт задаче первые пять символов ID. Фикстуры проверяют допустимый и недопустимый формат.
 - Урок изоляции задач усилен по повторению; его catalog SHA обновлён и проверяется `kb.ps1 check`.
 - Git-fixture suite и quality gate отказываются от TempRoot внутри любого Git-репозитория (worktree или bare) до записи; quality gate принимает явный TemporaryRoot для проверки границы без изменения TEMP процесса. Fixtures запускаются только из внешнего временного корня; suite сравнивает HEAD, refs, index и status источника до и после.
+- Task-scope fixture snapshot также сверяет SHA-256 common `config` и per-worktree `config.worktree`; обёртка Git очищает и восстанавливает все унаследованные `GIT_*`, включая динамические `GIT_CONFIG_COUNT/KEY_n/VALUE_n`. Регрессия задаёт synthetic Git config через env и доказывает неизменность source config/metadata.
 - Матрица среды вынесена в config/runtime-support.json: проверенная Windows 11 x64 GA 26H2/build 26300 на ge_release; PowerShell 7.6 LTS не ниже 7.6.10; CI — Windows Server 2025 base build 26100. Hosted runner фактически запускал 7.6.9, поэтому workflow каждый run скачивает официальный PowerShell 7.6.10 win-x64 ZIP, проверяет pinned SHA-256, версию и CI baseline, затем запускает gate явным бинарником. quality-gate, scope guard и KB CLI используют общий fail-closed runtime verifier.
 - Hook разрешает публикацию только с текущей ветки `task/T-NNN` либо валидной `task/T-NNN-<lowercase-hyphenated-slug>` в одноимённую remote branch; detached HEAD, tags, deletion, сторонний ref и non-fast-forward отклоняются.
 - Git-пути в scope guard декодируются как UTF-8 независимо от кодовой страницы консоли; регрессия CP866 использует Unicode-путь и действительный linked-worktree Git-контекст.
+- Git for Windows отказал на GIT_DIR размером 221 UTF-8 byte при 196 символах пути. Quality gate теперь использует короткий gate-<GUID> и проверяет бюджет 200 UTF-8 bytes до записи; task-scope suite повторяет fail-fast проверку и тестирует длинный кириллический TemporaryRoot.
 - Pre-push валидирует весь slug (только lowercase ASCII, цифры и одиночные внутренние дефисы), а регрессии проверяют использование действительного контекста `GIT_CEILING_DIRECTORIES` / `GIT_DISCOVERY_ACROSS_FILESYSTEM`.
 - Quality-gate regression проверяет отказ от `TemporaryRoot` внутри linked worktree до создания артефактов.
 - Диапазоны refs передаются одним CSV аргументом и повторно разбираются quality gate. Записи hook ограничены 20 на вызов.
@@ -80,6 +85,7 @@
 | F18 | P3 | Частично | Руководство дополнено новыми error codes/context contract. Полный PowerShell comment-based help и симметричные RU/EN сценарии остаются открыты. |
 | F19 | P3 | Открыто | Согласовать смысл marker project_id и catalog projectId до межполевой проверки. |
 | F20 | P3 | Частично | Карточка фиксирует очередь аудита; единый task index и номера следующих задач синхронизировать после PR #5–#7. |
+| F21 | P2 | Исправлено локально; hosted evidence pending | Полный gate ранее падал на Windows Git из-за UTF-8 byte length длинного внешнего TempRoot. Исправление: короткий gate-root, предварительный лимит GIT_DIR и regression; подтверждать локальным и hosted gate нового head. |
 | V2-02 | P2 | Исправляется в T-008 | Локальные `.work/` и `.manus/` игнорируются Git и исключаются только из syntax/privacy/hygiene обходов; Gitleaks сохраняет полный охват; поведение проверяется path-boundary regression. |
 | V2-19 | P2 | Исправляется в T-008 | Hook и scope guard поддерживают один документированный формат task ID и lowercase slug; поведение закреплено fixture для принятого и отклонённого имени. |
 
@@ -89,11 +95,42 @@
 
 | Замечание | Результат в кандидатной рабочей копии | Доказательство / остаток |
 |---|---|---|
-| Unicode Git path декодируется по кодовой странице консоли | Исправлено локально | До исправления CP866-регрессия падала; после — task-scope suite 7/7 PASS. Нужны новый hosted CI и review нового head. |
-| В тесте неполон список inherited Git hook variables | Исправлено локально | Добавлены `GIT_CEILING_DIRECTORIES` и `GIT_DISCOVERY_ACROSS_FILESYSTEM`; фикстура передаёт оба в child scope verifier в валидном linked-worktree контексте. Suite 7/7 PASS. |
-| Шаблон slug в pre-push пропускал произвольные символы после первого | Исправлено локально | Hook явно запрещает символы вне `[a-z0-9-]`, пустые/краевые/двойные дефисы; качество gate проверяет все ограничения. Поведенческий запуск всего hook с подменённым `pwsh` не выполнялся. |
-| Не было отдельной регрессии TempRoot внутри linked worktree | Исправлено локально | Suite вызывает gate с TempRoot внутри synthetic linked worktree и проверяет отказ до создания каталога. Suite 7/7 PASS. |
+| Unicode Git path декодируется по кодовой странице консоли | Исправлено локально | До исправления CP866-регрессия падала; после — task-scope suite 7/7 PASS. Hosted run #44402452200 SUCCESS на merge-result 66c80a08d0f4f8569efd0c6e944a9b0dc8ba3cc0 для head e8653345c5a62382be02bf8957e459a4def28e6a; независимое review этого head требуется. |
+| В тесте неполон список inherited Git hook variables | Исправлено | Добавлены `GIT_CEILING_DIRECTORIES` и `GIT_DISCOVERY_ACROSS_FILESYSTEM`; фикстура передаёт оба в child scope verifier в валидном linked-worktree контексте. Suite 7/7 PASS; hosted run #44402452200 прошёл на точном новом head. |
+| Шаблон slug в pre-push пропускал произвольные символы после первого | Исправлено, ограничение теста раскрыто | Hook явно запрещает символы вне `[a-z0-9-]`, пустые/краевые/двойные дефисы; quality gate проверяет правила статически. Поведенческий запуск всего hook с подменённым `pwsh` не выполнялся. |
+| Не было отдельной регрессии TempRoot внутри linked worktree | Исправлено | Suite вызывает gate с TempRoot внутри synthetic linked worktree и проверяет отказ до создания каталога. Suite 7/7 PASS; hosted run #44402452200 прошёл на точном новом head. |
 
+### Результат исправления GLM findings
+
+- Кандидатный код и regression source прошли локальный полный gate; pre-push повторил gate на commit и push range.
+- PR head `e8653345c5a62382be02bf8957e459a4def28e6a`; base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`.
+- Hosted run [#44402452200](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44402452200): SUCCESS, `pull_request`; tested merge-result `66c80a08d0f4f8569efd0c6e944a9b0dc8ba3cc0` имеет ровно родителей `[base, head]`.
+- В run: KB 44/44, task-scope 7/7, quality gate PASS. Live PR #8 остаётся OPEN/Draft; native reviews отсутствуют. Независимый review `e8653345…` ещё требуется.
+
+## Связь с предыдущим аудитом Antigravity (снимок на 2026-11-19)
+
+Эти замечания не закрываются фактом существования PR или зелёного CI; ниже фиксируется, что именно подтверждено в текущих T‑014/T‑015 worktree и что осталось проверить.
+
+| Finding | Текущая запись / evidence | Статус |
+|---|---|---|
+| P2-01: Автоисправление Git identity может быть заблокировано до запуска | Кандидат T-015: HEAD dd371f482d9c9502c0b50ba9834ab297c6594639, 9 изменённых путей. Целевые suites: identity 31/31 и task-worktree 25/25; последняя включает настоящий pre-commit E2E автокоррекции identity с локальным synthetic gh. | Открыто до полного gate T-015, commit/push с проверенной identity, hosted CI, независимого review и интеграции. Эти тесты относятся к незакоммиченному кандидату. |
+| P2-02: git commit <pathspec> и git commit -a могут ломаться из-за временного GIT_INDEX_FILE | Кандидат T-015: HEAD dd371f482d9c9502c0b50ba9834ab297c6594639, 9 изменённых путей; task-worktree suite 25/25 включает реальные hook-сценарии commit -a и pathspec и проверяет остаточное состояние index/status. | Открыто до полного gate T-015, commit/push, hosted CI, независимого review и интеграции; прежний CI PR #11 не подтверждает этот незакоммиченный кандидат. |
+| P2-03: неограниченный полный ответ kb.ps1 search/get | Live PR #12 OPEN/Draft: head 1abcd6edcd7c039d13399c6b8433890e99c1c7d5, base f577dc70e58d75ab5fd61d0c2e712c27b590713a; quality-gate run #44234268119 SUCCESS привязан к этому head. Merge ref 54dbe3b4d674d069c871c2791a9b062f89b395ef имеет точные base/head в родителях. | Реализация и регрессии присутствуют; PR не слит, независимого/GitHub-native review нет, closeout не завершён. |
+| Связанные P3 из того же аудита | Проверки/остаток распределены по T‑015 (включая `GIT_EDITOR=false`) и реестру T‑008 F11/F18/F20; статусы этих строк остаются раздельными. | Не считать автоматически закрытыми этим follow-up; дальнейшие действия вести в указанных карточках. |
+
+**Проверка актуальности (2026-11-19, GitHub REST, только чтение):** PR #11 и #12 открыты в Draft; точные head/base и успешные quality-gate checks указаны выше. Оба merge ref имеют соответствующие base/head в родителях; у обоих PR нет GitHub-native reviews. Загрузка логов Actions вернула HTTP 403, поэтому точный checkout/test SHA и подробный вывод suites независимо не проверены. P2-01/P2-02 остаются открытыми до реальных изолированных hook-тестов; P2-03 не слит и не прошёл независимое review.
+
+## Инцидент Git identity и проверка config-fixture изоляции (2026-11-19)
+
+- Push-preflight остановил локальный commit `ff6499005837312f8832b484d8fc51e52c08d628`: author/committer имели fixture identity. Push не выполнялся; `origin/task/T-008` остался на `e8653345c5a62382be02bf8957e459a4def28e6a`. До исправления сохранён backup ref `backup/2026-11-19-T-008-before-identity-repair`; `configure-local.ps1` восстановил штатную локальную identity. Процесс, который первоначально записал synthetic identity в общий config, по имеющимся evidence не установлен.
+- Подтверждённый пробел контроля: source snapshot fixtures включал HEAD, refs, index и status, но не config/config.worktree; `git status` не показывает изменения Git config. Теперь обе конфигурации входят в fingerprint, а все `GIT_*` env переменные очищаются на время изолированных Git-вызовов и восстанавливаются.
+- Исторически до восстановления: полный quality gate был PASS на staged candidate HEAD ff6499005837312f8832b484d8fc51e52c08d628; KB 44/44, task-scope 8/8, privacy/hygiene, actionlint, Gitleaks и diff checks прошли. Этот результат не валидирует текущий кандидат после reset.
+- Recovery 2026-11-19: backup ref backup/2026-11-19-T-008-before-identity-repair сохраняет ff6499005837312f8832b484d8fc51e52c08d628. Проверено, что его родитель совпадает с origin/task/T-008 на e8653345c5a62382be02bf8957e459a4def28e6a; выполнен reset --mixed к этому SHA. Содержимое файлов сохранено, remote не менялся. Текущий T-008 worktree содержит 11 путей (9 modified, 2 untracked); нового commit/push после восстановления нет. Полный gate нужно повторить на текущем кандидате.
+
+## Checkpoint глобального аудита worktree (2026-11-19)
+
+- Read-only task-worktree-audit.ps1 -Mode Audit из T-015 завершился WORKTREE-AUDIT=BLOCKED: T-008 имеет 11 изменённых путей, T-015 — 9; остальные 15 зарегистрированных worktree, включая main, CLEAN.
+- Для T-015 строгая проверка commit/publish блокирует грязный соседний worktree. Безопасная последовательность: заново проверить и завершить T-008, добиться его чистого состояния, затем повторить полный audit и продолжить T-015.
 ## Передача следующему агенту
 
 Начинать с этой карточки и свежего состояния `origin/main`; не считать статус ветки доказательством merge. Перед работой прочитать `AGENTS.md`, `README.md`, `docs/handoff.md`, `rules/RULES.md`, `knowledge/README.md` и применимые модули. Проверить branch, HEAD, remotes, worktree и `git status`. Реализация находится в отдельном worktree `.worktrees/T-008`, branch `task/T-008`.
@@ -129,3 +166,16 @@
 - Hosted CI merge-result: 184666c6328cd68da399746804217cf30b91bb0c; parents совпадают с base и head.
 - Hosted run: 43753125152, SUCCESS; прямой URL указан в разделе «Проверки».
 - Карточка обновлена после указанного code head и сама продвигает PR head; live PR #8 — источник текущего статуса CI/review. PR остаётся OPEN/Draft; independent review и merge SHA: PENDING.
+## Уточнение причины повторного падения quality gate (2026-11-19)
+
+Повторный полный gate воспроизвёл fatal: GIT_DIR too big. Длина проверяемого Windows пути составляла 196 символов .NET и 221 UTF-8 byte; Git upstream сравнивает strlen(GIT_DIR) с PATH_MAX - 40 в setup.c. Поэтому отдельные короткие запуски проходили, а полный gate с длинным внешним TempRoot падал.
+
+Зафиксированное исправление в текущем кандидате:
+
+- временный каталог gate сокращён до gate-<GUID>;
+- до любых записей рассчитывается UTF-8 byte count будущего linked-worktree GIT_DIR, превышение 200 байт даёт явный fail-fast;
+- standalone task-scope suite выполняет ту же проверку;
+- принадлежность TempRoot проверяется раньше byte budget, чтобы каталог внутри bare `.git` отклонялся по границе репозитория с ожидаемой причиной;
+- regression проверяет отказ обоих сценариев на длинном кириллическом TempRoot и отсутствие созданных каталогов.
+
+Подтверждение на текущем локальном candidate: task-scope suite **8/8 PASS**; полный quality gate **PASS** на внешнем TempRoot с расчётным fixture GIT_DIR **194 UTF-8 bytes** при guard 200, включая KB 44/44, privacy/hygiene, actionlint и Gitleaks. Это ещё не hosted evidence: изменения не закоммичены/не опубликованы, новый CI и независимый review ожидают финальную ревизию.
