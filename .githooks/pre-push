@@ -71,7 +71,7 @@ while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
     esac
 done
 if [ -n "$push_ranges" ]; then
-    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name" -CommitRange "$push_ranges"
+    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name" -RemoteUrl "$remote_url" -CommitRange "$push_ranges"
 else
     pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name"
 fi

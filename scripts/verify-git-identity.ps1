@@ -2,6 +2,7 @@
 param(
     [string]$RepositoryRoot = (Join-Path $PSScriptRoot '..'),
     [string]$RemoteName,
+    [string]$RemoteUrl,
     [string[]]$CommitRange = @(),
     [switch]$HookContext
 )
@@ -14,7 +15,23 @@ try {
         Remove-Item -LiteralPath ('Env:' + [string]$name) -ErrorAction SilentlyContinue
     }
     $null = Assert-GitWorktreeIdentity -RepositoryRoot $RepositoryRoot
-    if ($CommitRange.Count -gt 0) { $null = Assert-GitCommitIdentity -RepositoryRoot $RepositoryRoot -CommitRange $CommitRange -RemoteName $RemoteName }
+    if ($CommitRange.Count -gt 0) {
+        $publishedMain = ''
+        if ($HookContext -and $RemoteName) {
+            $config = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'config/github/repository.json') -Raw | ConvertFrom-Json
+            $slug = [string]$config.repository
+            if ($slug -notmatch '^[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$' -or
+                $RemoteName -cne 'origin' -or $RemoteUrl -cne ('https://github.com/' + $slug + '.git')) {
+                throw 'GIT_IDENTITY_PUSH_DESTINATION_MISMATCH'
+            }
+            # Query GitHub directly so a stale tracking ref cannot exempt local commits.
+            $publishedMain = & gh api --hostname github.com "repos/$slug/git/ref/heads/main" --jq '.object.sha' 2>$null
+            if ($LASTEXITCODE -ne 0 -or $publishedMain -isnot [string] -or $publishedMain -cnotmatch '^[0-9a-f]{40}$') {
+                throw 'GIT_IDENTITY_PUBLISHED_MAIN_UNAVAILABLE'
+            }
+        }
+        $null = Assert-GitCommitIdentity -RepositoryRoot $RepositoryRoot -CommitRange $CommitRange -RemoteName $RemoteName -PublishedMainSha $publishedMain
+    }
     Write-Output 'PASS: worktree-scoped Git identity and requested commit metadata match repository policy'
     exit 0
 } catch {
