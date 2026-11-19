@@ -15,20 +15,20 @@
 
 ## Зона файлов
 
-- tasks/T-009-research-second-brain-and-agent-workflow.md
-- knowledge/records/agent-workflow-research.md
-- knowledge/records/agent-workflow-coordination-r1.md
-- knowledge/records/agent-memory-sync-synthesis.md
-- knowledge/records/agent-workflow-source-ip.md
-- knowledge/records/agent-admission-coordination.md
-- knowledge/records/agent-source-review-runtime.md
-- knowledge/records/agent-memory-bridge-execution.md
-- knowledge/records/credential-brokering-research.md
-- knowledge/records/progress-and-eta-research.md
-- knowledge/records/agent-coordination-research.md
-- knowledge/records/local-first.md
-- knowledge/records/kb-system-architecture-research.md
-- knowledge/catalog.json
+- `tasks/T-009-research-second-brain-and-agent-workflow.md`
+- `knowledge/records/agent-workflow-research.md`
+- `knowledge/records/agent-workflow-coordination-r1.md`
+- `knowledge/records/agent-memory-sync-synthesis.md`
+- `knowledge/records/agent-workflow-source-ip.md`
+- `knowledge/records/agent-admission-coordination.md`
+- `knowledge/records/agent-source-review-runtime.md`
+- `knowledge/records/agent-memory-bridge-execution.md`
+- `knowledge/records/credential-brokering-research.md`
+- `knowledge/records/progress-and-eta-research.md`
+- `knowledge/records/agent-coordination-research.md`
+- `knowledge/records/local-first.md`
+- `knowledge/records/kb-system-architecture-research.md`
+- `knowledge/catalog.json`
 
 В этой итерации изменены/созданы только перечисленные scoped paths; Git status проверяется отдельно ниже.
 
