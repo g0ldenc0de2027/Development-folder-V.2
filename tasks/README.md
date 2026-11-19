@@ -3,13 +3,17 @@
 Полный task lifecycle wrapper пока не реализован, поэтому worktree создаётся вручную. До начала каждой задачи обязательна исполняемая проверка всех зарегистрированных worktree:
 
 1. Из чистого linked worktree запустить pwsh -NoLogo -NoProfile -File scripts/task-worktree-audit.ps1 -Mode Audit; продолжать только при exit 0. Затем обновить origin/main и сверить базу.
-2. Создать task/T-NNN от origin/main и отдельный worktree в .worktrees/T-NNN.
+2. Создать `task/T-NNN` или `task/T-NNN-<lowercase-hyphenated-slug>` от origin/main и отдельный worktree в `.worktrees/T-NNN`.
 3. До изменений записать scope файлов и критерии приемки.
-4. Проверять tracked, staged, unstaged и untracked пути против scope.
+4. Hook автоматически сверяет все committed пути от origin/main с разделом `Зона файлов` единственной карточки задачи и требует чистое дерево; авторитетность scope карточки остаётся предметом review владельца.
 5. Не размещать параллельные задачи в одном worktree.
 6. Перед публикацией убедиться, что нет незакоммиченных файлов и SHA соответствует проверенному diff.
 7. Открыть PR. Merge разрешен только при live-enforced `quality-gate` для точных текущих head/base SHA, отсутствии unresolved threads, принятом scope и независимом review на текущем head SHA.
 8. После завершения убрать только свой чистый worktree.
+
+Остальные шаги task lifecycle (создание worktree, проверка текущих SHA и подтверждение владельцем) остаются ручными; автоматическое создание ветки и полноценный координатор задач не реализованы.
+
+Тесты с синтетическими Git-фикстурами используют уникальный TempRoot вне всех worktree и bare-репозиториев. Проверяйте это до создания фикстур; не размещайте Git-фикстуры в проекте или его temp-каталоге.
 
 ## Fail-closed local gates
 

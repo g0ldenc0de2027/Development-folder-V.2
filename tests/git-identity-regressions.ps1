@@ -449,7 +449,7 @@ try {
             foreach ($name in @('GIT_AUTHOR_NAME','GIT_AUTHOR_EMAIL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL')) { Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue }
         }
     }
-    Case 'GIT-ID-015 multi-ref pre-push passes every range as one delimited argument' {
+    Case 'GIT-ID-015 pre-push rejects multiple refs and passes the single task range' {
         $script:hookRemote = Join-Path $scratch 'hook-remote.git'
         $script:hookRepo = Join-Path $scratch 'hook-repo'
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--bare','--quiet',$hookRemote) | Out-Null
@@ -463,13 +463,13 @@ try {
         Invoke-GitFixture -Directory $hookRepo -Arguments @('branch','-M','main') | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('remote','add','origin',$hookRemote) | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('push','--quiet','origin','main') | Out-Null
-        Invoke-GitFixture -Directory $hookRepo -Arguments @('switch','--quiet','-c','task/hook-a','main') | Out-Null
+        Invoke-GitFixture -Directory $hookRepo -Arguments @('switch','--quiet','-c','task/T-901-hook-a','main') | Out-Null
         WriteText (Join-Path $hookRepo 'hook-a.txt') 'first ref'
         Invoke-GitFixture -Directory $hookRepo -Arguments @('add','hook-a.txt') | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('commit','--quiet','-m','test: first hook ref') | Out-Null
         $script:hookShaA = Invoke-GitFixture -Directory $hookRepo -Arguments @('rev-parse','HEAD')
         Invoke-GitFixture -Directory $hookRepo -Arguments @('switch','--quiet','main') | Out-Null
-        Invoke-GitFixture -Directory $hookRepo -Arguments @('switch','--quiet','-c','task/hook-b','main') | Out-Null
+        Invoke-GitFixture -Directory $hookRepo -Arguments @('switch','--quiet','-c','task/T-902-hook-b','main') | Out-Null
         WriteText (Join-Path $hookRepo 'hook-b.txt') 'second ref'
         Invoke-GitFixture -Directory $hookRepo -Arguments @('add','hook-b.txt') | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('commit','--quiet','-m','test: second hook ref') | Out-Null
@@ -486,20 +486,25 @@ try {
             REAL_PRE_PUSH_HOOK=$hookShim.PrePushHookPosix
             REAL_PRE_COMMIT_HOOK=$hookShim.PreCommitHookPosix
         }
-        $result = Invoke-GitProcess -Arguments @('-C',$hookRepo,'push','origin','task/hook-a','task/hook-b') -Environment $envs
-        if ($result.ExitCode -ne 0) { throw ('MULTI_REF_PUSH_HOOK_FAILED:' + $result.StdErr) }
+        $result = Invoke-GitProcess -Arguments @('-C',$hookRepo,'push','origin','task/T-901-hook-a','task/T-902-hook-b') -Environment $envs
+        if ($result.ExitCode -eq 0 -or $result.StdErr -notmatch 'only the current same-named task branch') {
+            throw 'MULTI_REF_PUSH_WAS_NOT_REJECTED_BY_TASK_BRANCH_GUARD'
+        }
+        $remoteRefs = Invoke-GitFixture -Directory $hookRemote -Arguments @('for-each-ref','refs/heads/task/')
+        if ($remoteRefs) { throw 'REJECTED_PUSH_CHANGED_FIXTURE_REMOTE' }
+        Remove-Item -LiteralPath (Join-Path $scratch 'pwsh-calls.bin')
+        $result = Invoke-GitProcess -Arguments @('-C',$hookRepo,'push','origin','task/T-902-hook-b') -Environment $envs
+        if ($result.ExitCode -ne 0) { throw ('SINGLE_TASK_PUSH_FAILED:' + $result.StdErr) }
         $calls = @((Read-PwshShimCalls -LogPath (Join-Path $scratch 'pwsh-calls.bin')).Calls)
-        if ($calls.Count -ne 4) { throw ('MULTI_REF_PWSH_CALL_COUNT_INVALID:' + $calls.Count + ':' + [string]::Join('||',@($calls | ForEach-Object { [string]::Join(' ',$_) }))) }
-        $contextCall = [string]::Join(' ',$calls[0])
-        if ($contextCall -notmatch 'verify-git-hook-context\.ps1') { throw 'PRE_PUSH_HOOK_CONTEXT_CHECK_MISSING' }
-        $auditCall = [string]::Join(' ',$calls[1])
-        if ($auditCall -notmatch 'task-worktree-audit\.ps1.*-Mode Publish') { throw 'PRE_PUSH_WORKTREE_AUDIT_CALL_MISSING' }
-        $verifyRange = Get-PwshParameterValue -Arguments $calls[2] -Name '-CommitRange'
-        $gateRange = Get-PwshParameterValue -Arguments $calls[3] -Name '-PushRange'
-        $actualRanges = @($verifyRange -split '\r?\n' | Sort-Object)
-        $expectedRanges = @($hookShaA,$hookShaB | Sort-Object)
-        if (Compare-Object -ReferenceObject $expectedRanges -DifferenceObject $actualRanges) { throw 'MULTI_REF_COMMIT_RANGES_NOT_PRESERVED' }
-        if ($gateRange -cne $verifyRange) { throw 'MULTI_REF_GATE_RANGE_MISMATCH' }
+        if ($calls.Count -ne 5 -or
+            [string]::Join(' ',$calls[0]) -notlike '*verify-git-hook-context.ps1*' -or
+            [string]::Join(' ',$calls[1]) -notlike '*task-worktree-audit.ps1*-Mode Publish*' -or
+            [string]::Join(' ',$calls[2]) -notlike '*verify-task-scope.ps1*-TaskId T-902*') {
+            throw 'PRE_PUSH_TASK_CHECK_SEQUENCE_INVALID'
+        }
+        $verifyRange = Get-PwshParameterValue -Arguments $calls[3] -Name '-CommitRange'
+        $gateRange = Get-PwshParameterValue -Arguments $calls[4] -Name '-PushRange'
+        if ($verifyRange -cne $hookShaB -or $gateRange -cne $verifyRange) { throw 'TASK_PUSH_RANGE_MISMATCH' }
     }
     Case 'GIT-ID-028 pre-push blocks protected T-013 local and remote refs from another worktree' {
         $protectedRef = 'refs/heads/task/T-013-agent-orchestration-research'
@@ -525,7 +530,7 @@ try {
         if ($localDestination.ExitCode -eq 0) { throw 'T013_LOCAL_REF_REACHED_SYNTHETIC_REMOTE' }
         if ($localDestination.ExitCode -ne 1) { throw ('T013_LOCAL_REMOTE_STATE_UNVERIFIABLE:' + $localDestination.StdErr) }
 
-        $remoteTargetResult = Invoke-GitProcess -Arguments @('-C',$hookRepo,'push','origin',('refs/heads/task/hook-a:' + $protectedRef)) -Environment $hookEnvs
+        $remoteTargetResult = Invoke-GitProcess -Arguments @('-C',$hookRepo,'push','origin',('refs/heads/task/T-901-hook-a:' + $protectedRef)) -Environment $hookEnvs
         $remoteTargetOutput = [string]::Join([Environment]::NewLine,@($remoteTargetResult.StdOut,$remoteTargetResult.StdErr))
         if ($remoteTargetResult.ExitCode -eq 0 -or $remoteTargetOutput -notmatch 'T-013 is a read-only recovery source and cannot be published') {
             throw ('T013_REMOTE_REF_NOT_BLOCKED:' + $remoteTargetOutput)
@@ -590,7 +595,7 @@ try {
         }
     }
     Case 'GIT-ID-016 pre-commit dynamically blocks identity override before creating commit' {
-        Invoke-GitFixture -Directory $hookRepo -Arguments @('switch','--quiet','-c','task/hook-block','main') | Out-Null
+        Invoke-GitFixture -Directory $hookRepo -Arguments @('switch','--quiet','-c','task/T-902-hook-block','main') | Out-Null
         WriteText (Join-Path $hookRepo 'blocked.txt') 'blocked commit'
         Invoke-GitFixture -Directory $hookRepo -Arguments @('add','blocked.txt') | Out-Null
         $before = Invoke-GitFixture -Directory $hookRepo -Arguments @('rev-parse','HEAD')

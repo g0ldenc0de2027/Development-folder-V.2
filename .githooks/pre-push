@@ -38,6 +38,27 @@ if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/task-worktree-audit.ps1" 
     echo "pre-push: task worktree audit blocked publish" >&2
     exit 1
 fi
+current_ref=$(git symbolic-ref --quiet HEAD) || {
+    echo "pre-push: detached HEAD is not allowed" >&2
+    exit 1
+}
+case "$current_ref" in
+    refs/heads/task/T-[0-9][0-9][0-9]) ;;
+    refs/heads/task/T-[0-9][0-9][0-9]-*)
+        task_slug=${current_ref#refs/heads/task/T-[0-9][0-9][0-9]-}
+        case "$task_slug" in
+            ''|-*|*-|*--*|*[!a-z0-9-]*)
+                echo "pre-push: task branch slug must use lowercase letters, digits and single hyphens" >&2
+                exit 1
+                ;;
+            *) ;;
+        esac
+        ;;
+    *) echo "pre-push: only task/T-NNN or task/T-NNN-lowercase-slug branches may be pushed" >&2; exit 1 ;;
+esac
+
+task_branch=${current_ref#refs/heads/task/}
+task_id=${task_branch%${task_branch#?????}}
 push_ranges=
 append_range() {
     if [ -n "$push_ranges" ]; then
@@ -55,9 +76,17 @@ while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
             exit 1
             ;;
     esac
+    if [ "$local_ref" != "$current_ref" ] || [ "$remote_ref" != "$local_ref" ]; then
+        echo "pre-push: only the current same-named task branch may be updated" >&2
+        exit 1
+    fi
     case "$local_sha" in
         *[!0123456789abcdefABCDEF]*|'') echo "pre-push: invalid local object ID" >&2; exit 1 ;;
     esac
+    if [ "$local_ref" != "$current_ref" ] || [ "$remote_ref" != "$local_ref" ]; then
+        echo "pre-push: only the current same-named task branch may be updated" >&2
+        exit 1
+    fi
     case "$local_sha" in
         *[!0]*) ;;
         *) echo "pre-push: ref deletion or missing local object is forbidden" >&2; exit 1 ;;
@@ -66,10 +95,19 @@ while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
         *[!0123456789abcdefABCDEF]*|'') echo "pre-push: invalid remote object ID" >&2; exit 1 ;;
     esac
     case "$remote_sha" in
-        *[!0]*) append_range "$remote_sha..$local_sha" ;;
+        *[!0]*)
+            if ! git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+                echo "pre-push: non-fast-forward update or missing remote object is forbidden" >&2
+                exit 1
+            fi
+            append_range "$remote_sha..$local_sha"
+            ;;
         *) append_range "$local_sha" ;;
     esac
 done
+if [ -n "$push_ranges" ]; then
+    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-task-scope.ps1" -TaskId "$task_id" -BaseRef origin/main
+fi
 if [ -n "$push_ranges" ]; then
     pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name" -RemoteUrl "$remote_url" -CommitRange "$push_ranges"
 else

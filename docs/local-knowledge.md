@@ -2,7 +2,7 @@
 
 ## Быстрый старт
 
-Из корня task worktree, PowerShell 7.4+:
+Из корня task worktree на проверенной Windows 11 x64 GA 26H2/build 26300, ветка `ge_release`, с PowerShell 7.6 LTS не ниже 7.6.10:
 
 ~~~powershell
 pwsh -NoProfile -File scripts/kb.ps1 check
@@ -17,7 +17,11 @@ CLI возвращает JSON в stdout, короткий код ошибки в
 Check проверяет catalog, hashes и локальную поставку RULES, а не истинность записей.
 Search — буквальный case-insensitive поиск, без русской морфологии/векторов.
 Get/search исключают withdrawn и superseded по умолчанию; явный -IncludeWithdrawn
-предназначен для исторического чтения, а не текущей рекомендации.
+предназначен для исторического чтения, а не текущей рекомендации. Search сообщает
+общее число совпадений, число выданных записей и `truncated`; результат сверх `-Limit`
+не следует принимать за полный список.
+Context возвращает весь выбранный набор записей или завершается с `KB_CONTEXT_RECORD_LIMIT`;
+частичный контекст не выдаётся как полный. По умолчанию `-Limit` равен 100, максимум — 1000.
 Context включает index, все закреплённые модули, карту охвата и выбранные записи; при превышении -MaxBytes отказ
 KB_CONTEXT_LIMIT. По умолчанию бюджет 128 KiB, диапазон 512–262144 bytes. Он не означает автоматическую загрузку в конкретный AI client.
 
@@ -79,7 +83,10 @@ Hash pin не удостоверяет publisher, не сообщает о но�
 ## Ограничения и ошибки
 
 KB_CONTENT_CHANGED — bytes расходятся с catalog; выясните изменение, не повышайте trust.
+KB_CONTEXT_LIMIT — указанный byte budget недостаточен; полный контекст не выдан.
+KB_CONTEXT_RECORD_LIMIT — набор больше `-Limit`; уменьшите выборку или явно повысьте лимит.
 KB_POLICY_CHANGED — файл пакета правил расходится с lock; восстановите согласованную поставку.
+KB_POLICY_INCOMPLETE — каноническая поставка RULES 0.2.0 не содержит всех девяти закреплённых файлов.
 KB_POLICY_LINK — локальная ссылка ведёт к файлу вне закреплённого пакета.
 KB_POLICY_LOCK — неподдерживаемая схема, повтор пути или некорректный lock.
 KB_JSON_DUPLICATE_KEY — неоднозначный JSON, исправьте повтор ключа.
@@ -92,7 +99,7 @@ Backup содержит канон и нужный inbox. Restore не акти�
 
 ## English quick reference
 
-Run the commands above from the worktree root using PowerShell 7.4 or newer.
+Run the commands above from the worktree root on the verified Windows 11 x64 GA 26H2 (build 26300, `ge_release` branch), using PowerShell 7.6 LTS version 7.6.10 or newer. GitHub Actions separately validates on the Windows Server 2025 x64 `windows-2025` runner (build 26100).
 The CLI emits JSON; failures use stderr and exit code 1. Search is literal.
 Use -ProjectRoot to select any local/shared collection directory explicitly.
 Set ETALON_KNOWLEDGE_BASE or an ignored .etalon.json knowledge_base for discovery.

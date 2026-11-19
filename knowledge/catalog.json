@@ -47,10 +47,51 @@
       "title": "Урок: отделять задачи до начала изменения",
       "status": "draft",
       "path": "knowledge/records/task-isolation.md",
-      "contentSha256": "b8addadc6d9b29295c2d56927a2efbaef63e2134700b8ba3dc0ed80c854eef9b",
+      "contentSha256": "a4f0dc205edb22c41a321dd38b5de08365e1be653ddc7e24393cf13498fe8348",
       "sources": [
         "owner:2026-11-15",
         "author:Codex:gpt-6.1-sol"
+      ],
+      "review": null
+    },
+    {
+      "id": "git-unicode-paths",
+      "kind": "lesson",
+      "title": "Урок: не зависеть от кодовой страницы консоли при чтении Git-путей",
+      "status": "draft",
+      "path": "knowledge/records/git-unicode-paths.md",
+      "contentSha256": "ede377fd4f9b67ac8840931e2ae3529a88e81545f4c7fd7fca025b361545e808",
+      "sources": [
+        "author:Codex:GPT-6",
+        "test:tests/task-scope-regressions.ps1:2026-11-19"
+      ],
+      "review": null
+    },
+    {
+      "id": "git-windows-path-budget",
+      "kind": "lesson",
+      "title": "Урок: учитывать UTF-8 byte limit для GIT_DIR в Git for Windows",
+      "status": "draft",
+      "path": "knowledge/records/git-windows-path-budget.md",
+      "contentSha256": "0f8cc3427275a008cd3127f08037501b58a402a30b612336a9e0f81a0c0c0060",
+      "sources": [
+        "author:Codex:GPT-6",
+        "test:tests/task-scope-regressions.ps1:2026-11-19",
+        "upstream:git/git@7814e8a05a59c0cf5fb186661d1551c75d1299b5:setup.c"
+      ],
+      "review": null
+    },
+    {
+      "id": "git-fixture-config-isolation",
+      "kind": "lesson",
+      "title": "Урок: контролировать Git config после синтетических fixtures",
+      "status": "draft",
+      "path": "knowledge/records/git-fixture-config-isolation.md",
+      "contentSha256": "2001066eb9374c61dc9b4a7c65cb05059c09409de52368a873876b229bf395ad",
+      "sources": [
+        "author:Codex:GPT-6",
+        "observed:2026-11-19",
+        "test:tests/task-scope-regressions.ps1"
       ],
       "review": null
     },

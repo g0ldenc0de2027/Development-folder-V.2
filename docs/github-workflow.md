@@ -15,13 +15,15 @@ main — защищенная интеграционная ветка. Изме�
 
 ## Рабочий цикл
 1. Из чистого linked worktree запустите pwsh -NoLogo -NoProfile -File scripts/task-worktree-audit.ps1 -Mode Audit. Продолжайте только при exit 0; проверка охватывает все зарегистрированные worktree и игнорируемые .vs.
-2. Обновите origin/main и создайте отдельную ветку task/T-NNN от подтвержденного origin/main. Для параллельных задач используйте отдельные git worktrees.
+2. Обновите origin/main и создайте отдельную ветку `task/T-NNN` либо `task/T-NNN-<lowercase-hyphenated-slug>` от подтвержденного origin/main. Для параллельных задач используйте отдельные git worktrees.
 3. До изменений зафиксируйте scope файлов и критерии задачи в карточке. Не расширяйте scope молча.
 4. Меняйте только свою зону. До commit просмотрите весь staged и unstaged diff, статус, секреты и тесты.
-5. Создайте commit в task branch. Обычный push только в одноименную task-ветку; force/delete запрещены. Локальный pre-push hook проверяет origin URL, текущие refs и точную входящую историю по SHA, полученным от Git; удаление refs отклоняется.
+5. Создайте commit в task branch. Локальный pre-push разрешает только текущую ветку `task/T-NNN` или `task/T-NNN-<lowercase-hyphenated-slug>` в одноимённую remote branch; scope guard связывает её с карточкой по ID. Tags, deletion и non-fast-forward блокируются. Hook передаёт входящие диапазоны одним аргументом, проверяет scope по карточке задачи и требует чистое дерево. Проверка scope предотвращает случайный смешанный diff; владелец подтверждает сам scope при review. Рабочая процедура требует отправлять только в проверенный `origin`.
 6. Откройте PR в main. Зафиксируйте head SHA и base SHA, отдельно — merge-result SHA, на котором прошел CI. Независимое review привязывается к текущему head SHA. Изменение head или base требует нового CI/review.
 7. Слияние выполняется только если quality-gate обязателен в live ruleset и зелен на текущем merge-result для неизменившихся head/base SHA, unresolved threads отсутствуют, scope принят и нужное review завершено.
 8. После merge удалите локальный worktree штатной командой Git только когда он чист и больше не нужен; сохраните короткий handoff.
+
+Scope guard не создаёт изоляцию ОС и не аутентифицирует владельца карточки. Человек проверяет scope и trust-zone изменения при review. Настроенный hook можно обойти владельцу или другому процессу с теми же правами; локальная политика не является server enforcement.
 
 pre-commit и pre-push запускают тот же глобальный audit. Изменения в соседних деревьях блокируют commit/publish; автоматического удаления, reset, clean и stash нет. После interruption сначала восстановите handoff и проверьте worktree. Bare admin repository не используйте для git status.
 

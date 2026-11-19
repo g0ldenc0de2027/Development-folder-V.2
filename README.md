@@ -2,7 +2,7 @@
 
 **Назначение:** безопасный, воспроизводимый эталон для создания отдельных проектов на современных языках и стеках.
 **Версия продукта:** 2.0.0-development
-**Статус:** GitHub foundation активен: hosted CI прошёл на bootstrap SHA, а `quality-gate` обязателен в live ruleset. Прикладная реализация остается закрыта до READY; P0 scope/worktree guard пока ручной.
+**Статус:** GitHub foundation активен: hosted CI прошёл на bootstrap SHA, а `quality-gate` обязателен в live ruleset. Прикладная реализация остаётся закрыта до READY. Scope/worktree guard подготовлен в `task/T-008`; до merge в main действует предыдущий ручной процесс.
 
 ## Принципы
 
@@ -15,7 +15,7 @@
 
 ## Быстрый старт
 
-Требуется Windows 10/11, PowerShell 7.4+, Git и GitHub CLI. Проверьте точные требования в docs/development.md. Локальная проверка:
+Для разработки эталона требуется проверенная Windows 11 x64 GA 26H2 (build 26300) на ветке `ge_release`, указанная в allowlist `config/runtime-support.json`; PowerShell 7.6 LTS не ниже 7.6.10, Git и GitHub CLI. CI отдельно работает на `windows-2025` (Windows Server 2025 x64, build 26100). Windows 10, Windows 11 25H2 и другие неподтверждённые выпуски, ARM64, Windows Server как хост разработчика, Windows PowerShell 5.1, Linux и macOS не поддерживаются. Подробности и источники: docs/development.md. Локальная проверка:
 
     pwsh -NoProfile -File scripts/quality-gate.ps1
 
@@ -29,3 +29,5 @@
 
 Первый файловый срез БЗ имеет отдельный допуск spec/local-knowledge.md.
 Он не включает автоматический рой, общий publisher или прикладные профили стеков.
+
+Текущие исправления по аудиту и точка передачи следующему агенту: [tasks/T-008-audit-remediation.md](tasks/T-008-audit-remediation.md).

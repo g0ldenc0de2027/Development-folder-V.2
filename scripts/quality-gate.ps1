@@ -3,14 +3,84 @@ param(
     [string]$BaseRef,
     [string]$RemoteName,
     [string]$RemoteUrl,
-    [string[]]$PushRange
+    [string[]]$PushRange,
+    [string]$TemporaryRoot = [System.IO.Path]::GetTempPath()
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('development-folder-v2-gate-' + [guid]::NewGuid().ToString('N'))
+$temporaryBaseRoot = [System.IO.Path]::GetFullPath($TemporaryRoot)
+$temporaryRoot = Join-Path $temporaryBaseRoot ('gate-' + [guid]::NewGuid().ToString('N'))
+$taskScopeGitDirByteBudget = 200
+
+function Assert-TemporaryRootOutsideRepository {
+    $separators = [char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    $repoFull = [IO.Path]::GetFullPath($repoRoot).TrimEnd($separators)
+    $candidate = $temporaryBaseRoot.TrimEnd($separators)
+    $repoPrefix = $repoFull + [IO.Path]::DirectorySeparatorChar
+    if ([string]::Equals($candidate, $repoFull, [StringComparison]::OrdinalIgnoreCase) -or $candidate.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'QUALITY-GATE: temporary root must be outside the source repository and every Git repository'
+    }
+
+    $probe = $candidate
+    while (-not [IO.Directory]::Exists($probe)) {
+        $parent = Split-Path -Parent $probe
+        if ([string]::IsNullOrWhiteSpace($parent) -or [string]::Equals($parent, $probe, [StringComparison]::OrdinalIgnoreCase)) { break }
+        $probe = $parent
+    }
+    if (-not [IO.Directory]::Exists($probe)) { throw 'QUALITY-GATE: temporary root has no existing parent directory' }
+
+    $gitEnvironmentNames = @(
+        'GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY',
+        'GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE','GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM'
+        Get-ChildItem Env: | Where-Object { $_.Name -match '^GIT_' } | ForEach-Object Name
+    ) | Sort-Object -Unique
+    $savedEnvironment = @{}
+    foreach ($name in $gitEnvironmentNames) {
+        $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+        Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+    }
+    try {
+        while ($probe) {
+            $gitMarker = Join-Path $probe '.git'
+            $bareRepositoryMarkers = (
+                (Test-Path -LiteralPath (Join-Path $probe 'HEAD') -PathType Leaf) -and
+                (Test-Path -LiteralPath (Join-Path $probe 'config') -PathType Leaf) -and
+                (Test-Path -LiteralPath (Join-Path $probe 'objects') -PathType Container) -and
+                (Test-Path -LiteralPath (Join-Path $probe 'refs') -PathType Container)
+            )
+            if ((Test-Path -LiteralPath $gitMarker) -or $bareRepositoryMarkers) {
+                throw 'QUALITY-GATE: temporary root must be outside the source repository and every Git repository'
+            }
+            $gitRoot = @(& git -C $probe rev-parse --show-toplevel 2>$null)
+            $gitRootExit = $LASTEXITCODE
+            $bareState = @(& git -C $probe rev-parse --is-bare-repository 2>$null)
+            $bareStateExit = $LASTEXITCODE
+            if ($gitRootExit -eq 0 -or ($bareStateExit -eq 0 -and ($bareState -join '').Trim() -eq 'true')) {
+                throw 'QUALITY-GATE: temporary root must be outside the source repository and every Git repository'
+            }
+            $parent = Split-Path -Parent $probe
+            if ([string]::IsNullOrWhiteSpace($parent) -or [string]::Equals($parent, $probe, [StringComparison]::OrdinalIgnoreCase)) { break }
+            $probe = $parent
+        }
+        $gitDirProbe = [IO.Path]::GetFullPath((Join-Path $temporaryRoot ('ts-' + ('0' * 32) + '\repo\.git\worktrees\wt')))
+        $gitDirUtf8Bytes = [Text.Encoding]::UTF8.GetByteCount($gitDirProbe)
+        if ($gitDirUtf8Bytes -gt $taskScopeGitDirByteBudget) {
+            throw ("QUALITY-GATE: temporary root would exceed Git for Windows GIT_DIR limit ({0} UTF-8 bytes); choose a shorter TemporaryRoot." -f $taskScopeGitDirByteBudget)
+        }
+    } finally {
+        foreach ($name in $gitEnvironmentNames) {
+            $savedValue = [string]$savedEnvironment[$name]
+            if ([string]::IsNullOrEmpty($savedValue)) {
+                Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+            } else {
+                [Environment]::SetEnvironmentVariable($name, $savedValue, 'Process')
+            }
+        }
+    }
+}
 
 function Invoke-NativeChecked {
     param(
@@ -50,9 +120,8 @@ function Get-PinnedExecutable {
 }
 
 try {
-    if ($PSVersionTable.PSVersion -lt [version]'7.4') {
-        throw 'PowerShell 7.4 or newer is required'
-    }
+    Assert-TemporaryRootOutsideRepository
+    & (Join-Path $PSScriptRoot 'verify-runtime.ps1')
     $null = Get-Command git -ErrorAction Stop
     New-Item -ItemType Directory -Path $temporaryRoot -Force | Out-Null
     Set-Location -LiteralPath $repoRoot
@@ -75,7 +144,7 @@ try {
         Get-ChildItem -LiteralPath $repoRoot -File -Recurse -Force -Filter '*.ps1' |
             Where-Object {
                 $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)
-                $relativePath -notmatch '(^|[\\/])(\.git|\.worktrees|temp)([\\/]|$)'
+                $relativePath -notmatch '(^|[\\/])(\.git|\.worktrees|\.work|\.manus|temp)([\\/]|$)'
             }
     )
     if ($scriptFiles.Count -eq 0) {
@@ -115,6 +184,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Knowledge integrity check failed' }
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/kb-regressions.ps1') -TempRoot $temporaryRoot
     if ($LASTEXITCODE -ne 0) { throw 'Knowledge regressions failed' }
+
+    Write-Output 'QUALITY-GATE: running task-scope regression fixtures'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/task-scope-regressions.ps1') -TempRoot $temporaryRoot
+    if ($LASTEXITCODE -ne 0) { throw 'Task-scope regressions failed' }
 
     $manifest = Get-Content -LiteralPath (Join-Path $repoRoot 'config/security/tools.json') -Raw | ConvertFrom-Json
     $actionlint = Get-PinnedExecutable -Tool $manifest.tools.actionlint -Name 'actionlint'
