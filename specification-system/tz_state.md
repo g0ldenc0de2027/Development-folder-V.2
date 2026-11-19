@@ -3,7 +3,7 @@
 Canonical source: spec/ТЗ.md
 Version: 0.1.0-draft
 Status: DRAFT / NOT READY
-Implementation admission: blocked for product features
+Implementation admission: only bounded slices T-004 and T-014; all other product features remain blocked
 Infrastructure bootstrap: allowed and underway
 Open decisions: supported operating systems; stack-profile inventory; portfolio knowledge workflow and agent identity/ACL; approval of the proposed project progress/ETA draft; release and backup policy.
 
@@ -22,3 +22,7 @@ Open decisions: supported operating systems; stack-profile inventory; portfolio 
 ## Срез T-005 — проектирование прогресса и ETA
 
 Черновик требований: spec/progress-requirements.md; DRAFT / NOT READY, реализация не допущена. Базовая линия и фактические данные для оценки всего V2 не утверждены. Очередь и дальнейшая интеграция — tasks/T-005-progress-requirements.md.
+
+## T-014 admission (2026-11-17)
+
+Owner-directed local KB improvement. READY for LKB-009 bounded JSON stdout responses from search/get and the corrective completion of existing LKB-001 exact RULES-package membership enforcement. Overall project remains DRAFT / NOT READY.

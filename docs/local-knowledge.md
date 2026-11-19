@@ -25,6 +25,14 @@ Context возвращает весь выбранный набор записе
 Context включает index, все закреплённые модули, карту охвата и выбранные записи; при превышении -MaxBytes отказ
 KB_CONTEXT_LIMIT. По умолчанию бюджет 128 KiB, диапазон 512–262144 bytes. Он не означает автоматическую загрузку в конкретный AI client.
 
+Полные ответы `search` и `get` ограничены отдельно через `-MaxOutputBytes`: по умолчанию
+131072 байта, допустимый диапазон 512–2097152. Считаются UTF-8 байты точного JSON
+вместе с завершающим LF. Если ответ больше бюджета, CLI возвращает `KB_OUTPUT_LIMIT`
+и exit 1, пишет пустой stdout и не обрезает JSON. Лимит относится только к выдаче:
+он не ограничивает объём чтения и внутреннюю память до сериализации.
+Значение команды принимается PowerShell без учёта регистра; `SEARCH` и `GET` подчиняются
+тому же лимиту.
+
 ## Произвольное местоположение общей БЗ
 
 Путь задаётся через ETALON_KNOWLEDGE_BASE, иначе knowledge_base локального .etalon.json.
@@ -111,11 +119,15 @@ Capture создаёт уникальный draft envelope в ignored data/knowl
 Редактировать RULES следует в общей БЗ. V2 хранит точную копию; policy-lock фиксирует
 версию, sourceCollectionId и SHA-256 каждого файла. После обновления канона главный ИИ проверяет diff,
 переносит полную копию и обновляет lock одной задачей, затем запускает check.
-Пакет редакции 0.5.0: index rules/RULES.md, семь rules/modules/*.md и rules/COVERAGE.md.
-У каждой нормы один модуль; индекс задаёт общие ограничения и маршрут чтения.
-Policy-lock имеет schemaVersion=2 и files с path/sha256, максимум 12 файлов.
-Неизвестная схема, отсутствующий файл, изменённые байты, повтор пути или локальная
-ссылка за пределы поставки приводят к отказу. Старый lock schema 1 не конвертируется
+Пакет правил содержит ровно девять обязательных путей: `rules/RULES.md`, семь
+канонических файлов `rules/modules/01-knowledge-and-calibration.md`,
+`02-spec-and-quality.md`, `03-agents-and-workspace.md`, `04-git-and-release.md`,
+`05-security.md`, `06-ui-i18n-help.md`, `07-research-and-decisions.md` и
+`rules/COVERAGE.md`. У каждой нормы один модуль; индекс задаёт общие ограничения и маршрут чтения.
+Policy-lock schemaVersion=2 фиксирует path/sha256 каждого файла. CLI требует точное
+множество этих девяти путей и возвращает `KB_POLICY_LOCK` при пропуске, подмене, лишнем
+или повторном пути; локальная ссылка на незакреплённый файл возвращает `KB_POLICY_LINK`.
+Изменённые байты возвращают `KB_POLICY_CHANGED`. Старый lock schema 1 не конвертируется
 молча: сохраните снимок, перенесите полную согласованную поставку и проверьте check/context.
 Каталог знаний сохраняет schemaVersion=1. Карта COVERAGE различает норму и реальную автоматику.
 
@@ -131,12 +143,15 @@ KB_POLICY_CHANGED — файл пакета правил расходится с
 KB_POLICY_INCOMPLETE — каноническая поставка RULES 0.2.0 не содержит всех девяти закреплённых файлов.
 KB_POLICY_LINK — локальная ссылка ведёт к файлу вне закреплённого пакета.
 KB_POLICY_LOCK — неподдерживаемая схема, повтор пути или некорректный lock.
+KB_HARDLINK — файл записи имеет несколько hard links; используйте отдельную обычную копию внутри базы.
+KB_LINK_ENUMERATION_UNAVAILABLE — сетевой/неизвестный том или неподдерживаемая ФС; hard-link enumeration недоступно, завершилось ошибкой или вернуло неполные данные; чтение завершается отказом.
 KB_JSON_DUPLICATE_KEY — неоднозначный JSON, исправьте повтор ключа.
 KB_SHARED_UNAVAILABLE — проверьте явно выбранный путь; fallback не выполняется.
 KB_POSSIBLE_SECRET — не сохраняйте секрет в знания; scanner не гарантирует очистку.
 
 Нет внешних запросов моделей/телеметрии. Общая БЗ не публикуется автоматически в GitHub.
 Reparse checks не являются полной OS isolation и не устраняют все filesystem races.
+Корень проекта и все существующие компоненты его пути от корня тома проверяются на reparse point до определения типа volume; родительская junction блокируется. Для `knowledge/catalog.json`, записей `knowledge/records/*` и `.etalon.json` на NTFS/ReFS/UDF каталог до 24 записей сначала проверяется через `fsutil hardlink list`; при большем числе записей сначала используется `GetFileInformationByHandle` по открытому handle. Если выбранный способ не может получить полный достоверный результат, CLI однократно пробует альтернативный способ; native-проверка принимает только link count 1, а `fsutil` — ровно один путь, совпадающий с проверяемым. Несколько links дают `KB_HARDLINK`; если оба способа недоступны или неоднозначны — `KB_LINK_ENUMERATION_UNAVAILABLE`. FAT/FAT32/exFAT не поддерживают hard links и допускаются без перечисления. Сетевые и неизвестные типы/форматы томов отклоняются. Правила проекта защищены своим SHA-256 lock. Fallback может быть медленнее на больших каталогах; между проверкой пути и чтением остаётся ограниченный TOCTOU-риск, это не OS isolation.
 Backup содержит канон и нужный inbox. Restore не активирует старые sessions/права.
 
 ## English quick reference
@@ -156,10 +171,19 @@ Do not store credentials or personal data. Back up ignored inbox separately.
 ### English policy-package update and recovery
 
 The editable rules canon is in the shared collection; projects keep a byte-identical snapshot.
-Policy-lock schema 2 pins the index, seven thematic modules and the coverage map.
-Update the entire approved package in one task; schema 1 is refused rather than silently migrated.
-Check validates every pinned file and local Markdown link; context returns all pinned texts.
+The package has exactly nine required paths: `rules/RULES.md`, the seven canonical files
+under `rules/modules/` (`01-knowledge-and-calibration.md` through
+`07-research-and-decisions.md`), and `rules/COVERAGE.md`. Policy-lock schema 2 pins every
+path and SHA-256. `check` rejects missing, substituted, extra, or duplicate lock paths as
+`KB_POLICY_LOCK`; an unpinned local Markdown link is `KB_POLICY_LINK`, and changed bytes
+are `KB_POLICY_CHANGED`. Update the entire approved package in one task; schema 1 is refused
+rather than silently migrated. Check validates every pinned file and local Markdown link; context returns all pinned texts.
 The default context budget is 128 KiB (512–262144 bytes); an insufficient budget fails explicitly.
+Full `search` and `get` JSON output uses a separate `-MaxOutputBytes` budget (131072 default,
+512–2097152 range), counted as UTF-8 bytes including the final LF. Oversized output returns
+`KB_OUTPUT_LIMIT`, exit 1, and empty stdout without truncation; processing memory is not bounded.
+PowerShell accepts command values case-insensitively, so uppercase `SEARCH` and `GET` use
+the same output limit.
 KB_POLICY_CHANGED means bytes differ; KB_POLICY_LINK means an unpinned local link;
 KB_POLICY_LOCK means a malformed/unsupported package. Restore a reviewed package, do not bypass checks.
 Missing or null knowledge_base is not configured; a non-string location is invalid.
