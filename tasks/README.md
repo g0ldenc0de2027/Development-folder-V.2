@@ -1,8 +1,8 @@
 # Task workflow
 
-Текущий этап еще не содержит task lifecycle automation. До ее готовности используйте Git worktree вручную и не совмещайте задачи:
+Полный task lifecycle wrapper пока не реализован, поэтому worktree создаётся вручную. До начала каждой задачи обязательна исполняемая проверка всех зарегистрированных worktree:
 
-1. Обновить origin/main и подтвердить, что локальный main равен origin/main.
+1. Из чистого linked worktree запустить pwsh -NoLogo -NoProfile -File scripts/task-worktree-audit.ps1 -Mode Audit; продолжать только при exit 0. Затем обновить origin/main и сверить базу.
 2. Создать task/T-NNN от origin/main и отдельный worktree в .worktrees/T-NNN.
 3. До изменений записать scope файлов и критерии приемки.
 4. Проверять tracked, staged, unstaged и untracked пути против scope.
@@ -11,4 +11,10 @@
 7. Открыть PR. Merge разрешен только при live-enforced `quality-gate` для точных текущих head/base SHA, отсутствии unresolved threads, принятом scope и независимом review на текущем head SHA.
 8. После завершения убрать только свой чистый worktree.
 
-Автоматизация этих шагов предусмотрена roadmap.
+## Fail-closed local gates
+
+pre-commit повторно проверяет все зарегистрированные worktree и допускает только staged изменения текущей задачи. pre-push требует чистое текущее дерево и повторяет глобальную проверку. Любой dirty соседний worktree, untracked путь, missing/prunable worktree, task ID mismatch или ignored .vs блокирует операцию. Автоматических reset, clean, stash и удаления нет.
+
+T-013 был сохранён как read-only source snapshot; его raw-байты архивированы отдельно, а исходная ветка и commits не переписаны. Новую работу в T-013 не вести.
+
+После прерывания не открывать новую задачу поверх оставленных изменений. Сохранить задачу, ветку, HEAD, исходный status, пути, проверки и следующий шаг в handoff; затем возобновить прежний worktree или оформить отдельную recovery-задачу. Локальные hooks можно обойти или изменить; они не являются абсолютной границей безопасности.

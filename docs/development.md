@@ -10,9 +10,11 @@
 Linux/macOS и Windows PowerShell 5.1 пока не поддерживаются. Не меняйте target будущего проекта только ради локально установленных инструментов.
 
 ## Проверки
-Настройте локальные безопасные Git defaults и pre-push quality gate один раз после clone:
+После clone настройте репозиторий и каждую новую linked worktree отдельной командой. Команда сверяет origin и текущий GitHub account, включает безопасную worktree-конфигурацию и записывает identity только в выбранную worktree:
 
     pwsh -NoProfile -File scripts/github/configure-local.ps1
+
+Повторите её из каждой новой `.worktrees/T-NNN` до первого commit. Не запускайте её из bare admin root: эта папка намеренно не является рабочим деревом, поэтому обычный `git status` там неприменим. Список linked worktrees получите через `git worktree list`; status проверяйте из каждой рабочей папки. Если диагностика сообщает о неоднозначном `core.worktree`, конфликтующем `core.bare` или невозможности `git status` внутри linked worktree, остановитесь: не редактируйте общий `.git/config` вручную.
 
 Локальный gate:
 

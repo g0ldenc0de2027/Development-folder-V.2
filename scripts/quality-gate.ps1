@@ -56,6 +56,8 @@ try {
     $null = Get-Command git -ErrorAction Stop
     New-Item -ItemType Directory -Path $temporaryRoot -Force | Out-Null
     Set-Location -LiteralPath $repoRoot
+    Import-Module (Join-Path $PSScriptRoot 'lib/GitIdentity.psm1') -Force
+    $null = Assert-GitWorktreeEnvironment -RepositoryRoot $repoRoot -HookContext
 
     Write-Output 'QUALITY-GATE: validating configuration and PowerShell syntax'
     $jsonFiles = @(
@@ -97,6 +99,10 @@ try {
     if ($testExit -ne 0) {
         throw "quality-gate-regressions.ps1 failed with exit code $testExit"
     }
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/git-identity-regressions.ps1') -TempRoot $temporaryRoot
+    if ($LASTEXITCODE -ne 0) { throw 'Git identity regressions failed' }
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/task-worktree-regressions.ps1') -TempRoot $temporaryRoot
+    if ($LASTEXITCODE -ne 0) { throw 'Task worktree regressions failed' }
 
     if ($env:GITHUB_EVENT_NAME -ne 'pull_request') {
         Write-Output 'NOT APPLICABLE: hosted PR merge-result assertion requires pull_request event'
@@ -129,38 +135,41 @@ try {
         }
     }
 
-    $insideWorkTree = & git rev-parse --is-inside-work-tree 2>$null
+    $insideWorkTree = & git --no-pager rev-parse --is-inside-work-tree 2>$null
     $insideWorkTreeExit = $LASTEXITCODE
     if ($insideWorkTreeExit -ne 0 -or ($insideWorkTree -join '').Trim() -ne 'true') {
         throw 'Git history scan requires a valid non-bare worktree'
     }
-    $head = & git rev-parse --verify 'HEAD^{commit}' 2>$null
+    $head = & git --no-pager rev-parse --verify 'HEAD^{commit}' 2>$null
     $headExit = $LASTEXITCODE
-    $refs = @(& git for-each-ref '--format=%(objectname)' 2>$null)
+    $refs = @(& git --no-pager for-each-ref '--format=%(objectname)' 2>$null)
     $refsExit = $LASTEXITCODE
     if ($refsExit -ne 0) { throw 'Could not enumerate Git refs for secret scanning' }
     if ($headExit -eq 0 -and $head) {
-        & git log --format=%H --all HEAD *> $null
+        & git --no-pager log --format=%H --all HEAD *> $null
         if ($LASTEXITCODE -ne 0) { throw 'Git could not enumerate HEAD and ref history for secret scanning' }
         Invoke-NativeChecked -Executable $gitleaks -Arguments @('git', '--redact=100', '--no-banner', '--log-opts=--all HEAD', $repoRoot) -Label 'Gitleaks reachable-history scan'
     } elseif ($refs.Count -gt 0) {
-        & git log --format=%H --all *> $null
+        & git --no-pager log --format=%H --all *> $null
         if ($LASTEXITCODE -ne 0) { throw 'Git could not enumerate ref history for secret scanning' }
         Invoke-NativeChecked -Executable $gitleaks -Arguments @('git', '--redact=100', '--no-banner', $repoRoot) -Label 'Gitleaks ref-history scan'
     } else {
-        $headRef = & git symbolic-ref --quiet HEAD 2>$null
+        $headRef = & git --no-pager symbolic-ref --quiet HEAD 2>$null
         $symbolicExit = $LASTEXITCODE
         if ($symbolicExit -ne 0 -or ($headRef -join '') -notmatch '^refs/heads/[A-Za-z0-9._/-]+$') {
             throw 'Git history is unavailable and HEAD is not a valid unborn branch'
         }
-        & git show-ref --verify --quiet ($headRef -join '') 2>$null
+        & git --no-pager show-ref --verify --quiet ($headRef -join '') 2>$null
         $branchRefExit = $LASTEXITCODE
         if ($branchRefExit -ne 1) { throw 'HEAD could not be resolved and is not a clean unborn branch' }
         Write-Output 'NOT APPLICABLE: no commits or refs exist yet on the valid unborn branch.'
     }
 
     $normalizedPushRanges = [System.Collections.Generic.List[string]]::new()
-    foreach ($range in @($PushRange | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+    $pushRangeLines = foreach ($rangeArgument in @($PushRange | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+        $rangeArgument -split '\r?\n'
+    }
+    foreach ($range in @($pushRangeLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
         if ($range -match '^(?<head>(?:[0-9a-f]{40}|[0-9a-f]{64}))$') {
             $headInput = $Matches.head
             $baseInput = $null
@@ -171,16 +180,16 @@ try {
             throw 'Pre-push supplied an invalid commit range for secret scanning'
         }
 
-        $headCommit = & git rev-parse --verify ($headInput + '^{commit}') 2>$null
+        $headCommit = & git --no-pager rev-parse --verify ($headInput + '^{commit}') 2>$null
         if ($LASTEXITCODE -ne 0 -or -not $headCommit) { throw 'Pushed object does not resolve to a commit for secret scanning' }
         if ($baseInput) {
-            $baseCommit = & git rev-parse --verify ($baseInput + '^{commit}') 2>$null
+            $baseCommit = & git --no-pager rev-parse --verify ($baseInput + '^{commit}') 2>$null
             if ($LASTEXITCODE -ne 0 -or -not $baseCommit) { throw 'Remote base object is unavailable; fetch it before pushing' }
             $normalizedRange = ($baseCommit -join '') + '..' + ($headCommit -join '')
         } else {
             $normalizedRange = $headCommit -join ''
         }
-        & git rev-list --max-count=1 $normalizedRange *> $null
+        & git --no-pager rev-list --max-count=1 $normalizedRange *> $null
         if ($LASTEXITCODE -ne 0) { throw 'Git could not enumerate a pushed commit range for secret scanning' }
         if (-not $normalizedPushRanges.Contains($normalizedRange)) { $normalizedPushRanges.Add($normalizedRange) }
     }
@@ -194,14 +203,14 @@ try {
         $BaseRef = 'origin/' + $env:PR_BASE_BRANCH
     }
     if ($BaseRef) {
-        & git merge-base $BaseRef HEAD *> $null
+        & git --no-pager merge-base $BaseRef HEAD *> $null
         if ($LASTEXITCODE -ne 0) {
             throw "Base ref is unavailable or unrelated: $BaseRef"
         }
-        Invoke-NativeChecked -Executable (Get-Command git).Source -Arguments @('diff', '--check', "$BaseRef...HEAD") -Label 'git diff check'
+        Invoke-NativeChecked -Executable (Get-Command git).Source -Arguments @('--no-pager','diff', '--check', "$BaseRef...HEAD") -Label 'git diff check'
     }
-    Invoke-NativeChecked -Executable (Get-Command git).Source -Arguments @('diff', '--check') -Label 'unstaged diff check'
-    Invoke-NativeChecked -Executable (Get-Command git).Source -Arguments @('diff', '--cached', '--check') -Label 'staged diff check'
+    Invoke-NativeChecked -Executable (Get-Command git).Source -Arguments @('--no-pager','diff', '--check') -Label 'unstaged diff check'
+    Invoke-NativeChecked -Executable (Get-Command git).Source -Arguments @('--no-pager','diff', '--cached', '--check') -Label 'staged diff check'
 
     Write-Output 'NOT COVERED: no application stack is selected in the template; stack build and dependency audit do not apply to this baseline.'
     Write-Output 'QUALITY-GATE=PASS'
