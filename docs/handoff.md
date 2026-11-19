@@ -1,9 +1,10 @@
 # Handoff — T-008, 2026-11-19
 
-- Current T-008 state: branch task/T-008 HEAD and origin/task/T-008 are e8653345c5a62382be02bf8957e459a4def28e6a; backup ref backup/2026-11-19-T-008-before-identity-repair retains ff6499005837312f8832b484d8fc51e52c08d628. The mixed reset preserved file content; 11 local paths (9 modified, 2 untracked), no new commit/push.
-- Воспроизведена причина Git fatal: внешний TempRoot давал GIT_DIR 221 UTF-8 byte при 196 символах .NET. Gate использует короткий корень и fail-fast проверку 200-байтового бюджета до записи.
-- Исторический full gate PASS был на pre-recovery candidate ff6499005837312f8832b484d8fc51e52c08d628 и не подтверждает текущие 11 путей. Read-only T-015 audit сейчас BLOCKED только из-за T-008 (11 путей) и T-015 (9); остальные 15 registered worktrees, включая main, CLEAN. T-015 targeted suites 31/31 и 25/25; его полный gate ещё не выполнен. Сначала завершить T-008, затем повторить audit.
-- Live PR #8 read-only: OPEN/Draft, head e8653345c5a62382be02bf8957e459a4def28e6a, base f577dc70e58d75ab5fd61d0c2e712c27b590713a. Run #44402452200 SUCCESS на merge-result 66c80a08d0f4f8569efd0c6e944a9b0dc8ba3cc0 с точными родителями base/head. GitHub-native reviews: 0; независимое review этого head требуется до merge.
+- Recovery checkpoint: code commit `7483dc749dc5d35453c4532010ccec458f0dfe3e` is on `task/T-008`; the unpublished fixture-identity commit `ff6499005837312f8832b484d8fc51e52c08d628` remains preserved by backup ref `backup/2026-11-19-T-008-before-identity-repair`. The remote branch was not rewritten.
+- Local scope and pre-push checks passed on the code commit: 29/29 paths in scope, PowerShell 7.6.10, KB 44/44, task-scope 8/8, privacy/hygiene, actionlint, Gitleaks, and diff checks.
+- Hosted checkpoint: run [#44460186961](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44460186961) SUCCESS for PR head `7483dc749dc5d35453c4532010ccec458f0dfe3e`, base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`; event/test merge-result `8e2e3956f9c16a216b31609120c7e5f106e27814` has exactly those parents. This is a dated checkpoint; query live PR #8 before relying on current head/checks.
+- At that checkpoint PR #8 was OPEN/Draft, unmerged, with no GitHub-native review. A fresh independent review of the live head is required before merge.
+- Read-only audit after T-008 publication: 16 registered worktrees CLEAN; T-015 alone has 9 candidate paths. Its full local gate now passes (identity 31/31, worktree 25/25, KB 44/44, privacy/hygiene, actionlint, Gitleaks); commit/publish remains pending while the handoff provenance is preserved and reconciled.
 
 ## Исторический bootstrap-снимок до слияния T-003 (не текущие статусы задач)
 

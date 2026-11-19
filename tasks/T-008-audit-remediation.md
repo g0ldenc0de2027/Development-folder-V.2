@@ -85,7 +85,7 @@
 | F18 | P3 | Частично | Руководство дополнено новыми error codes/context contract. Полный PowerShell comment-based help и симметричные RU/EN сценарии остаются открыты. |
 | F19 | P3 | Открыто | Согласовать смысл marker project_id и catalog projectId до межполевой проверки. |
 | F20 | P3 | Частично | Карточка фиксирует очередь аудита; единый task index и номера следующих задач синхронизировать после PR #5–#7. |
-| F21 | P2 | Исправлено локально; hosted evidence pending | Полный gate ранее падал на Windows Git из-за UTF-8 byte length длинного внешнего TempRoot. Исправление: короткий gate-root, предварительный лимит GIT_DIR и regression; подтверждать локальным и hosted gate нового head. |
+| F21 | P2 | Исправлено; локальный и hosted gate прошли на code commit `7483dc7` | Gate ранее падал на Windows Git из-за UTF-8 byte length длинного внешнего TempRoot. Исправление — короткий gate-root, предварительный лимит GIT_DIR и regression; evidence относится к указанному code commit и не переносится на более поздние head автоматически. |
 | V2-02 | P2 | Исправляется в T-008 | Локальные `.work/` и `.manus/` игнорируются Git и исключаются только из syntax/privacy/hygiene обходов; Gitleaks сохраняет полный охват; поведение проверяется path-boundary regression. |
 | V2-19 | P2 | Исправляется в T-008 | Hook и scope guard поддерживают один документированный формат task ID и lowercase slug; поведение закреплено fixture для принятого и отклонённого имени. |
 
@@ -178,4 +178,9 @@
 - принадлежность TempRoot проверяется раньше byte budget, чтобы каталог внутри bare `.git` отклонялся по границе репозитория с ожидаемой причиной;
 - regression проверяет отказ обоих сценариев на длинном кириллическом TempRoot и отсутствие созданных каталогов.
 
-Подтверждение на текущем локальном candidate: task-scope suite **8/8 PASS**; полный quality gate **PASS** на внешнем TempRoot с расчётным fixture GIT_DIR **194 UTF-8 bytes** при guard 200, включая KB 44/44, privacy/hygiene, actionlint и Gitleaks. Это ещё не hosted evidence: изменения не закоммичены/не опубликованы, новый CI и независимый review ожидают финальную ревизию.
+### Проверенный code checkpoint
+
+- Code commit `7483dc749dc5d35453c4532010ccec458f0dfe3e` локально прошёл полный quality gate и pre-push: 29/29 путей в зоне, PowerShell 7.6.10, KB 44/44, task-scope 8/8, privacy/hygiene, actionlint, Gitleaks и `git diff --check`.
+- Hosted run [#44460186961](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44460186961) завершился SUCCESS на `pull_request`; PR head `7483dc749dc5d35453c4532010ccec458f0dfe3e`, base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`, checkout/test merge-result `8e2e3956f9c16a216b31609120c7e5f106e27814` с точными родителями base/head.
+- В checkpoint PR #8 оставался OPEN/Draft, не слит; GitHub-native reviews отсутствовали. Нужен свежий независимый review текущего live head и проверка актуальных CI перед merge. Stack build/dependency audit не применяется к шаблону без выбранного app stack.
+- Первый запуск через системный Temp завершился exit 1 при автоочистке и не считается PASS. Повторный gate через пользовательский Temp завершился exit 0; его временный каталог удалён штатно.
