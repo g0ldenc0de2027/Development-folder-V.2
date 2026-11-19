@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+. (Join-Path $repoRoot 'scripts/ide-cache.ps1')
 $processEnvironment = [Environment]::GetEnvironmentVariables('Process')
 $emptyGitContext = @(
     foreach ($name in @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE','GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM')) {
@@ -499,12 +500,8 @@ foreach ($toolName in @('actionlint', 'gitleaks')) {
 $textExtensions = @('.md', '.json', '.yml', '.yaml', '.ps1')
 $specialTextNames = @('.gitignore', '.gitattributes', '.editorconfig', 'pre-push')
 $textFiles = @(
-    Get-ChildItem -LiteralPath $repoRoot -File -Recurse -Force |
-        Where-Object {
-            $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)
-            ($_.Extension -in $textExtensions -or $_.Name -in $specialTextNames) -and
-            $relativePath -notmatch $excludedRepositoryPathPattern
-        }
+    Get-ProjectFiles $repoRoot |
+        Where-Object { $_.Extension -in $textExtensions -or $_.Name -in $specialTextNames }
 )
 if ($textFiles.Count -eq 0) {
     throw 'Text hygiene scan found no repository files'

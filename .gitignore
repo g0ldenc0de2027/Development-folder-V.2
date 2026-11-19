@@ -18,6 +18,7 @@ dist/
 build/
 artifacts/
 *.log
+.vs/
 .vscode/
 .idea/
 .DS_Store
