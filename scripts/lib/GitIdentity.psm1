@@ -336,7 +336,7 @@ function Initialize-GitWorktreeConfig {
             } catch {
                 if ($addedAdminBare) {
                     try {
-                        $null = Invoke-GitIdentityAdminCommand -GitDirectory $commonDir -Arguments @('config','--file',$adminConfigWorktree,'--unset-all','core.bare')
+                        $null = Invoke-GitIdentityAdminCommand -GitDirectory $commonDir -Arguments @('config','--file',$adminConfigWorktree,'--fixed-value','--unset','core.bare','true')
                     } catch {
                         throw 'GIT_IDENTITY_CORE_BARE_ROLLBACK_FAILED'
                     }
