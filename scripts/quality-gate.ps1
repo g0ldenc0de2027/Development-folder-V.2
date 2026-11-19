@@ -104,6 +104,12 @@ try {
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/task-worktree-regressions.ps1') -TempRoot $temporaryRoot
     if ($LASTEXITCODE -ne 0) { throw 'Task worktree regressions failed' }
 
+    if ($env:GITHUB_EVENT_NAME -ne 'pull_request') {
+        Write-Output 'NOT APPLICABLE: hosted PR merge-result assertion requires pull_request event'
+    }
+    Write-Output 'QUALITY-GATE: running PR merge-result regressions'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/pr-merge-result-regressions.ps1') -TempRoot $temporaryRoot
+    if ($LASTEXITCODE -ne 0) { throw 'PR merge-result regressions failed' }
     Write-Output 'QUALITY-GATE: checking local knowledge and pinned rules'
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'scripts/kb.ps1') check
     if ($LASTEXITCODE -ne 0) { throw 'Knowledge integrity check failed' }

@@ -34,6 +34,18 @@ jobs:
         run: |
           if ($PSVersionTable.PSVersion -lt [version]'7.4') { throw "PowerShell 7.4+ is required" }
 
+      - name: Verify exact pull request merge-result
+        shell: pwsh
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_TEST_SHA: ${{ github.sha }}
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            ./scripts/verify-pr-merge-result.ps1 -RepositoryRoot "$env:GITHUB_WORKSPACE" -BaseSha $env:PR_BASE_SHA -HeadSha $env:PR_HEAD_SHA -TestSha $env:EVENT_TEST_SHA
+          } else {
+            Write-Output 'NOT APPLICABLE: current event is not pull_request'
+          }
       - name: Run quality gate and record tested revisions
         shell: pwsh
         env:
