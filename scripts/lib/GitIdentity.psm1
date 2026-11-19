@@ -428,7 +428,7 @@ function Set-GitWorktreeIdentity {
 }
 
 function Assert-GitCommitIdentity {
-    param([Parameter(Mandatory)][string]$RepositoryRoot,[Parameter(Mandatory)][string[]]$CommitRange,[string]$RemoteName)
+    param([Parameter(Mandatory)][string]$RepositoryRoot,[Parameter(Mandatory)][string[]]$CommitRange,[string]$RemoteName,[string]$PublishedMainSha)
     $root = [IO.Path]::GetFullPath($RepositoryRoot)
     $null = Assert-GitWorktreeEnvironment -RepositoryRoot $root
     $policy = Get-GitIdentityPolicy -RepositoryRoot $root
@@ -442,9 +442,13 @@ function Assert-GitCommitIdentity {
         } elseif ($range -match ('^(?<single>'+$shaPattern+')$')) {
             $singleSha = $Matches.single
             $revArgs = @('rev-list',$singleSha)
-            if ($RemoteName) { $revArgs += @('--not',('--remotes='+$RemoteName)) }
+
         } else {
             throw 'GIT_IDENTITY_COMMIT_RANGE_INVALID'
+        }
+        if ($PublishedMainSha) {
+            if ($PublishedMainSha -notmatch ('^'+$shaPattern+'$')) { throw 'GIT_IDENTITY_PUBLISHED_MAIN_INVALID' }
+            $revArgs += @('--not',$PublishedMainSha)
         }
         $listed = Invoke-GitIdentityCommand -RepositoryRoot $root -Arguments $revArgs
         $commits = @($listed -split "`n" | Where-Object { $_ -match '^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$' })

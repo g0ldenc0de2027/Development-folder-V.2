@@ -382,7 +382,7 @@ try {
         Invoke-GitFixture -Directory $worktree -Arguments @('commit','--quiet','-m','test: valid identity') | Out-Null
         $script:good = Invoke-GitFixture -Directory $worktree -Arguments @('rev-parse','HEAD')
         $null = Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @($base+'..'+$script:good)
-        $null = Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @($script:good) -RemoteName 'origin'
+        $null = Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @($script:good) -RemoteName 'origin' -PublishedMainSha $base
         $null = Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @(($base+'..'+$script:good)+[Environment]::NewLine+($base+'..'+$script:good))
     }
     Case 'GIT-ID-008 explicit bad author name is rejected without leaking email' {
@@ -400,6 +400,9 @@ try {
         Invoke-GitFixture -Directory $worktree -Arguments @('commit','--quiet','-m','test: invalid email','--author=synthetic-owner <fixture@example.invalid>') | Out-Null
         $bad = Invoke-GitFixture -Directory $worktree -Arguments @('rev-parse','HEAD')
         ExpectFailure { Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @($script:good+'..'+$bad) } 'GIT_IDENTITY_COMMIT_AUTHOR_EMAIL_MISMATCH'
+        $null = Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @($script:good+'..'+$bad) -PublishedMainSha $bad
+        Invoke-GitFixture -Directory $worktree -Arguments @('update-ref','refs/remotes/origin/untrusted',$bad) | Out-Null
+        ExpectFailure { Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @($bad) -RemoteName 'origin' -PublishedMainSha $base } 'GIT_IDENTITY_COMMIT_AUTHOR_EMAIL_MISMATCH'
     }
     Case 'GIT-ID-010 explicit bad committer name is rejected' {
         Invoke-GitFixture -Directory $worktree -Arguments @('switch','--quiet','-c','task/bad-committer-name',$script:good) | Out-Null
