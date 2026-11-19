@@ -31,10 +31,13 @@ if ([Text.Encoding]::UTF8.GetByteCount((Join-Path $fixture '.git')) -gt 200) {
 }
 $utf8=[Text.UTF8Encoding]::new($false)
 try {
+    $sourceIndex = & git -C $source rev-parse --path-format=absolute --git-path index
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve source index' }
+    $sourceIndexHash = (Get-FileHash -LiteralPath $sourceIndex).Hash
     $sourceHead=(& git -C $source rev-parse --verify HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read source revision' }
     $sourceBranch=(& git -C $source symbolic-ref --quiet HEAD) -join [char]10
-    $sourceStatus=(& git -C $source status --porcelain=v1 --untracked-files=all) -join [char]10
+    $sourceStatus=(& git --no-optional-locks -C $source status --porcelain=v1 --untracked-files=all) -join [char]10
     if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect source status' }
     & git clone --quiet --local --no-hardlinks --no-checkout --template= $source $fixture
     if ($LASTEXITCODE -ne 0) { throw 'Fixture clone failed' }
@@ -52,14 +55,25 @@ try {
     [IO.Directory]::CreateDirectory($vs) | Out-Null
     $crlf=[string][char]13+[char]10
     [IO.File]::WriteAllText((Join-Path $vs 'ProjectSettings.json'),('{'+$crlf+'}'+$crlf),$utf8)
-    [IO.File]::WriteAllText((Join-Path $vs 'invalid.ps1'),'function {',$utf8)
     & git -C $fixture check-ignore -q -- 'knowledge/.vs/ProjectSettings.json'
     if ($LASTEXITCODE -ne 0) { throw 'VS cache is not ignored' }
     . (Join-Path $fixture 'scripts/ide-cache.ps1')
-    $files=@(Get-ProjectFiles $fixture)
-    if (@($files | Where-Object { $_.FullName.StartsWith($vs,[StringComparison]::OrdinalIgnoreCase) }).Count -ne 0) {
-        throw 'Ignored cache was enumerated'
+    $excluded = @('knowledge/.vs','knowledge/temp','knowledge/.work','knowledge/.manus','knowledge/.worktrees')
+    foreach ($relative in $excluded) {
+        $dir = Join-Path $fixture $relative
+        [IO.Directory]::CreateDirectory($dir) | Out-Null
+        [IO.File]::WriteAllText((Join-Path $dir 'invalid.ps1'),'function {',$utf8)
     }
+    $similar = Join-Path $fixture 'knowledge/.vs-cache'
+    [IO.Directory]::CreateDirectory($similar) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $similar 'valid.ps1'),("Write-Output 'fixture'" + [char]10),$utf8)
+    $paths = @(Get-ProjectFiles $fixture | ForEach-Object {
+        [IO.Path]::GetRelativePath($fixture,$_.FullName).Replace('\','/')
+    })
+    foreach ($relative in $excluded) {
+        if (@($paths -like "$relative/*").Count -ne 0) { throw "Excluded directory enumerated: $relative" }
+    }
+    if ('knowledge/.vs-cache/valid.ps1' -notin $paths) { throw 'Similar directory was excluded' }
     $err=Join-Path $fixture 'fixture-stderr.txt'
     $result=@(& pwsh -NoLogo -NoProfile -File (Join-Path $fixture 'tests/quality-gate-regressions.ps1') 2>$err)
     if ($LASTEXITCODE -ne 0) { throw ('Ignored VS cache blocked hygiene: ' + [IO.File]::ReadAllText($err)) }
@@ -78,8 +92,8 @@ try {
     }
     $afterHead=(& git -C $source rev-parse --verify HEAD).Trim()
     $afterBranch=(& git -C $source symbolic-ref --quiet HEAD) -join [char]10
-    $afterStatus=(& git -C $source status --porcelain=v1 --untracked-files=all) -join [char]10
-    if ($LASTEXITCODE -ne 0 -or $afterHead -cne $sourceHead -or $afterBranch -cne $sourceBranch -or $afterStatus -cne $sourceStatus) { throw 'Source Git state changed during fixture' }
+    $afterStatus=(& git --no-optional-locks -C $source status --porcelain=v1 --untracked-files=all) -join [char]10
+    if ($LASTEXITCODE -ne 0 -or $afterHead -cne $sourceHead -or $afterBranch -cne $sourceBranch -or $afterStatus -cne $sourceStatus -or (Get-FileHash -LiteralPath $sourceIndex).Hash -cne $sourceIndexHash) { throw 'Source Git state changed during fixture' }
     Write-Output 'IDE-CACHE-REGRESSIONS: 3 passed'
 } finally {
     $parent=[IO.Path]::GetFullPath($TempRoot).TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar
