@@ -17,5 +17,9 @@
     "method": "github-sbom-api",
     "spdxVersion": "SPDX-2.3",
     "requiresRepositoryPackage": true
+  },
+  "commitIdentity": {
+    "login": "g0ldenc0de2027",
+    "userId": 351911852
   }
 }
