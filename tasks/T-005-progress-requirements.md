@@ -8,9 +8,9 @@
 
 ## Зона файлов
 
-- spec/progress-requirements.md
-- specification-system/tz_state.md
-- tasks/T-005-progress-requirements.md
+- `spec/progress-requirements.md`
+- `specification-system/tz_state.md`
+- `tasks/T-005-progress-requirements.md`
 
 ## Приёмка
 
