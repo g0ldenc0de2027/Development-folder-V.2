@@ -8,7 +8,8 @@ param(
     [ValidateRange(1,1000)][int]$Limit = 100,
     [ValidateRange(512,262144)][int]$MaxBytes = 131072,
     [ValidateRange(512,2097152)][int]$MaxOutputBytes = 131072,
-    [switch]$IncludeWithdrawn
+    [switch]$IncludeWithdrawn,
+    [switch]$Compact
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -353,6 +354,7 @@ function Read-Rules {
         lockSha256=(Hash-Bytes $lockBytes)}
 }
 try {
+    if ($Compact -and $Command -ne 'search') { Fail 'KB_COMPACT_SEARCH_ONLY' }
     $root = [IO.Path]::GetFullPath($ProjectRoot)
     $script:KbVolumeFormat = Assert-SupportedVolume $root
     $script:HardLinkMode = 'fsutil'
@@ -389,6 +391,18 @@ try {
                 if ([string]::IsNullOrWhiteSpace($Query)) { Fail 'KB_QUERY_REQUIRED' }
                 $selection=Select-Entries $catalog
                 $result=@{projectId=$catalog.projectId;records=$selection.records;matching='literal';limit=$Limit;totalMatches=$selection.total;returned=$selection.records.Count;truncated=$selection.truncated}
+                if ($Compact) {
+                    $result.representation = 'compact'
+                    $result.records = @(foreach ($record in $selection.records) {
+                        @{
+                            id = $record.id
+                            kind = $record.kind
+                            title = $record.title
+                            status = $record.status
+                            contentSha256 = $record.contentSha256
+                        }
+                    })
+                }
             }
             'get' {
                 if (-not $Id) { Fail 'KB_ID_REQUIRED' }
