@@ -924,6 +924,30 @@ if ($privacyFindings.Count -gt 0) {
     throw ('Public documentation privacy checks found sensitive patterns without printing their contents: ' + ($privacyFindings -join ', '))
 }
 
+$portfolioSpec = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'spec/portfolio-kb-agent-workflow.md'))
+$portfolioState = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'specification-system/tz_state.md'))
+$portfolioVersionMatch = [regex]::Match($portfolioSpec, '(?m)^Версия: (?<version>\d+\.\d+\.\d+)\.')
+$stateVersionMatch = [regex]::Match($portfolioState, '(?m)^Спецификация: spec/portfolio-kb-agent-workflow\.md, версия (?<version>\d+\.\d+\.\d+)\.$')
+if (-not $portfolioVersionMatch.Success -or -not $stateVersionMatch.Success) {
+    throw 'Portfolio specification and state must declare parseable versions'
+}
+if ($portfolioVersionMatch.Groups['version'].Value -cne $stateVersionMatch.Groups['version'].Value) {
+    throw 'Portfolio specification version must match specification-system state'
+}
+$finalBoundaryMatch = [regex]::Match($portfolioSpec, '(?ms)^## Итоговая граница\s*\r?\n(?<body>.*)\z')
+if (-not $finalBoundaryMatch.Success -or $finalBoundaryMatch.Groups['body'].Value -match '\bтекущем T-\d+') {
+    throw 'Portfolio specification boundary must not identify a mutable task as current'
+}
+$currentHandoff = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'docs/handoff.md')) -split '(?m)^## Исторический', 2 | Select-Object -First 1
+if ($currentHandoff -match '\b[a-f0-9]{40}\b') {
+    throw 'Current handoff must not pin mutable GitHub revision or CI identifiers'
+}
+if ($currentHandoff -match '(?im)PR #\d+[^\r\n]*\b(?:Draft|open|merged|success|pending)\b') {
+    throw 'Current handoff must not freeze mutable PR or CI status'
+}
+if ($currentHandoff -notmatch '(?im)PR #10.*(?:live PR|live GitHub|источник истины)') {
+    throw 'Current handoff must direct readers to the live PR for mutable status'
+}
 $trailing = [System.Collections.Generic.List[string]]::new()
 $missingFinalNewline = [System.Collections.Generic.List[string]]::new()
 foreach ($file in $textFiles) {

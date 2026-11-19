@@ -29,5 +29,6 @@
 
 Первый файловый срез БЗ имеет отдельный допуск spec/local-knowledge.md.
 Он не включает автоматический рой, общий publisher или прикладные профили стеков.
+Целевой портфельный lifecycle и агентский контур описаны отдельно как DRAFT / NOT READY: spec/portfolio-kb-agent-workflow.md.
 
 Текущие исправления по аудиту и точка передачи следующему агенту: [tasks/T-008-audit-remediation.md](tasks/T-008-audit-remediation.md).

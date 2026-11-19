@@ -46,7 +46,8 @@ try {
     if ($LASTEXITCODE -eq 0) { $head = $mergeParent.Trim() }
     & git -C $fixture checkout --quiet --detach $head
     if ($LASTEXITCODE -ne 0) { throw 'Fixture checkout failed' }
-    foreach ($rel in @('.gitignore','scripts/ide-cache.ps1','scripts/quality-gate.ps1','tests/quality-gate-regressions.ps1')) {
+    foreach ($rel in @('.gitignore','scripts/ide-cache.ps1','scripts/quality-gate.ps1','tests/quality-gate-regressions.ps1',
+        'spec/portfolio-kb-agent-workflow.md','specification-system/tz_state.md','docs/handoff.md')) {
         $to=Join-Path $fixture $rel
         [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($to)) | Out-Null
         Copy-Item -LiteralPath (Join-Path $source $rel) -Destination $to -Force

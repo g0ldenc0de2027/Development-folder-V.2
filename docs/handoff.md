@@ -1,4 +1,13 @@
-# Handoff — T-008, 2026-11-19
+# Handoff — T-011, 2026-11-16
+
+- Общая БЗ: [PR #2](https://github.com/g0ldenc0de2027/Knowledge_Base/pull/2) — источник истины для статуса, ревизий, CI и review. Карточка задачи хранит только подписанные исторические снимки.
+- V2 replacement [PR #10](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/10) — источник истины для актуальных статуса, head/base и checks. Merge разрешается только после проверки неизменившейся пары SHA, успешного CI и независимого review на соответствующем head.
+- T-011 уточняет границы текущей и целевой БЗ, ограничения внешней передачи и спецификацию 0.5.0. Канонические правила и V2 mirror совпадают по пяти закреплённым файлам.
+- Исторические отчёты Copilot/DeepSeek и разбор их замечаний находятся в карточке T-011. Перед использованием review сверяйте его SHA с head live PR.
+- ACL, федеративный поиск, publisher, ingestion/OCR/ASR и coordinator не реализованы; portfolio workflow остаётся `DRAFT / NOT READY`; app stack audit — `NOT COVERED`.
+- Перед merge перепроверьте live PR, unresolved review threads и неизменность SHA после CI/review. Автоматическая проверка parent tuple выделена в T-012.
+
+## Исторический Handoff — T-008, 2026-11-19
 
 ## Historical snapshot — GitHub reliability and T-015, 2026-11-19
 
