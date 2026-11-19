@@ -1,0 +1,62 @@
+#!/bin/sh
+set -eu
+if ! command -v pwsh >/dev/null 2>&1; then
+    echo "pre-commit: PowerShell 7 is required" >&2
+    exit 1
+fi
+if ! command -v cygpath >/dev/null 2>&1; then
+    echo "pre-commit: Git for Windows cygpath is required for the hook context check" >&2
+    exit 1
+fi
+hook_pwd=$(pwd -P) || {
+    echo "pre-commit: current directory could not be resolved" >&2
+    exit 1
+}
+repo_root=$(cygpath -aw "$hook_pwd") || {
+    echo "pre-commit: worktree path could not be converted safely" >&2
+    exit 1
+}
+if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-hook-context.ps1" -RepositoryRoot "$repo_root"; then
+    echo "pre-commit: Git hook context gate blocked commit" >&2
+    exit 1
+fi
+branch=$(git branch --show-current) || {
+    echo "pre-commit: current branch could not be resolved" >&2
+    exit 1
+}
+case "$branch" in
+    task/T-013|task/T-013-*)
+        echo "pre-commit: T-013 is a read-only recovery source; commit through its recovery task" >&2
+        exit 1
+        ;;
+esac
+
+if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/task-worktree-audit.ps1" -Mode Commit; then
+    echo "pre-commit: task worktree audit blocked commit" >&2
+    exit 1
+fi
+if pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext; then
+    exit 0
+else
+    verify_status=$?
+fi
+if [ "$verify_status" -eq 23 ]; then
+    echo "pre-commit: explicit Git identity/config environment overrides block commit; remove the override and retry" >&2
+    exit 1
+fi
+if [ "$verify_status" -ne 24 ]; then
+    echo "pre-commit: Git identity verification failed for a non-repairable reason; no configuration was changed" >&2
+    exit 1
+fi
+echo "pre-commit: identity is missing or invalid; verifying GitHub account and repairing this worktree" >&2
+if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/github/configure-local.ps1" -IdentityOnly -HookContext; then
+    echo "pre-commit: worktree identity repair failed; commit remains blocked" >&2
+    exit 1
+fi
+unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+if ! pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext; then
+    echo "pre-commit: repaired identity did not verify; commit remains blocked" >&2
+    exit 1
+fi
+echo "pre-commit: worktree identity repaired and verified; Git captured the old identity before this hook, so rerun git commit" >&2
+exit 1

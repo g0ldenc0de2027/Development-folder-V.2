@@ -14,7 +14,7 @@
 
 Входит: рабочий регламент, Markdown-знания с JSON-каталогом; локальные check/search/get/context,
 doctor подключения общей БЗ, capture в ignored inbox; документация и отрицательные проверки.
-Исполнение: Windows, PowerShell 7.4+, стандартная библиотека, без новых зависимостей.
+Исполнение: проверенная Windows 11 x64 GA 26H2/build 26300 на ветке `ge_release` из `config/runtime-support.json` и PowerShell 7.6 LTS не ниже 7.6.10; стандартная библиотека, без новых зависимостей. Hosted CI выполняет отдельную проверку на Windows Server 2025 x64 build 26100.
 
 Не входит: автоматическое принятие знаний, издатель общих правил, миграция V1,
 полноценный поиск общей БЗ, embeddings/SQLite, API/MCP/UI, dispatch роя,

@@ -13,7 +13,7 @@
 - [ ] Обновить ТЗ, критерии приемки и readiness до READY.
 
 ## Этап 2 — надежное task lifecycle
-- [ ] Приоритет P0: автоматизировать создание изолированных worktrees и fail-closed проверку scope до push/PR; FR-002 и AC-007 пока не выполнены.
+- [ ] Приоритет P0: автоматизировать создание worktrees и полный task lifecycle. Отдельный fail-closed scope guard по карточке задачи подготовлен в T-008; до merge его нельзя считать активным в main. FR-002/AC-007 требуют актуального review и CI на этой ветке.
 - [ ] Сверять base SHA и live origin/main до commit/publish.
 - [ ] Проверить реальные границы защиты GitHub Free.
 
