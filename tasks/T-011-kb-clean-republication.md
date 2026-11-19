@@ -28,7 +28,8 @@
 - `specification-system/tz_state.md`
 - `tasks/T-010-align-project-and-portfolio-kb-scope.md`
 - `tasks/T-011-kb-clean-republication.md`
-- 	ests/ide-cache-regressions.ps1`n- `tests/quality-gate-regressions.ps1`
+- `tests/ide-cache-regressions.ps1`
+- `tests/quality-gate-regressions.ps1`
 
 Каноническая общая БЗ обновляется отдельно в её существующей ветке PR #2. Пять нормативных файлов пакета должны совпасть побайтно между репозиториями, а lock — проверяться штатным gate.
 
