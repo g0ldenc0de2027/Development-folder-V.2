@@ -193,4 +193,4 @@ Capture schema 2 требует заявленные source, scope, author, runt
 
 ## Сверка выбранной коллекции
 
-Для check, search, get и context передайте `-ExpectedCollectionId <UUID>`, полученный из доверенной конфигурации. При несовпадении CLI возвращает `KB_COLLECTION_ID_MISMATCH` с пустым stdout. Перенос коллекции сохраняет её ID. Используйте параметр в каждом вызове чтения.
+Для check, search, get и context передайте `-ExpectedCollectionId <UUID>`, полученный из доверенной конфигурации. При несовпадении CLI возвращает `KB_COLLECTION_ID_MISMATCH` с пустым stdout. При отсутствующем корне возвращается KB_ROOT_UNAVAILABLE. Перенос коллекции сохраняет её ID. Используйте параметр в каждом вызове чтения.

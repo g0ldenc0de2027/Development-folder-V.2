@@ -129,6 +129,13 @@ try {
         $null=Run @('check','-ExpectedCollectionId',$wrong) 1 'KB_COLLECTION_ID_MISMATCH'
         $null=Run @('check','-ExpectedCollectionId',$id) 1 'KB_CONTENT_CHANGED'
     }
+    Case 'LKB-011 missing collection root is distinct from an ID mismatch' {
+        $missing=Join-Path $fixture 'missing-collection'
+        $result=Run-Captured @('check','-ExpectedCollectionId',$script:catalog.projectId) -Root $missing
+        if($result.exitCode -ne 1 -or $result.stdoutBytes.Length -ne 0 -or $result.stderr.Trim() -cne 'KB_ROOT_UNAVAILABLE'){
+            throw 'missing collection root response'
+        }
+    }
     Case 'LKB-011 malformed IDs and non-read commands are rejected' {
         foreach($invalid in @('bad',[guid]::Empty.ToString('D'),('{'+$script:catalog.projectId+'}'))){
             $null=Run @('check','-ExpectedCollectionId',$invalid) 1 'KB_EXPECTED_COLLECTION_ID_INVALID'

@@ -17,7 +17,7 @@ $ErrorActionPreference = 'Stop'
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 
 function Fail([string]$Code) { throw $Code }
-function Assert-SupportedVolume([string]$Path) {
+function Assert-SupportedVolume([string]$Path,[switch]$ReportMissingRoot) {
     $fullPath = [IO.Path]::GetFullPath($Path)
     $volumeRoot = [IO.Path]::GetPathRoot($fullPath)
     if ([string]::IsNullOrWhiteSpace($volumeRoot)) { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
@@ -26,6 +26,10 @@ function Assert-SupportedVolume([string]$Path) {
     foreach ($part in $relativePath.Split([IO.Path]::DirectorySeparatorChar,[StringSplitOptions]::RemoveEmptyEntries)) {
         $current = Join-Path $current $part
         try { $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop }
+        catch [System.Management.Automation.ItemNotFoundException] {
+            if ($ReportMissingRoot) { Fail 'KB_ROOT_UNAVAILABLE' }
+            Fail 'KB_LINK_ENUMERATION_UNAVAILABLE'
+        }
         catch { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
         if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Fail 'KB_REPARSE_POINT' }
     }
@@ -365,7 +369,7 @@ try {
         $expectedId = $parsedId
     }
     $root = [IO.Path]::GetFullPath($ProjectRoot)
-    $script:KbVolumeFormat = Assert-SupportedVolume $root
+    $script:KbVolumeFormat = Assert-SupportedVolume $root -ReportMissingRoot:($null -ne $expectedId)
     $script:HardLinkMode = 'fsutil'
     $rootItem = Get-Item -LiteralPath $root -Force
     if (-not $rootItem.PSIsContainer -or ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Fail 'KB_ROOT_INVALID' }
