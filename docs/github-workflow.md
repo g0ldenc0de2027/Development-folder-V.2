@@ -14,14 +14,18 @@ main — защищенная интеграционная ветка. Изме�
 Если активный ruleset отклоняет initial root push из-за требования PR, не отключать и не ослаблять ruleset, не добавлять bypass actor и не повторять push другими способами. Зафиксировать отказ и остановиться для решения владельца. После создания `main` любой следующий push в неё разрешён только через PR.
 
 ## Рабочий цикл
-1. Сверьте origin, ветку, HEAD и чистоту worktree. Не начинайте задачу в смешанном рабочем каталоге.
-2. Обновите origin/main и создайте отдельную ветку task/T-NNN от подтвержденного origin/main. Для параллельных задач используйте отдельные git worktrees.
+1. Из чистого linked worktree запустите pwsh -NoLogo -NoProfile -File scripts/task-worktree-audit.ps1 -Mode Audit. Продолжайте только при exit 0; проверка охватывает все зарегистрированные worktree и игнорируемые .vs.
+2. Обновите origin/main и создайте отдельную ветку `task/T-NNN` либо `task/T-NNN-<lowercase-hyphenated-slug>` от подтвержденного origin/main. Для параллельных задач используйте отдельные git worktrees.
 3. До изменений зафиксируйте scope файлов и критерии задачи в карточке. Не расширяйте scope молча.
 4. Меняйте только свою зону. До commit просмотрите весь staged и unstaged diff, статус, секреты и тесты.
-5. Создайте commit в task branch. Обычный push только в одноименную task-ветку; force/delete запрещены. Локальный pre-push hook проверяет origin URL, текущие refs и точную входящую историю по SHA, полученным от Git; удаление refs отклоняется.
+5. Создайте commit в task branch. Локальный pre-push разрешает только текущую ветку `task/T-NNN` или `task/T-NNN-<lowercase-hyphenated-slug>` в одноимённую remote branch; scope guard связывает её с карточкой по ID. Tags, deletion и non-fast-forward блокируются. Hook передаёт входящие диапазоны одним аргументом, проверяет scope по карточке задачи и требует чистое дерево. Проверка scope предотвращает случайный смешанный diff; владелец подтверждает сам scope при review. Рабочая процедура требует отправлять только в проверенный `origin`.
 6. Откройте PR в main. Зафиксируйте head SHA и base SHA, отдельно — merge-result SHA, на котором прошел CI. Независимое review привязывается к текущему head SHA. Изменение head или base требует нового CI/review.
 7. Слияние выполняется только если quality-gate обязателен в live ruleset и зелен на текущем merge-result для неизменившихся head/base SHA, unresolved threads отсутствуют, scope принят и нужное review завершено.
 8. После merge удалите локальный worktree штатной командой Git только когда он чист и больше не нужен; сохраните короткий handoff.
+
+Scope guard не создаёт изоляцию ОС и не аутентифицирует владельца карточки. Человек проверяет scope и trust-zone изменения при review. Настроенный hook можно обойти владельцу или другому процессу с теми же правами; локальная политика не является server enforcement.
+
+pre-commit и pre-push запускают тот же глобальный audit. Изменения в соседних деревьях блокируют commit/publish; автоматического удаления, reset, clean и stash нет. После interruption сначала восстановите handoff и проверьте worktree. Bare admin repository не используйте для git status.
 
 ## Соло-владелец, независимое review и граница доверия
 
@@ -32,6 +36,16 @@ PR может изменить собственное определение wor
 Остаточный риск принят владельцем для no-App режима: нет отдельной технически независимой стороны, которая блокирует ослабление gate. Решение не следует описывать как серверное обязательное owner approval. AI review — дополнительная проверка, не GitHub-native approval и не замена решения владельца.
 
 ## Checks и SHA
+
+Для каждого pull_request перед основным gate отдельный шаг проверяет фактический checkout:
+HEAD должен совпасть с github.sha события, а commit — иметь ровно двух родителей в порядке
+base SHA, затем head SHA из payload PR. Ошибка или отсутствие commit блокирует hosted check.
+Локальный запуск не имеет event payload и выполняет синтетические регрессии валидатора.
+
+Эта проверка подтверждает tuple конкретного CI-run, но не защищает от изменения PR самого
+workflow или валидатора. Перед merge владелец вручную проверяет diff этих файлов; no-App
+модель сохраняет этот организационный контроль.
+
 Bootstrap этап выполнил первый hosted run: `quality-gate` теперь является обязательным status check ruleset от GitHub Actions App `15368`, с `strict_required_status_checks_policy=true`. После изменений workflow или live ruleset повторно прочитайте настройки через verifier. Не считайте skipped, отсутствующий check, устаревший SHA или чужой workflow успешным gate. Job всегда запускается, в том числе при изменениях только документации.
 
 ## Разбор ошибок
@@ -40,3 +54,12 @@ Bootstrap этап выполнил первый hosted run: `quality-gate` те
 - Неясное авторство/посторонние файлы: остановитесь; не коммитьте и не отправляйте смешанный diff.
 - Ошибка GitHub auth: проверьте gh auth status; не запрашивайте и не печатайте token.
 - Settings drift: сравните live API с config/github; намеренное отклонение оформите решением.
+
+## Squash через GraphQL с явным noreply
+
+1. Сверьте репозиторий, авторизованный аккаунт, пары head/base из принятого владельцем diff и независимого ревью, обязательный quality-gate на точном merge-result и отсутствие незакрытых обсуждений.
+2. Вызовите GitHub GraphQL mergePullRequest с mergeMethod SQUASH, pullRequestId, expectedHeadOid проверенной ветки и authorEmail с подтверждённым ID-based noreply владельца. Сразу перед вызовом заново сверяйте base. API защищает от смены head через expectedHeadOid, а актуальность относительно main обеспечивает strict required check.
+3. После вызова проверьте статус MERGED, SHA результата и домен автора. При отказе или неоднозначном ответе сначала запросите состояние PR. При несовпадении домена зафиксируйте инцидент без вывода адреса.
+4. Обновите чистую локальную main через fetch и merge --ff-only. Зафиксируйте результат CI на main отдельно от проверки PR.
+
+Процедура подтверждена на PR #5: squash a6ef3d83094b59167e83b3766e6e8a4e7cca000e, домен автора users.noreply.github.com, CI main #44510196124 SUCCESS. Справка: https://docs.github.com/en/graphql/reference/pulls#mergepullrequestinput

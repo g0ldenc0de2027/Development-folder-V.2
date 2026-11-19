@@ -9,7 +9,7 @@ function Get-ProjectFiles([string]$Root) {
         $dir = $directories.Pop()
         foreach ($item in Get-ChildItem -LiteralPath $dir -Force) {
             if ($item.PSIsContainer) {
-                if ($item.Name -iin @('.git','.worktrees','temp','.vs')) { continue }
+                if ($item.Name -iin @('.git','.worktrees','.work','.manus','temp','.vs')) { continue }
                 if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
                 $directories.Push($item.FullName)
             } else { $item }

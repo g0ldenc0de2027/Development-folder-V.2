@@ -11,6 +11,8 @@ credentials.json
 data/
 temp/
 .worktrees/
+.work/
+.manus/
 coverage/
 dist/
 build/

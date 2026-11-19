@@ -4,9 +4,17 @@
 Основание: локальный gate T-004 ошибочно проверял `knowledge/.vs/ProjectSettings.json`
 и блокировался на CRLF, хотя это служебный кэш IDE, не исходник проекта.
 
-Зона: .gitignore, scripts/ide-cache.ps1, scripts/quality-gate.ps1,
-tests/quality-gate-regressions.ps1, tests/ide-cache-regressions.ps1, docs/development.md,
-tasks/T-006-ide-cache.md. Другие данные и настройки IDE не изменять.
+## Зона файлов
+
+- `.gitignore`
+- `scripts/ide-cache.ps1`
+- `scripts/quality-gate.ps1`
+- `tests/quality-gate-regressions.ps1`
+- `tests/ide-cache-regressions.ps1`
+- `docs/development.md`
+- `tasks/T-006-ide-cache.md`
+
+## Приёмка
 
 Приёмка: вложенный неотслеживаемый `.vs` с CRLF и некорректным PS1 не мешает
 обычному gate; принудительно добавленный в Git `.vs` приводит к явному отказу;

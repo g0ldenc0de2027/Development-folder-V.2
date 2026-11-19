@@ -1,4 +1,4 @@
-#Requires -Version 7.4
+#Requires -Version 7.6
 [CmdletBinding()]
 param([string]$TempRoot = [IO.Path]::GetTempPath())
 Set-StrictMode -Version Latest
@@ -7,10 +7,28 @@ $PSNativeCommandUseErrorActionPreference=$false
 $source=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 # Git hooks export repository-specific environment variables; never let fixture Git
 # commands address the real worktree or index. This process is isolated from its parent.
-$localGitVariables=@(& git rev-parse --local-env-vars)
-if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate Git local environment variables' }
-foreach ($name in $localGitVariables) { Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue }
-$fixture=Join-Path ([IO.Path]::GetFullPath($TempRoot)) ('ide-cache-test-'+[guid]::NewGuid().ToString('N'))
+foreach ($name in @(Get-ChildItem Env: | Where-Object Name -Like 'GIT_*' | ForEach-Object Name)) {
+    Remove-Item -LiteralPath "Env:$name"
+}
+$env:GIT_CONFIG_NOSYSTEM = '1'
+$env:GIT_CONFIG_GLOBAL = Join-Path $source 'config/git-empty.config'
+$temp = [IO.Path]::GetFullPath($TempRoot)
+for ($dir = [IO.DirectoryInfo]::new($temp); $null -ne $dir; $dir = $dir.Parent) {
+    if ($dir.Exists -and ($dir.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw 'IDE cache TempRoot contains a reparse point'
+    }
+    if ((Test-Path -LiteralPath (Join-Path $dir.FullName '.git')) -or
+        ((Test-Path -LiteralPath (Join-Path $dir.FullName 'HEAD') -PathType Leaf) -and
+         (Test-Path -LiteralPath (Join-Path $dir.FullName 'objects') -PathType Container) -and
+         (Test-Path -LiteralPath (Join-Path $dir.FullName 'refs') -PathType Container))) {
+        throw 'IDE cache TempRoot must be outside every Git repository'
+    }
+}
+if (-not [IO.Directory]::Exists($temp)) { throw 'IDE cache TempRoot must exist' }
+$fixture = Join-Path $temp ('ide-cache-test-' + [guid]::NewGuid().ToString('N'))
+if ([Text.Encoding]::UTF8.GetByteCount((Join-Path $fixture '.git')) -gt 200) {
+    throw 'IDE cache fixture would exceed the Git for Windows GIT_DIR path budget'
+}
 $utf8=[Text.UTF8Encoding]::new($false)
 try {
     $sourceHead=(& git -C $source rev-parse --verify HEAD).Trim()
@@ -18,9 +36,11 @@ try {
     $sourceBranch=(& git -C $source symbolic-ref --quiet HEAD) -join [char]10
     $sourceStatus=(& git -C $source status --porcelain=v1 --untracked-files=all) -join [char]10
     if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect source status' }
-    & git clone --quiet --local --no-hardlinks --no-checkout $source $fixture
+    & git clone --quiet --local --no-hardlinks --no-checkout --template= $source $fixture
     if ($LASTEXITCODE -ne 0) { throw 'Fixture clone failed' }
-    $head=(& git -C $source rev-parse HEAD).Trim()
+    $mergeParent = & git -C $source rev-parse --verify --quiet MERGE_HEAD
+    $head = $sourceHead
+    if ($LASTEXITCODE -eq 0) { $head = $mergeParent.Trim() }
     & git -C $fixture checkout --quiet --detach $head
     if ($LASTEXITCODE -ne 0) { throw 'Fixture checkout failed' }
     foreach ($rel in @('.gitignore','scripts/ide-cache.ps1','scripts/quality-gate.ps1','tests/quality-gate-regressions.ps1')) {
