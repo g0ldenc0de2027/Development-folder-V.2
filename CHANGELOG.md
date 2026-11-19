@@ -2,6 +2,19 @@
 
 Все заметные изменения Development Folder V2 фиксируются здесь.
 
+## Unreleased
+- Git for Windows TempRoot сначала проверяется на границу репозитория, затем по UTF-8 byte budget fixture GIT_DIR; длинный Unicode путь блокируется до записей.
+- Git-fixture regression сверяет config/config.worktree и очищает унаследованные GIT_* переменные, чтобы незаметное загрязнение общего config не повторилось.
+- Регрессии Git-фикстур и quality gate проверяют TempRoot вне worktree и bare-репозиториев до создания файлов; task-scope suite сравнивает HEAD, refs, index и status исходного репозитория до и после фикстур.
+- Scratch-каталоги `.work/` и `.manus/` защищены от случайного Git-add; рекурсивные quality scans исключают только их точные сегменты, а Gitleaks остаётся включённым для всей рабочей копии.
+- Единая проверка scope принимает `task/T-NNN` и проверенный lowercase slug; hook отклоняет пустые, некорректные и неоднозначные сегменты имени.
+- Матрица runtime вынесена в `config/runtime-support.json`: проверенная Windows 11 x64 GA 26H2/build 26300 на `ge_release`; PowerShell 7.6 LTS 7.6.10+; CI — Windows Server 2025 build 26100.
+- Gate, scope guard и KB CLI fail-closed проверяют поддерживаемую платформу и линию PowerShell через общий runtime verifier; scope guard декодирует Unicode-пути независимо от системной кодовой страницы, что покрыто регрессией CP866.
+- Усилен pre-push: только одноимённая task/T-NNN ветка с валидным slug, без тегов/удалений/non-fast-forward; зоны файлов сверяются с карточкой задачи.
+- Исправлена передача диапазонов Git hook в PowerShell и добавлена fail-closed проверка scope.
+- KB CLI проверяет секретоподобные значения в метаданных, комплектность канонического RULES 0.2.0 и не выдаёт неполный context молча.
+- Аудит-реестр и инструкции передачи: tasks/T-008-audit-remediation.md.
+
 ## 2.0.0-development — 2026-11-14
 - Создан чистый каркас V2 без переноса файлов и Git-истории прежнего эталона.
 - Добавлены GitHub rules, read-only settings verifier, CI quality gate, pre-push hook и документация рабочего процесса.

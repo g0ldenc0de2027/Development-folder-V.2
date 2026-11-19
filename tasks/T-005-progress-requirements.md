@@ -6,8 +6,13 @@
 Цель: подготовить проверяемые требования к системе оценки прогресса V2 и будущих проектов
 по прямому запросу владельца. Это спецификация, не реализация и не оценка готовности V2.
 
-Зона файлов: spec/progress-requirements.md, specification-system/tz_state.md,
-tasks/T-005-progress-requirements.md. Другие задачи и их исходники не менять.
+## Зона файлов
+
+- spec/progress-requirements.md
+- specification-system/tz_state.md
+- tasks/T-005-progress-requirements.md
+
+## Приёмка
 
 Приёмка: определения, формулы, отсутствие ложных процентов, история scope, учёт времени,
 предпосылки диапазона ETA, границы, риски и критерии; состояние DRAFT / NOT READY.
