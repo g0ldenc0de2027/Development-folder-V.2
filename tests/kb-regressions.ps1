@@ -117,6 +117,26 @@ try {
     Case 'LKB-002 valid local corpus' { if((Run @('check')).result.records -ne 3){throw 'count'} }
     Case 'LKB-004 Unicode search and withdrawn exclusion' { if((Run @('search','-Query','Привет')).result.records.Count -ne 2){throw 'search count'} }
     Case 'LKB-004 literal metacharacters' { if((Run @('search','-Query','[x]')).result.records.Count -ne 2){throw 'literal'} }
+    Case 'LKB-011 selected collection ID is checked for every read command' {
+        $id=$script:catalog.projectId
+        $wrong=[guid]::NewGuid().ToString('D')
+        foreach($argsList in @(@('check'),@('search','-Query','Привет'),@('get','-Id','alpha'),@('context','-Id','alpha'))){
+            if((Run ($argsList+@('-ExpectedCollectionId',$id.ToUpperInvariant()))).result.projectId -cne $id){throw 'collection ID changed'}
+            $failure=Run-Captured ($argsList+@('-ExpectedCollectionId',$wrong))
+            if($failure.exitCode -ne 1 -or $failure.stdoutBytes.Length -ne 0 -or $failure.stderr.Trim() -cne 'KB_COLLECTION_ID_MISMATCH'){throw 'collection ID mismatch response'}
+        }
+        Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') 'Changed'
+        $null=Run @('check','-ExpectedCollectionId',$wrong) 1 'KB_COLLECTION_ID_MISMATCH'
+        $null=Run @('check','-ExpectedCollectionId',$id) 1 'KB_CONTENT_CHANGED'
+    }
+    Case 'LKB-011 malformed IDs and non-read commands are rejected' {
+        foreach($invalid in @('bad',[guid]::Empty.ToString('D'),('{'+$script:catalog.projectId+'}'))){
+            $null=Run @('check','-ExpectedCollectionId',$invalid) 1 'KB_EXPECTED_COLLECTION_ID_INVALID'
+        }
+        foreach($command in @('doctor','capture')){
+            $null=Run @($command,'-ExpectedCollectionId',$script:catalog.projectId) 1 'KB_COLLECTION_ID_READ_ONLY'
+        }
+    }
     Case 'LKB-004 exact ID' { if((Run @('get','-Id','alpha')).result.record.id -cne 'alpha'){throw 'id'} }
     Case 'LKB-004 missing ID' { $null=Run @('get','-Id','missing') 1 'KB_NOT_FOUND' }
     Case 'LKB-004 withdrawn default refusal' { $null=Run @('get','-Id','old') 1 'KB_NOT_FOUND' }

@@ -8,7 +8,8 @@ param(
     [ValidateRange(1,1000)][int]$Limit = 100,
     [ValidateRange(512,262144)][int]$MaxBytes = 131072,
     [ValidateRange(512,2097152)][int]$MaxOutputBytes = 131072,
-    [switch]$IncludeWithdrawn
+    [switch]$IncludeWithdrawn,
+    [string]$ExpectedCollectionId
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -237,6 +238,7 @@ function Load-Catalog {
     if ($catalog.schemaVersion -ne 1) { Fail 'KB_SCHEMA_VERSION' }
     $guid = [guid]::Empty
     if ($catalog.projectId -isnot [string] -or -not [guid]::TryParseExact($catalog.projectId,'D',[ref]$guid) -or $guid -eq [guid]::Empty) { Fail 'KB_PROJECT_ID' }
+    if ($null -ne $expectedId -and $guid -ne $expectedId) { Fail 'KB_COLLECTION_ID_MISMATCH' }
     if ($catalog.records -isnot [array] -or $catalog.records.Count -gt 1000) { Fail 'KB_RECORD_LIMIT' }
     # Prefer one same-handle API query for large catalogs; safely fall back to fsutil when unavailable.
     if ($catalog.records.Count -gt 24 -and $script:KbVolumeFormat -notin @('FAT','FAT32','EXFAT')) { Initialize-NativeLinkCounter }
@@ -353,6 +355,15 @@ function Read-Rules {
         lockSha256=(Hash-Bytes $lockBytes)}
 }
 try {
+    $expectedId = $null
+    if ($PSBoundParameters.ContainsKey('ExpectedCollectionId')) {
+        if ($Command -notin @('check','search','get','context')) { Fail 'KB_COLLECTION_ID_READ_ONLY' }
+        $parsedId = [guid]::Empty
+        if (-not [guid]::TryParseExact($ExpectedCollectionId,'D',[ref]$parsedId) -or $parsedId -eq [guid]::Empty) {
+            Fail 'KB_EXPECTED_COLLECTION_ID_INVALID'
+        }
+        $expectedId = $parsedId
+    }
     $root = [IO.Path]::GetFullPath($ProjectRoot)
     $script:KbVolumeFormat = Assert-SupportedVolume $root
     $script:HardLinkMode = 'fsutil'
