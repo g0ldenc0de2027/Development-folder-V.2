@@ -223,6 +223,7 @@ $expectedPathFilterSource = '$relativePath -notmatch ' + [char]39 + $qualityGate
 if (
     -not $qualityGate.Contains('[System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)') -or
     -not $qualityGate.Contains($expectedPathFilterSource) -or
+    -not $qualityGate.Contains('Get-ProjectFiles $repoRoot | Where-Object { $_.Extension -ieq ''.ps1'' }') -or
     -not $qualityGate.Contains('[string]$TemporaryRoot = [System.IO.Path]::GetTempPath()') -or
     ([regex]::Matches($qualityGate, 'Assert-TemporaryRootOutsideRepository')).Count -lt 2 -or
     -not $qualityGate.Contains('Get-ChildItem Env: | Where-Object { $_.Name -match ''^GIT_'' }') -or
