@@ -216,6 +216,27 @@ if ($LASTEXITCODE -ne 0 -or $trackedScratchFiles.Count -gt 0) {
     throw 'Local scratch paths must not contain tracked files'
 }
 $qualityGate = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
+$gateAst = [System.Management.Automation.Language.Parser]::ParseInput($qualityGate, [ref]$null, [ref]$null)
+$scanAssignments = @($gateAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left.Extent.Text -ieq '$scriptFiles'
+}, $true))
+if ($scanAssignments.Count -ne 1) { throw 'Expected one PowerShell scan input assignment' }
+$scanAssignment = $scanAssignments[0]
+$scanExpression = $scanAssignment.Right
+if ($scanAssignment.Parent.Parent -isnot [System.Management.Automation.Language.TryStatementAst] -or
+    $scanExpression -isnot [System.Management.Automation.Language.CommandExpressionAst] -or
+    $scanExpression.Expression -isnot [System.Management.Automation.Language.ArrayExpressionAst]) {
+    throw 'PowerShell scan input must be assigned directly in the gate try block'
+}
+$scanStatements = $scanExpression.Expression.SubExpression.Statements
+if ($scanStatements.Count -ne 1 -or
+    $scanStatements[0] -isnot [System.Management.Automation.Language.PipelineAst] -or
+    $scanStatements[0].PipelineElements[0] -isnot [System.Management.Automation.Language.CommandAst] -or
+    $scanStatements[0].PipelineElements[0].GetCommandName() -ine 'Get-ProjectFiles') {
+    throw 'PowerShell scan input must start with Get-ProjectFiles'
+}
 $qualityGatePathSeparatorClass = '[' + ([string][char]92 * 2) + '/]'
 $qualityGateExclusionPattern = '(^|' + $qualityGatePathSeparatorClass + ')(\.git|\.worktrees|\.work|\.manus|temp)(' + $qualityGatePathSeparatorClass + '|$)'
 $taskScopeRegressionSource = Get-Content -LiteralPath (Join-Path $repoRoot 'tests/task-scope-regressions.ps1') -Raw
@@ -223,7 +244,6 @@ $expectedPathFilterSource = '$relativePath -notmatch ' + [char]39 + $qualityGate
 if (
     -not $qualityGate.Contains('[System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)') -or
     -not $qualityGate.Contains($expectedPathFilterSource) -or
-    -not $qualityGate.Contains('Get-ProjectFiles $repoRoot | Where-Object { $_.Extension -ieq ''.ps1'' }') -or
     -not $qualityGate.Contains('[string]$TemporaryRoot = [System.IO.Path]::GetTempPath()') -or
     ([regex]::Matches($qualityGate, 'Assert-TemporaryRootOutsideRepository')).Count -lt 2 -or
     -not $qualityGate.Contains('Get-ChildItem Env: | Where-Object { $_.Name -match ''^GIT_'' }') -or
