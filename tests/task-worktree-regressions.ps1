@@ -13,6 +13,7 @@ $admin = Join-Path $scratch 'admin'
 $seed = Join-Path $scratch 'seed'
 $remote = Join-Path $scratch 'remote.git'
 $mainTree = Join-Path $admin '.worktrees/T-018'
+$registeredMainTree = Join-Path $admin '.worktrees/main'
 $quarantineTree = Join-Path $admin '.worktrees/T-013'
 $scriptPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/task-worktree-audit.ps1'
 $hooksPath = Join-Path (Split-Path $PSScriptRoot -Parent) '.githooks'
@@ -124,6 +125,8 @@ try {
     [IO.Directory]::CreateDirectory((Split-Path $quarantineTree -Parent)) | Out-Null
     Invoke-Git $admin @('worktree','add','--quiet','-b','task/T-013-agent-orchestration-research',$quarantineTree,'main') | Out-Null
     Invoke-Git $quarantineTree @('config','--worktree','core.bare','false') | Out-Null
+    Invoke-Git $admin @('worktree','add','--quiet',$registeredMainTree,'main') | Out-Null
+    Invoke-Git $registeredMainTree @('config','--worktree','core.bare','false') | Out-Null
     [IO.Directory]::CreateDirectory((Join-Path $mainTree 'scripts')) | Out-Null
     Copy-Item -LiteralPath $scriptPath -Destination (Join-Path $mainTree 'scripts/task-worktree-audit.ps1')
     Invoke-Git $mainTree @('add','scripts/task-worktree-audit.ps1') | Out-Null
@@ -135,9 +138,27 @@ try {
         $productionConfig = Get-Content -LiteralPath (Join-Path $repoRoot 'config/worktree-quarantine.json') -Raw | ConvertFrom-Json
         if ($productionConfig.schemaVersion -ne 1 -or @($productionConfig.quarantines).Count -ne 0) { throw 'PRODUCTION_QUARANTINE_REGISTRY_MUST_BE_EMPTY' }
     }
-    Case 'clean registered worktrees pass audit' {
+    Case 'clean registered worktrees and registered main directory pass audit' {
         $result = Assert-AuditExit 0 'CLEAN_AUDIT'
         if ($result.Output -notmatch 'WORKTREE-AUDIT=PASS') { throw 'CLEAN_AUDIT_MARKER_MISSING' }
+
+        Invoke-Git $admin @('worktree','remove','--force',$registeredMainTree) | Out-Null
+        [IO.Directory]::CreateDirectory($registeredMainTree) | Out-Null
+        $preserved = Join-Path $registeredMainTree 'preserve.txt'
+        Write-Text $preserved 'synthetic unregistered main directory'
+        try {
+            $result = Assert-AuditExit 1 'UNREGISTERED_MAIN_DIRECTORY_AUDIT'
+            if ($result.Output -notmatch 'unexpected physical directory in task directory root: main') { throw 'UNREGISTERED_MAIN_DIRECTORY_REASON_MISSING' }
+            if (-not (Test-Path -LiteralPath $preserved -PathType Leaf)) { throw 'UNREGISTERED_MAIN_DIRECTORY_DATA_CHANGED' }
+        }
+        finally {
+            $worktreesRoot = [IO.Path]::GetFullPath((Join-Path $admin '.worktrees')).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+            $registeredMainFullPath = [IO.Path]::GetFullPath($registeredMainTree)
+            if (-not $registeredMainFullPath.StartsWith($worktreesRoot,[StringComparison]::OrdinalIgnoreCase)) { throw 'REGISTERED_MAIN_FIXTURE_PATH_INVALID' }
+            if (Test-Path -LiteralPath $registeredMainFullPath) { Remove-Item -LiteralPath $registeredMainFullPath -Recurse -Force }
+            Invoke-Git $admin @('worktree','add','--quiet',$registeredMainTree,'main') | Out-Null
+            Invoke-Git $registeredMainTree @('config','--worktree','core.bare','false') | Out-Null
+        }
     }
     Case 'audit subprocess isolates system and global Git config' {
         $auditSource = [IO.File]::ReadAllText($scriptPath)
@@ -399,6 +420,165 @@ try {
         $result = Assert-AuditExit 0 'UNICODE_QUARANTINE_AUDIT'
         if ($result.Output -notmatch 'QUARANTINED_READ_ONLY') { throw ('UNICODE_QUARANTINE_MARKER_MISSING:' + $result.Output + $result.Error) }
     }
+    Case 'real pre-commit hook validates commit indexes and repairs identity in bare admin' {
+        $testTree = Join-Path $admin '.worktrees/T-019'
+        $testBase = Invoke-Git $mainTree @('rev-parse','HEAD')
+        Invoke-Git $admin @('worktree','add','--quiet','-b','task/T-019',$testTree,$testBase) | Out-Null
+        Invoke-Git $testTree @('config','--worktree','core.bare','false') | Out-Null
+        Invoke-Git $admin @('config','core.hooksPath',$hooksPath) | Out-Null
+
+        $testScripts = Join-Path $testTree 'scripts'
+        $testLib = Join-Path $testScripts 'lib'
+        $testGithub = Join-Path $testTree 'config/github'
+        $testGithubScripts = Join-Path $testScripts 'github'
+        $testConfig = Join-Path $testTree 'config'
+        $testHooks = Join-Path $testTree '.githooks'
+        [IO.Directory]::CreateDirectory($testLib) | Out-Null
+        [IO.Directory]::CreateDirectory($testGithub) | Out-Null
+        [IO.Directory]::CreateDirectory($testGithubScripts) | Out-Null
+        [IO.Directory]::CreateDirectory($testHooks) | Out-Null
+        Copy-Item -LiteralPath (Join-Path $repoRoot '.githooks/pre-commit') -Destination (Join-Path $testHooks 'pre-commit')
+        Copy-Item -LiteralPath (Join-Path $repoRoot '.githooks/pre-push') -Destination (Join-Path $testHooks 'pre-push')
+        Copy-Item -LiteralPath $scriptPath -Destination (Join-Path $testScripts 'task-worktree-audit.ps1')
+        Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/verify-git-hook-context.ps1') -Destination (Join-Path $testScripts 'verify-git-hook-context.ps1')
+        Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/verify-git-identity.ps1') -Destination (Join-Path $testScripts 'verify-git-identity.ps1')
+        Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/github/configure-local.ps1') -Destination (Join-Path $testGithubScripts 'configure-local.ps1')
+        Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/lib/GitIdentity.psm1') -Destination (Join-Path $testLib 'GitIdentity.psm1')
+        Copy-Item -LiteralPath (Join-Path $repoRoot 'config/github/repository.json') -Destination (Join-Path $testGithub 'repository.json')
+        Copy-Item -LiteralPath (Join-Path $repoRoot 'config/git-empty.config') -Destination (Join-Path $testConfig 'git-empty.config')
+        Copy-Item -LiteralPath $configPath -Destination (Join-Path $testConfig 'worktree-quarantine.json')
+
+        $policy = Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/repository.json') -Raw | ConvertFrom-Json
+        $policyLogin = [string]$policy.commitIdentity.login
+        $policyEmail = [string]$policy.commitIdentity.userId + '+' + $policyLogin + '@users.noreply.github.com'
+        $originUrl = 'https://github.com/' + [string]$policy.repository + '.git'
+        $originFetchBefore = Invoke-Git $admin @('remote','get-url','origin')
+        $originPushBefore = Invoke-Git $admin @('remote','get-url','--push','origin')
+        Invoke-Git $testTree @('config','--worktree','user.name',$policyLogin) | Out-Null
+        Invoke-Git $testTree @('config','--worktree','user.email',$policyEmail) | Out-Null
+        Invoke-Git $testTree @('config','--worktree','user.useConfigOnly','true') | Out-Null
+        Invoke-Git $testTree @('config','--worktree','etalon.identity.userId',[string]$policy.commitIdentity.userId) | Out-Null
+        Invoke-Git $testTree @('config','--worktree','etalon.identity.login',$policyLogin) | Out-Null
+
+        $fixturePaths = @(
+            'scripts/task-worktree-audit.ps1',
+            'scripts/verify-git-hook-context.ps1',
+            'scripts/verify-git-identity.ps1',
+            'scripts/github/configure-local.ps1',
+            'scripts/lib/GitIdentity.psm1',
+            'config/github/repository.json',
+            'config/git-empty.config',
+            '.githooks/pre-commit',
+            '.githooks/pre-push',
+            'config/worktree-quarantine.json'
+        )
+        $stageArgs = @('add','--') + $fixturePaths
+        Invoke-Git $testTree $stageArgs | Out-Null
+        $emptyHooks = Join-Path $scratch 'empty-hooks-real-commit'
+        [IO.Directory]::CreateDirectory($emptyHooks) | Out-Null
+        Invoke-Git $testTree @('-c',('core.hooksPath=' + $emptyHooks),'commit','--quiet','-m','test: prepare real commit hook fixture') | Out-Null
+
+        $oldAgent = $env:ETALON_AI_AGENT
+        $oldIndex = $env:GIT_INDEX_FILE
+        $oldPath = $env:Path
+        $originTemporarilyChanged = $false
+        $ghBin = Join-Path $scratch 'synthetic-gh'
+        [IO.Directory]::CreateDirectory($ghBin) | Out-Null
+        $ghShim = Join-Path $ghBin 'gh.cmd'
+        $ghProfile = Join-Path $ghBin 'user.json'
+        $ghProfileJson = [ordered]@{
+            login = $policyLogin
+            id = [long]$policy.commitIdentity.userId
+        } | ConvertTo-Json -Compress
+        [IO.File]::WriteAllText($ghProfile,$ghProfileJson + [Environment]::NewLine,$utf8)
+        $ghLines = @(
+            '@echo off',
+            'if /I "%~1"=="api" if /I "%~2"=="user" (',
+            '  type "%~dp0user.json"',
+            '  exit /b 0',
+            ')',
+            'exit /b 2'
+        )
+        [IO.File]::WriteAllText($ghShim,([string]::Join([Environment]::NewLine,$ghLines) + [Environment]::NewLine),$utf8)
+        $git = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+        try {
+            Invoke-Git $admin @('remote','set-url','origin',$originUrl) | Out-Null
+            $originTemporarilyChanged = $true
+            Invoke-Git $admin @('remote','set-url','--push','origin',$originUrl) | Out-Null
+            $env:ETALON_AI_AGENT = 'Codex'
+            $env:Path = $ghBin + ';' + $env:Path
+            $resolvedGh = (Get-Command gh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+            if (-not [string]::Equals($resolvedGh,$ghShim,[StringComparison]::OrdinalIgnoreCase)) { throw 'SYNTHETIC_GH_SHIM_NOT_SELECTED' }
+            $syntheticProfile = @(& $ghShim api user)
+            $syntheticProfileExit = $LASTEXITCODE
+            if ($syntheticProfileExit -ne 0 -or $syntheticProfile.Count -ne 1) { throw 'SYNTHETIC_GH_PROFILE_RESPONSE_INVALID' }
+            try { $syntheticProfileObject = ConvertFrom-Json -InputObject ([string]$syntheticProfile[0]) -ErrorAction Stop } catch { throw 'SYNTHETIC_GH_PROFILE_JSON_INVALID' }
+            if ([string]$syntheticProfileObject.login -cne $policyLogin -or [string]$syntheticProfileObject.id -cne [string]$policy.commitIdentity.userId) { throw 'SYNTHETIC_GH_PROFILE_POLICY_MISMATCH' }
+            Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue
+
+            Write-Text (Join-Path $testTree 'README.md') ('real commit -a content' + [Environment]::NewLine)
+            $autoStage = Invoke-NativeProcess $git @('-C',$testTree,'commit','-a','-m','test: real commit-a hook') -HookProcess
+            if ($autoStage.ExitCode -ne 0) { throw ('REAL_COMMIT_A_HOOK_FAILED:' + $autoStage.Output + $autoStage.Error) }
+
+            Write-Text (Join-Path $testTree 'README.md') ('real pathspec content' + [Environment]::NewLine)
+            $pathspec = Invoke-NativeProcess $git @('-C',$testTree,'commit','-m','test: real pathspec hook','--','README.md') -HookProcess
+            if ($pathspec.ExitCode -ne 0) { throw ('REAL_PATHSPEC_HOOK_FAILED:' + $pathspec.Output + $pathspec.Error) }
+
+            $remaining = Invoke-Git $testTree @('status','--porcelain=v2')
+            if (-not [string]::IsNullOrWhiteSpace($remaining)) { throw ('REAL_HOOK_COMMIT_LEFT_RESIDUE:' + $remaining) }
+            $identityOutput = Invoke-Git $testTree @('log','-2','--format=%ae%x09%ce')
+            $identityLog = @($identityOutput -split '\r?\n')
+            if ($identityLog.Count -ne 2) { throw ('REAL_HOOK_COMMIT_IDENTITY_COUNT_MISMATCH:' + $identityOutput) }
+            foreach ($identityEntry in $identityLog) {
+                $identityParts = $identityEntry.Split([char]9)
+                if ($identityParts.Length -ne 2 -or $identityParts[0] -cne $policyEmail -or $identityParts[1] -cne $policyEmail) {
+                    throw ('REAL_HOOK_COMMIT_IDENTITY_MISMATCH:' + $identityOutput)
+                }
+            }
+
+            $outsideIndex = Join-Path $scratch 'untrusted.index'
+            Write-Text $outsideIndex 'synthetic invalid index'
+            $env:GIT_INDEX_FILE = $outsideIndex
+            $rejected = Invoke-Audit -Mode 'Commit' -RepositoryRoot $testTree
+            $rejectionText = [string]::Join([Environment]::NewLine,@($rejected.Output,$rejected.Error))
+            if ($rejected.ExitCode -eq 0 -or $rejectionText -notmatch 'WORKTREE_AUDIT_HOOK_INDEX_OUTSIDE_WORKTREE') {
+                throw ('UNTRUSTED_COMMIT_INDEX_NOT_REJECTED:' + $rejectionText)
+            }
+
+            Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue
+            $beforeRepairHead = Invoke-Git $testTree @('rev-parse','HEAD')
+            Invoke-Git $testTree @('config','--worktree','user.name','Wrong Fixture') | Out-Null
+            Invoke-Git $testTree @('config','--worktree','user.email','wrong@example.invalid') | Out-Null
+            Write-Text (Join-Path $testTree 'README.md') ('identity repair fixture' + [Environment]::NewLine)
+            Invoke-Git $testTree @('add','README.md') | Out-Null
+            $repair = Invoke-NativeProcess $git @('-C',$testTree,'commit','-m','test: real identity repair hook') -HookProcess
+            $repairText = [string]::Join([Environment]::NewLine,@($repair.Output,$repair.Error))
+            $afterRepairHead = Invoke-Git $testTree @('rev-parse','HEAD')
+            if ($repair.ExitCode -eq 0 -or $repairText -notmatch 'worktree identity repaired and verified' -or $afterRepairHead -cne $beforeRepairHead) {
+                throw ('REAL_IDENTITY_REPAIR_DID_NOT_BLOCK_FIRST_ATTEMPT:' + $repairText)
+            }
+            $repairedName = Invoke-Git $testTree @('config','--worktree','--get','user.name')
+            $repairedEmail = Invoke-Git $testTree @('config','--worktree','--get','user.email')
+            if ($repairedName -cne $policyLogin -or $repairedEmail -cne $policyEmail) { throw 'REAL_IDENTITY_REPAIR_POLICY_MISMATCH' }
+
+            $retry = Invoke-NativeProcess $git @('-C',$testTree,'commit','-m','test: real identity repair hook') -HookProcess
+            if ($retry.ExitCode -ne 0) { throw ('REAL_IDENTITY_REPAIR_RETRY_FAILED:' + $retry.Output + $retry.Error) }
+            $lastIdentity = Invoke-Git $testTree @('log','-1','--format=%an%x09%ae%x09%cn%x09%ce')
+            $expectedLastIdentity = [string]::Join([char]9,@($policyLogin,$policyEmail,$policyLogin,$policyEmail))
+            if ($lastIdentity -cne $expectedLastIdentity) { throw ('REAL_IDENTITY_REPAIR_COMMIT_IDENTITY_MISMATCH:' + $lastIdentity) }
+            $finalStatus = Invoke-Git $testTree @('status','--porcelain=v2')
+            if (-not [string]::IsNullOrWhiteSpace($finalStatus)) { throw ('REAL_IDENTITY_REPAIR_LEFT_RESIDUE:' + $finalStatus) }
+        }
+        finally {
+            if ($originTemporarilyChanged) {
+                Invoke-Git $admin @('remote','set-url','origin',$originFetchBefore) | Out-Null
+                Invoke-Git $admin @('remote','set-url','--push','origin',$originPushBefore) | Out-Null
+            }
+            if ($null -eq $oldAgent) { Remove-Item Env:ETALON_AI_AGENT -ErrorAction SilentlyContinue } else { $env:ETALON_AI_AGENT = $oldAgent }
+            if ($null -eq $oldIndex) { Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue } else { $env:GIT_INDEX_FILE = $oldIndex }
+            $env:Path = $oldPath
+        }
+    }
     Case 'pre-push hook blocks publishing with untracked residue' {
         Write-Text (Join-Path $mainTree 'task.txt') 'committed task output'
         Invoke-Git $mainTree @('add','task.txt') | Out-Null
@@ -425,7 +605,7 @@ try {
         Remove-Item -LiteralPath $mainHookScripts -Force
     }
 
-    if ($passed -ne 24) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 24, got ' + $passed) }
+    if ($passed -ne 25) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 25, got ' + $passed) }
     Write-Output ('TASK-WORKTREE-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {

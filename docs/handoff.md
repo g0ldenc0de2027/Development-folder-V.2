@@ -1,10 +1,10 @@
-# Handoff — GitHub reliability and T-015, 2026-11-18
+# Handoff — GitHub reliability and T-015, 2026-11-19
 
-- The owner-provided full audit is archived at `АУДИТЫ/ARCHIVE/2026-11-18_Полный-технический-аудит_Development-Folder-V2_OpenAI-Codex-GPT-6.md`. It is a snapshot of `main@f577dc7` with 27 findings (8 P1, 17 P2, 2 P3), not proof that all open PRs or local worktrees remain in that state. T-015 addresses only a subset of V2-03/04/18; scratch isolation, generic ref/ancestry policy, CI tuple enforcement and merge ordering remain separate work.
-- Active T-015 work remains isolated in `.worktrees/T-015` on `task/T-015-git-attribution`; scoped implementation is locally committed at `bbfcf99ecc86bf1b203058772c2dafc84ba2583f`. No main/admin-root files were edited. Treat this commit as a candidate until exact live PR refs, hosted CI and fresh independent review are checked.
-- Full local `pwsh -NoProfile -File scripts/quality-gate.ps1 -BaseRef origin/main` passed on the exact content committed at `bbfcf99ecc86bf1b203058772c2dafc84ba2583f`: identity 31/31, task-worktree 24/24, KB 44/44, privacy/hygiene (41 Markdown plus regression source; 66 text files), actionlint, Gitleaks (89 reachable commits and supplied push range), and diff checks. The first run caught CRLF in the edited regression file; it was normalized to LF before the passing run. Stack build/dependency audit remains NOT COVERED because this template has no selected application stack.
-- Historical hosted runs and independent approvals refer to earlier PR #11 heads and do not review this working diff. Next acceptance step is the exact final local quality gate, then a scoped commit/push followed by fresh hosted CI and independent review naming the same live head/base tuple.
-- T-013 raw snapshot remains archived as `Development-Folder-V2_T-013-source-snapshot-2026-11-18_91bb56d5.zip` (SHA-256 `734f27b8027e4a0aaa2f1aeca5868ba242249766fca26e975fcb718c60602d99`); Format 1 manifest SHA-256 is `91bb56d5de1822cfb64a9fad0270c83d41d5b00c110e6740d2804c9e96c2d4f3`. Git config setup remains a sequence of checked writes rather than a transaction; on partial failure verifier/hooks block, and recovery is re-running `configure-local.ps1 -IdentityOnly` followed by verifier. Automatic rollback is intentionally absent.
+- T-015 candidate is in .worktrees/T-015 on task/T-015-git-attribution, based on local HEAD dd371f482d9c9502c0b50ba9834ab297c6594639; no branch or remote ref has moved.
+- Live PR #11 is OPEN/Draft at head dd371f482d9c9502c0b50ba9834ab297c6594639, base f577dc70e58d75ab5fd61d0c2e712c27b590713a. Run #44363546723 is SUCCESS for that published head only; it does not validate the current uncommitted candidate.
+- The current candidate is scoped to T-015 and has passed the full local quality gate; exact counts and coverage are recorded in the T-015 card. The handoff and card are included in a final gate rerun before commit.
+- Next: run the final gate and diff checks, commit only the T-015 zone, then use ordinary push; verify the new live head, hosted CI merge-result and independent review on that exact revision. Do not merge until the new review and CI pass.
+
 
 ---
 

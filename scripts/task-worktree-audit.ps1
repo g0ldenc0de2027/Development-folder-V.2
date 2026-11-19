@@ -17,7 +17,8 @@ function Invoke-GitText {
     param(
         [Parameter(Mandatory)][string]$Directory,
         [Parameter(Mandatory)][string[]]$Arguments,
-        [Parameter(Mandatory)][string]$Operation
+        [Parameter(Mandatory)][string]$Operation,
+        [string]$IndexFile
     )
     # Inherited Git environment can redirect repository discovery, config, or object storage.
     $gitContext = @{}
@@ -35,6 +36,7 @@ function Invoke-GitText {
         [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
         [Environment]::SetEnvironmentVariable('GIT_CONFIG_NOSYSTEM','1','Process')
         [Environment]::SetEnvironmentVariable('GIT_CONFIG_GLOBAL',$emptyConfig,'Process')
+        if (-not [string]::IsNullOrWhiteSpace($IndexFile)) { [Environment]::SetEnvironmentVariable('GIT_INDEX_FILE',$IndexFile,'Process') }
         $output = @(& git --no-pager --no-optional-locks -c core.fsmonitor=false -C $Directory @Arguments 2>&1)
         $exitCode = $LASTEXITCODE
     }
@@ -170,6 +172,30 @@ try {
     $bareOutput = @(Invoke-GitText -Directory $currentRoot -Arguments @('rev-parse','--is-bare-repository') -Operation 'verify-worktree')
     if ($bareOutput.Count -ne 1 -or $bareOutput[0] -cne 'false') { throw 'WORKTREE_AUDIT_REQUIRES_LINKED_WORKTREE' }
 
+    $commitIndexFile = $null
+    if ($Mode -ceq 'Commit') {
+        $indexValue = [Environment]::GetEnvironmentVariable('GIT_INDEX_FILE','Process')
+        if (-not [string]::IsNullOrWhiteSpace($indexValue)) {
+            try {
+                if ([IO.Path]::IsPathRooted($indexValue)) { $indexPath = [IO.Path]::GetFullPath($indexValue) }
+                else { $indexPath = [IO.Path]::GetFullPath((Join-Path $currentRoot $indexValue)) }
+            }
+            catch { throw 'WORKTREE_AUDIT_HOOK_INDEX_PATH_INVALID' }
+            $gitDirOutput = @(Invoke-GitText -Directory $currentRoot -Arguments @('rev-parse','--absolute-git-dir') -Operation 'resolve-hook-index-gitdir')
+            if ($gitDirOutput.Count -ne 1) { throw 'WORKTREE_AUDIT_HOOK_INDEX_GITDIR_AMBIGUOUS' }
+            $gitDir = Assert-NoReparseAncestors -Path $gitDirOutput[0] -RequireDirectory
+            $indexDirectory = [IO.Path]::GetDirectoryName($indexPath)
+            $indexName = [IO.Path]::GetFileName($indexPath)
+            if (-not $indexDirectory.TrimEnd('\','/').Equals($gitDir.TrimEnd('\','/'),[StringComparison]::OrdinalIgnoreCase)) {
+                throw 'WORKTREE_AUDIT_HOOK_INDEX_OUTSIDE_WORKTREE'
+            }
+            if ($indexName -cne 'index' -and $indexName -cnotmatch '^(?:index\.lock|next-index-[0-9]+\.lock)$') {
+                throw 'WORKTREE_AUDIT_HOOK_INDEX_NAME_INVALID'
+            }
+            $null = Assert-NoReparseAncestors -Path $indexDirectory -RequireDirectory
+            $commitIndexFile = Assert-NoReparseAncestors -Path $indexPath -RequireFile
+        }
+    }
     $commonOutput = @(Invoke-GitText -Directory $currentRoot -Arguments @('rev-parse','--git-common-dir') -Operation 'resolve-common-dir')
     if ($commonOutput.Count -ne 1) { throw 'WORKTREE_AUDIT_COMMON_DIR_AMBIGUOUS' }
     $commonDir = $commonOutput[0]
@@ -230,13 +256,15 @@ try {
                 $failed = $true
                 continue
             }
-            if ($directoryName -notmatch '^T-\d{3,}$') {
+            $directoryFullPath = [IO.Path]::GetFullPath($directory)
+            $isRegisteredTaskPath = $registeredTaskPaths.Contains($directoryFullPath)
+            $isRegisteredMainDirectory = ($directoryName -ceq 'main' -and $isRegisteredTaskPath)
+            if ($directoryName -notmatch '^T-\d{3,}$' -and -not $isRegisteredMainDirectory) {
                 Write-Output ('BLOCKED: unexpected physical directory in task directory root: ' + $directoryName + ' (preserved; no cleanup performed)')
                 $failed = $true
                 continue
             }
-            $directoryFullPath = [IO.Path]::GetFullPath($directory)
-            if (-not $registeredTaskPaths.Contains($directoryFullPath)) {
+            if (-not $isRegisteredTaskPath) {
                 Write-Output ('BLOCKED: unregistered task directory detected: ' + $directoryName + ' (preserved; no cleanup performed)')
                 $failed = $true
             }
@@ -283,8 +311,10 @@ try {
             continue
         }
 
-        $statusLines = @(Invoke-GitText -Directory $treePath -Arguments @('-c','core.quotepath=false','status','--porcelain=v1','--untracked-files=all','--ignore-submodules=none') -Operation 'status')
-        $ignoredLines = @(Invoke-GitText -Directory $treePath -Arguments @('-c','core.quotepath=false','status','--porcelain=v1','--ignored=matching','--untracked-files=all','--ignore-submodules=none') -Operation 'ignored-status')
+        $statusIndexFile = $null
+        if ($isCurrent -and $Mode -ceq 'Commit') { $statusIndexFile = $commitIndexFile }
+        $statusLines = @(Invoke-GitText -Directory $treePath -Arguments @('-c','core.quotepath=false','status','--porcelain=v1','--untracked-files=all','--ignore-submodules=none') -Operation 'status' -IndexFile $statusIndexFile)
+        $ignoredLines = @(Invoke-GitText -Directory $treePath -Arguments @('-c','core.quotepath=false','status','--porcelain=v1','--ignored=matching','--untracked-files=all','--ignore-submodules=none') -Operation 'ignored-status' -IndexFile $statusIndexFile)
         $visualStudioArtifacts = @($ignoredLines | Where-Object {
             $_.StartsWith('!! ',[StringComparison]::Ordinal) -and $_.Substring(3).Trim('"') -match '(?i)(?:^|[\\/])\.vs(?:[\\/]|["]|$)'
         })

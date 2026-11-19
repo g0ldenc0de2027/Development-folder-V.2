@@ -651,6 +651,7 @@ try {
         $bareSeed = Join-Path $scratch 'bare-seed'
         $bareWorktree = Join-Path $scratch 'bare-worktree'
         $newWorktree = Join-Path $scratch 'bare-worktree-next'
+        $preconfiguredWorktree = Join-Path $scratch 'bare-worktree-preconfigured'
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--bare','--quiet',$bareAdmin) | Out-Null
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--quiet',$bareSeed) | Out-Null
         Invoke-GitFixture -Directory $bareSeed -Arguments @('config','user.name','Bare Fixture') | Out-Null
@@ -680,6 +681,13 @@ try {
         if ((Invoke-GitFixture -Directory $bareWorktree -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw 'LINKED_WORKTREE_CORE_BARE_NOT_FALSE' }
         $sharedBare = @(& git -C $bareWorktree config --local --get-all core.bare 2>$null)
         if ($LASTEXITCODE -ne 1 -or $sharedBare.Count -ne 0) { throw 'SHARED_CORE_BARE_NOT_MIGRATED' }
+        Invoke-GitFixture -Directory $bareWorktree -Arguments @('config','--local','core.bare','true') | Out-Null
+        Invoke-GitFixture -Directory $bareAdmin -Arguments @('worktree','add','--quiet','-b','task/bare-preconfigured',$preconfiguredWorktree,'main') | Out-Null
+        Invoke-GitFixture -Directory $preconfiguredWorktree -Arguments @('config','--worktree','core.bare','false') | Out-Null
+        $null = Initialize-GitWorktreeConfig -RepositoryRoot $preconfiguredWorktree
+        if ((Invoke-GitFixture -Directory $preconfiguredWorktree -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw 'PRECONFIGURED_LINKED_WORKTREE_CORE_BARE_NOT_FALSE' }
+        $sharedBare = @(& git -C $preconfiguredWorktree config --local --get-all core.bare 2>$null)
+        if ($LASTEXITCODE -ne 1 -or $sharedBare.Count -ne 0) { throw 'PRECONFIGURED_SHARED_CORE_BARE_NOT_MIGRATED' }
         Invoke-GitFixture -Directory $bareAdmin -Arguments @('worktree','add','--quiet','-b','task/bare-two',$newWorktree,'main') | Out-Null
         Invoke-GitFixture -Directory $newWorktree -Arguments @('status','--short','--branch') | Out-Null
         if ((Invoke-GitFixture -Directory $bareAdmin -Arguments @('rev-parse','--is-bare-repository')) -cne 'true') { throw 'BARE_ADMIN_ROOT_LOST_BARE_IDENTITY' }

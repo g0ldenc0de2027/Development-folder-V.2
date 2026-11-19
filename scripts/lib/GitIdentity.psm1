@@ -305,6 +305,8 @@ function Initialize-GitWorktreeConfig {
             catch { throw 'GIT_IDENTITY_WORKTREE_LIST_INVALID' }
         }
     }
+    $adminPathFound = @($listedPaths | Where-Object { $_.TrimEnd('\','/').Equals($commonDir.TrimEnd('\','/'),[StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+    if ($adminPathFound) { $hasBareAdmin = $true }
     $registeredPathFound = @($listedPaths | Where-Object { $_.TrimEnd('\','/').Equals($root,[StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
     if (-not $registeredPathFound) { throw 'GIT_IDENTITY_WORKTREE_NOT_REGISTERED' }
 
