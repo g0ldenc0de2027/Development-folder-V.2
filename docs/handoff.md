@@ -12,7 +12,7 @@
 
 - PR #11 remains unmerged. No GitHub-native review was present at this snapshot. After this documentation/policy update, read the live PR for the final head/base and hosted check; obtain an independent read-only review naming that exact head. Do not merge until current-head review, hosted CI, scope acceptance and integration checks all pass.
 - AGENTS.md now requires agent-owned per-run temp paths, `try/finally` cleanup and post-cleanup verification; it explicitly protects user data, inbox, backups and unowned artifacts from broad deletion.
-- Local full quality gate passed on the exact working-tree content atop local HEAD `9db737b108fedc8f5ea680484523bcaf05b4bfd9`: Git identity 31/31, task-worktree 25/25, KB 44/44, privacy 41 Markdown plus regression source, hygiene 69 text files, actionlint and Gitleaks PASS. Short external temp root was removed; HEAD, branch, refs, worktree list and status matched before/after. This is local evidence, not hosted CI for the final PR head.
+- Evidence for commit 55970f4d7db0429a2c5d9c64c7f617965d0d5815: pre-push passed with 69 local text files; hosted quality-gate #44484559621 passed on merge-result 40dccdbe36672be9c7638a745ea846396e309f2c with 65 hosted text files. These counts describe separate runs. The earlier unpublished recovery checkpoint is preserved locally and is outside this evidence.
 - For every action, confirm the target repository, branch, full SHA and current live remote state from the linked worktree. The bare admin repository is not a working tree. Never infer success from a stale run, an empty review decision, or a command wrapper that hides a nonzero child exit.
 
 ---

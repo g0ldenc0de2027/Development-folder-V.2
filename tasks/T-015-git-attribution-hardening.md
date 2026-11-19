@@ -25,7 +25,6 @@
 - `tests/git-identity-regressions.ps1`
 - `docs/git-identity.md`
 - `docs/development.md`
-- `knowledge/УРОКИ.md`
 - `knowledge/records/git-attribution-worktrees.md`
 - `knowledge/catalog.json`
 - `tasks/T-015-git-attribution-hardening.md`
@@ -72,7 +71,7 @@
 
 ## Локальная проверка документации и политики — 2026-11-19
 
-- Полный локальный quality gate прошёл на точном содержимом worktree поверх локального HEAD `9db737b108fedc8f5ea680484523bcaf05b4bfd9`: Git identity 31/31, worktree 25/25, KB 44/44, privacy 41 Markdown плюс regression source, hygiene 69 текстовых файлов, actionlint и Gitleaks PASS.
+- Evidence for commit 55970f4d7db0429a2c5d9c64c7f617965d0d5815: pre-push passed with 69 local text files; hosted quality-gate #44484559621 passed on merge-result 40dccdbe36672be9c7638a745ea846396e309f2c with 65 hosted text files. These counts describe separate runs. The earlier unpublished recovery checkpoint is preserved locally and is outside this evidence.
 - `git diff --check` и `kb.ps1 check` прошли; SHA записи совпадает с `knowledge/catalog.json`; все шесть изменённых текстовых файлов имеют `w/lf`, признаков `w/mixed` нет.
 - Gate использовал изолированный короткий внешний temp-каталог; расчётный максимальный вложенный fixture-путь — 207 символов. Каталог удалён; HEAD, ветка, status, refs и список worktrees до/после совпали.
 - Это локальное доказательство для рабочего содержимого, а не hosted CI или независимое ревью финального PR head. Pre-push и hosted CI должны проверить закоммиченный head.
@@ -93,3 +92,5 @@ Git metadata — атрибуция, а не доказательство физ
 - **Следующая интеграция.** Пересечения путей из отчёта использовать для сортировки, а конфликт проверять по актуальным diff. Сначала довести текущий PR #11 до решения на проверенной ревизии. Перед закрытием кандидата в дубликаты или снятием старого worktree подтвердить состояние PR, эквивалентность содержимого, чистоту дерева и наличие уникальных коммитов.
 - **Атрибуция.** В текущих pre-commit и pre-push нет проверки трейлеров. Следующая проверка: на изолированном fixture показать отказ для task-коммита без корректного Refs и для явно обозначенного агентского запуска без Assisted-by. Сохранить возможность коммита владельцем без ложной агентской атрибуции.
 - **Отдельные решения.** Кэш инструментов оценить по замерам, сохраняя проверку целостности. Глобальный Git config, смена корневой схемы, владение репозиторием, rulesets и историческая приватность требуют отдельных доказательств и решений. Live цифры и статусы из отчёта считать снимком, пока они не пересверены.
+
+- Antigravity, review of 55970f4: corrected evidence references and duplicate scope entry. Direct Git calls in the core.bare rollback remain a separate follow-up: verify isolation for direct Initialize-GitWorktreeConfig callers before changing rollback behavior.
