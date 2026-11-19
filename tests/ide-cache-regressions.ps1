@@ -75,6 +75,55 @@ try {
         if (@($paths -like "$relative/*").Count -ne 0) { throw "Excluded directory enumerated: $relative" }
     }
     if ('knowledge/.vs-cache/valid.ps1' -notin $paths) { throw 'Similar directory was excluded' }
+    $junction = Join-Path $fixture 'fixture-junction[probe]'
+    New-Item -ItemType Junction -Path $junction -Target $similar | Out-Null
+    try {
+        $linkedPaths = @(Get-ProjectFiles $fixture | ForEach-Object FullName)
+        $junctionPrefix = $junction + [IO.Path]::DirectorySeparatorChar
+        if ($linkedPaths | Where-Object { $_.StartsWith($junctionPrefix, [StringComparison]::OrdinalIgnoreCase) }) {
+            throw 'Source scan followed a junction'
+        }
+    } finally {
+        [IO.Directory]::Delete($junction)
+    }
+
+    $projected = Join-Path $fixture 'fixture-projected'
+    $projectedSource = Join-Path $projected 'probe.ps1'
+    [IO.Directory]::CreateDirectory($projected) | Out-Null
+    try {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+public static class V2ProjectedFixture {
+    [DllImport("ProjectedFSLib.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    public static extern int PrjMarkDirectoryAsPlaceholder(
+        string root, IntPtr target, IntPtr version, ref Guid instance);
+}
+"@
+        $instance = [guid]::NewGuid()
+        $markResult = $null
+        try {
+            $markResult = [V2ProjectedFixture]::PrjMarkDirectoryAsPlaceholder(
+                $projected, [IntPtr]::Zero, [IntPtr]::Zero, [ref]$instance)
+        } catch {
+            if ($_.Exception.InnerException -isnot [DllNotFoundException] -and
+                $_.Exception.InnerException -isnot [EntryPointNotFoundException]) { throw }
+        }
+        if ($markResult -eq 0) {
+            [IO.File]::WriteAllText($projectedSource, "Write-Output 'projfs'" + [char]10, $utf8)
+            if ($projectedSource -notin @(Get-ProjectFiles $fixture | ForEach-Object FullName)) {
+                throw 'Source scan skipped a ProjFS directory'
+            }
+            Write-Output 'PASS: source scan entered ProjFS and excluded a junction'
+        } else {
+            Write-Output ('NOT COVERED: ProjFS fixture unavailable (HRESULT {0})' -f $markResult)
+        }
+    } finally {
+        [IO.File]::Delete($projectedSource)
+        [IO.Directory]::Delete($projected)
+    }
+
     $err=Join-Path $fixture 'fixture-stderr.txt'
     $result=@(& pwsh -NoLogo -NoProfile -File (Join-Path $fixture 'tests/quality-gate-regressions.ps1') 2>$err)
     if ($LASTEXITCODE -ne 0) { throw ('Ignored VS cache blocked hygiene: ' + [IO.File]::ReadAllText($err)) }
