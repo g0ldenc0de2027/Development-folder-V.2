@@ -731,6 +731,40 @@ try {
             }
             [IO.File]::Delete($adminLock)
         }
+        $adminConfig = Join-Path $bareAdmin 'config.worktree'
+        Invoke-GitFixture -Directory $bareWorktree -Arguments @('config','--file',$adminConfig,'--unset','core.bare') | Out-Null
+        # Make a second Git process replace the temporary value before rollback reads it.
+        & $identityModule {
+            $script:fixtureAdminCommand = (Get-Item Function:Invoke-GitIdentityAdminCommand).ScriptBlock
+            function script:Invoke-GitIdentityAdminCommand {
+                param([string]$GitDirectory,[string[]]$Arguments)
+                $result = & $script:fixtureAdminCommand -GitDirectory $GitDirectory -Arguments $Arguments
+                if ($Arguments.Count -eq 5 -and $Arguments[1] -ceq '--file' -and
+                    $Arguments[3] -ceq 'core.bare' -and $Arguments[4] -ceq 'true') {
+                    $null = & $script:fixtureAdminCommand -GitDirectory $GitDirectory -Arguments @(
+                        'config','--file',$Arguments[2],'--replace-all','core.bare','false')
+                }
+                return $result
+            }
+        }
+        try {
+            [IO.File]::Open($sharedLock, [IO.FileMode]::CreateNew).Dispose()
+            try {
+                ExpectFailure { Initialize-GitWorktreeConfig -RepositoryRoot $bareWorktree } 'GIT_IDENTITY_CORE_BARE_ROLLBACK_FAILED'
+                $retained = Invoke-GitFixture -Directory $bareWorktree -Arguments @('config','--file',$adminConfig,'--get-all','core.bare')
+                if ($retained -cne 'false') { throw 'CORE_BARE_CONCURRENT_VALUE_NOT_RETAINED' }
+                if ((Get-FileHash -LiteralPath $sharedConfig).Hash -cne $sharedConfigBefore) { throw 'CORE_BARE_ROLLBACK_CHANGED_LOCKED_CONFIG' }
+            } finally {
+                [IO.File]::Delete($sharedLock)
+            }
+        } finally {
+            & $identityModule {
+                Set-Item -LiteralPath Function:script:Invoke-GitIdentityAdminCommand -Value $script:fixtureAdminCommand
+                Remove-Variable -Scope Script -Name fixtureAdminCommand
+            }
+        }
+        # Reset only this synthetic fixture before validating the normal retry.
+        Invoke-GitFixture -Directory $bareWorktree -Arguments @('config','--file',$adminConfig,'--unset','core.bare') | Out-Null
         $null = Initialize-GitWorktreeConfig -RepositoryRoot $bareWorktree
         if ((Invoke-GitFixture -Directory $bareWorktree -Arguments @('config','--file',(Join-Path $bareAdmin 'config.worktree'),'--get','core.bare')) -cne 'true') { throw 'BARE_ADMIN_CONFIG_WORKTREE_NOT_PRESERVED' }
         if ((Invoke-GitFixture -Directory $bareWorktree -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw 'LINKED_WORKTREE_CORE_BARE_NOT_FALSE' }
