@@ -59,23 +59,11 @@ if (Test-Path -LiteralPath $fixtureRoot) {
     throw 'Regression fixture path already exists'
 }
 
-$environmentNames = @(
-    'GIT_CONFIG_GLOBAL',
-    'GIT_CONFIG_NOSYSTEM',
-    'GIT_DIR',
-    'GIT_WORK_TREE',
-    'GIT_COMMON_DIR',
-    'GIT_INDEX_FILE',
-    'GIT_AUTHOR_NAME',
-    'GIT_AUTHOR_EMAIL',
-    'GIT_COMMITTER_NAME',
-    'GIT_COMMITTER_EMAIL',
-    'GIT_AUTHOR_DATE',
-    'GIT_COMMITTER_DATE'
-)
 $oldEnvironment = @{}
-foreach ($name in $environmentNames) {
-    $oldEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+foreach ($entry in [Environment]::GetEnvironmentVariables('Process').GetEnumerator()) {
+    if (([string]$entry.Key).StartsWith('GIT_', [StringComparison]::OrdinalIgnoreCase)) {
+        $oldEnvironment[$entry.Key] = $entry.Value
+    }
 }
 $passed = 0
 $fixtureRepo = Join-Path $fixtureRoot 'synthetic.git'
@@ -142,11 +130,11 @@ try {
     New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
     $globalConfig = Join-Path $fixtureRoot 'empty.gitconfig'
     [IO.File]::WriteAllText($globalConfig, '', [Text.UTF8Encoding]::new($false))
+    foreach ($name in $oldEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+    }
     [Environment]::SetEnvironmentVariable('GIT_CONFIG_GLOBAL', $globalConfig, 'Process')
     [Environment]::SetEnvironmentVariable('GIT_CONFIG_NOSYSTEM', '1', 'Process')
-    foreach ($name in @('GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE')) {
-        Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
-    }
     [Environment]::SetEnvironmentVariable('GIT_AUTHOR_NAME', 'Synthetic Regression', 'Process')
     [Environment]::SetEnvironmentVariable('GIT_AUTHOR_EMAIL', 'regression@example.invalid', 'Process')
     [Environment]::SetEnvironmentVariable('GIT_COMMITTER_NAME', 'Synthetic Regression', 'Process')
@@ -195,9 +183,13 @@ try {
 
     Write-Output ("PR-MERGE-RESULT-REGRESSIONS: {0} passed, 0 failed" -f $passed)
 } finally {
-    foreach ($name in $environmentNames) {
-        $value = $oldEnvironment[$name]
-        [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+    foreach ($entry in [Environment]::GetEnvironmentVariables('Process').GetEnumerator()) {
+        if (([string]$entry.Key).StartsWith('GIT_', [StringComparison]::OrdinalIgnoreCase)) {
+            [Environment]::SetEnvironmentVariable($entry.Key, $null, 'Process')
+        }
+    }
+    foreach ($name in $oldEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $oldEnvironment[$name], 'Process')
     }
     if (Test-Path -LiteralPath $fixtureRoot) {
         $fixtureRootFull = [IO.Path]::GetFullPath($fixtureRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
