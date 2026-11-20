@@ -517,6 +517,7 @@ try {
     if(($locales -join ',') -cne 'ru,en,zh-Hans,hi,es,ar,fr,bn,pt-BR,de'){throw 'owner contract: locale set'}
     $script:passed++
     Write-Output 'PASS: LKB-001 owner rule and locale contract'
+    if ($passed -ne 64) { throw ("KB_REGRESSION_COUNT_MISMATCH: expected 64, got " + $passed) }
     Write-Output ('KB-REGRESSIONS: '+$passed+' passed, 0 failed')
     exit 0
 } catch {
