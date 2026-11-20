@@ -201,6 +201,14 @@ try {
     }
     Case 'LKB-003 traversal' { $script:catalog.records[0].path='knowledge/records/../../private.md'; Save-Catalog; $null=Run @('check') 1 'KB_PATH_INVALID' }
     Case 'LKB-003 absolute path' { $script:catalog.records[0].path=(Join-Path $scratch 'private.md'); Save-Catalog; $null=Run @('check') 1 'KB_PATH_INVALID' }
+    Case 'LKB-003 record path rejects a trailing slash or newline' {
+        foreach ($suffix in '/', [string][char]10) {
+            $script:catalog.records[0].path='knowledge/records/local-first.md'+$suffix
+            Save-Catalog
+            $result=Run-Captured @('check')
+            if ($result.exitCode -ne 1 -or $result.stderr.Trim() -cne 'KB_PATH_INVALID' -or $result.stdoutBytes.Length -ne 0) { throw 'Unexpected invalid path result' }
+        }
+    }
     Case 'LKB-003 project root below a reparse ancestor is refused' {
         $alias=Join-Path $scratch ('project-parent-link-'+[guid]::NewGuid().ToString('N'))
         New-Item -ItemType Junction -Path $alias -Target $scratch | Out-Null
