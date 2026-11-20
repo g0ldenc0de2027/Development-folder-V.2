@@ -201,6 +201,14 @@ try {
     }
     Case 'LKB-003 traversal' { $script:catalog.records[0].path='knowledge/records/../../private.md'; Save-Catalog; $null=Run @('check') 1 'KB_PATH_INVALID' }
     Case 'LKB-003 absolute path' { $script:catalog.records[0].path=(Join-Path $scratch 'private.md'); Save-Catalog; $null=Run @('check') 1 'KB_PATH_INVALID' }
+    Case 'LKB-003 record path rejects a trailing slash or newline' {
+        foreach ($suffix in '/', [string][char]10) {
+            $script:catalog.records[0].path='knowledge/records/local-first.md'+$suffix
+            Save-Catalog
+            $result=Run-Captured @('check')
+            if ($result.exitCode -ne 1 -or $result.stderr.Trim() -cne 'KB_PATH_INVALID' -or $result.stdoutBytes.Length -ne 0) { throw 'Unexpected invalid path result' }
+        }
+    }
     Case 'LKB-003 project root below a reparse ancestor is refused' {
         $alias=Join-Path $scratch ('project-parent-link-'+[guid]::NewGuid().ToString('N'))
         New-Item -ItemType Junction -Path $alias -Target $scratch | Out-Null
@@ -208,14 +216,23 @@ try {
         $result=Run-Captured @('check') $aliasRoot
         if($result.exitCode -ne 1 -or -not $result.stderr.Contains('KB_REPARSE_POINT') -or $result.stdoutBytes.Length -ne 0){throw 'reparse ancestor refusal'}
     }
-    Case 'LKB-003 hard-linked catalog is refused before output' {
-        $outside=Join-Path $scratch ('catalog-outside-'+[guid]::NewGuid().ToString('N')+'.json')
-        $catalogPath=Join-Path $fixture 'knowledge/catalog.json'
-        Copy-Item -LiteralPath $catalogPath -Destination $outside
-        Remove-Item -LiteralPath $catalogPath -Force
-        New-Item -ItemType HardLink -Path $catalogPath -Target $outside | Out-Null
-        $result=Run-Captured @('check')
-        if($result.exitCode -ne 1 -or -not $result.stderr.Contains('KB_HARDLINK') -or $result.stdoutBytes.Length -ne 0){throw 'hard-linked catalog refusal'}
+    Case 'LKB-003 hard-linked metadata and policy files are refused before output' {
+        foreach ($relative in @('knowledge/catalog.json','rules/policy-lock.json','rules/RULES.md')) {
+            $file = Join-Path $fixture $relative
+            $outside = Join-Path $scratch ('metadata-outside-' + [guid]::NewGuid().ToString('N'))
+            Copy-Item -LiteralPath $file -Destination $outside
+            Remove-Item -LiteralPath $file
+            try {
+                New-Item -ItemType HardLink -Path $file -Target $outside | Out-Null
+                $result = Run-Captured @('check')
+                if ($result.exitCode -ne 1 -or $result.stderr.Trim() -cne 'KB_HARDLINK' -or $result.stdoutBytes.Length -ne 0) {
+                    throw "Hard-linked file was not refused: $relative"
+                }
+            } finally {
+                if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file }
+                Copy-Item -LiteralPath $outside -Destination $file
+            }
+        }
     }
     Case 'LKB-003 hard-link alias to external file is refused before output' {
         $outside=Join-Path $scratch ('outside-'+[guid]::NewGuid().ToString('N')+'.md')
@@ -278,6 +295,34 @@ try {
         [IO.Directory]::CreateDirectory($other)|Out-Null
         New-Item -ItemType Junction -Path (Join-Path $fixture 'data') -Target $other | Out-Null
         $null=Run @('capture','-Title','Test','-Text','No redirected write','-Source','synthetic','-Scope','fixture','-Author','fixture','-Runtime','test') 1 'KB_REPARSE_POINT'
+    }
+    Case 'LKB-003 dangling junction blocks proposal write' {
+        $junction=Join-Path $fixture 'data'
+        $target=Join-Path $scratch 'dangling-data-target'
+        $null=[IO.Directory]::CreateDirectory($target)
+        $null=New-Item -ItemType Junction -Path $junction -Target $target
+        try {
+            [IO.Directory]::Delete($target)
+            $result=Run-Captured @('capture','-Title','Test','-Text','No redirected write','-Source','synthetic','-Scope','fixture','-Author','fixture','-Runtime','test')
+            if($result.exitCode -ne 1 -or $result.stderr.Trim() -cne 'KB_REPARSE_POINT' -or $result.stdoutBytes.Length -ne 0 -or [IO.Directory]::Exists($target)){
+                throw 'Dangling junction did not fail closed'
+            }
+        } finally { [IO.Directory]::Delete($junction) }
+    }
+    Case 'LKB-003 unreadable catalog fails without output' {
+        $path=Join-Path $fixture 'knowledge/catalog.json'
+        $original=Get-Acl -LiteralPath $path
+        $restricted=Get-Acl -LiteralPath $path
+        $account=[Security.Principal.WindowsIdentity]::GetCurrent().User
+        $rule=[Security.AccessControl.FileSystemAccessRule]::new($account,[Security.AccessControl.FileSystemRights]::ReadAndExecute,[Security.AccessControl.AccessControlType]::Deny)
+        $restricted.AddAccessRule($rule)
+        try {
+            Set-Acl -LiteralPath $path -AclObject $restricted
+            $result=Run-Captured @('check')
+            if($result.exitCode -ne 1 -or $result.stderr.Trim() -cne 'KB_INTERNAL_ERROR' -or $result.stdoutBytes.Length -ne 0){
+                throw 'Unreadable catalog did not fail closed'
+            }
+        } finally { Set-Acl -LiteralPath $path -AclObject $original }
     }
     Case 'LKB-005 full rules context' {
         $r=(Run @('context','-Id','alpha')).result

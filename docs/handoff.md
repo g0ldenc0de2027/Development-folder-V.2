@@ -1,9 +1,15 @@
-# Handoff — T-014
+# Handoff — Development Folder V2
+
+- Текущие ревизии, обсуждения и статусы проверяйте в [списке PR V2](https://github.com/g0ldenc0de2027/Development-folder-V.2/pulls).
+- Состояние проверок сверяйте в [GitHub Actions V2](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions) по точной ревизии.
+- Перед интеграцией применяйте [штатный GitHub workflow](github-workflow.md).
+
+## Исторический Handoff — T-014
 
 - T-014 обновляется на актуальной main. Зона, результаты прошлых проверок и критерии приёмки сохранены в карточке задачи.
 - Актуальные SHA, CI и независимое ревью отслеживаются в PR #12.
 
-# Handoff — T-011, 2026-11-16
+## Исторический Handoff — T-011, 2026-11-16
 
 - Общая БЗ: [PR #2](https://github.com/g0ldenc0de2027/Knowledge_Base/pull/2) — источник истины для статуса, ревизий, CI и review. Карточка задачи хранит только подписанные исторические снимки.
 - V2 replacement [PR #10](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/10) — источник истины для актуальных статуса, head/base и checks. Merge разрешается только после проверки неизменившейся пары SHA, успешного CI и независимого review на соответствующем head.
