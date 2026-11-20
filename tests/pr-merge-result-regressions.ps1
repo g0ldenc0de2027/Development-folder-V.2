@@ -131,7 +131,7 @@ try {
     $globalConfig = Join-Path $fixtureRoot 'empty.gitconfig'
     [IO.File]::WriteAllText($globalConfig, '', [Text.UTF8Encoding]::new($false))
     foreach ($name in $oldEnvironment.Keys) {
-        [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+        Remove-Item -LiteralPath ('Env:' + $name)
     }
     [Environment]::SetEnvironmentVariable('GIT_CONFIG_GLOBAL', $globalConfig, 'Process')
     [Environment]::SetEnvironmentVariable('GIT_CONFIG_NOSYSTEM', '1', 'Process')
@@ -185,7 +185,7 @@ try {
 } finally {
     foreach ($entry in [Environment]::GetEnvironmentVariables('Process').GetEnumerator()) {
         if (([string]$entry.Key).StartsWith('GIT_', [StringComparison]::OrdinalIgnoreCase)) {
-            [Environment]::SetEnvironmentVariable($entry.Key, $null, 'Process')
+            Remove-Item -LiteralPath ('Env:' + $entry.Key)
         }
     }
     foreach ($name in $oldEnvironment.Keys) {
