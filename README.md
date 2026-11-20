@@ -2,7 +2,7 @@
 
 **Назначение:** безопасный, воспроизводимый эталон для создания отдельных проектов на современных языках и стеках.
 **Версия продукта:** 2.0.0-development
-**Статус:** GitHub foundation активен: hosted CI прошёл на bootstrap SHA, а `quality-gate` обязателен в live ruleset. Прикладная реализация остаётся закрыта до READY. Scope/worktree guard подготовлен в `task/T-008`; до merge в main действует предыдущий ручной процесс.
+**Статус:** GitHub foundation активен: hosted CI прошёл на bootstrap SHA, а `quality-gate` обязателен в live ruleset. Прикладная реализация остаётся закрыта до READY. Проверки worktree и файловой зоны задачи действуют в локальном pre-push после слияния [PR #8](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/8). Создание worktree и координация выполнения задач описаны в [task workflow](tasks/README.md).
 
 ## Принципы
 
