@@ -37,6 +37,24 @@ Search and get UTF-8 response budget including the final LF. Defaults to 131072 
 .PARAMETER IncludeWithdrawn
 Enable historical search or get, including withdrawn and superseded records. Context refuses this switch.
 
+.PARAMETER Title
+Title of the draft proposal. Required by capture.
+
+.PARAMETER Text
+Text of the draft proposal. Required by capture.
+
+.PARAMETER Source
+Provenance of the information recorded in the draft. Required by capture.
+
+.PARAMETER Scope
+Scope to which the draft proposal applies. Required by capture.
+
+.PARAMETER Author
+Declared author of the draft proposal. Required by capture.
+
+.PARAMETER Runtime
+Runtime or model identifier associated with the draft. Required by capture.
+
 .EXAMPLE
 pwsh -NoProfile -File scripts/kb.ps1 search -Query 'backup' -Compact -Limit 20
 
@@ -183,15 +201,15 @@ function Hash-Bytes([byte[]]$Bytes) {
     return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($Bytes)).ToLowerInvariant()
 }
 function Safe-Path([string]$Relative) {
-    if ($Relative -notmatch '^[a-zA-Z0-9._/-]+$' -or $Relative -match '(^|/)\.\.?(/|$)' -or
-        $Relative.StartsWith('/') -or $Relative.Contains('//')) { Fail 'KB_PATH_INVALID' }
+    if ($Relative -notmatch '\A[a-zA-Z0-9._/-]+\z' -or $Relative -match '(^|/)\.\.?(/|$)' -or
+        $Relative.StartsWith('/') -or $Relative.EndsWith('/') -or $Relative.Contains('//')) { Fail 'KB_PATH_INVALID' }
     $current = $root
     foreach ($part in $Relative.Split('/')) {
-        $current = Join-Path $current $part
-        if (Test-Path -LiteralPath $current) {
-            $item = Get-Item -LiteralPath $current -Force
-            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Fail 'KB_REPARSE_POINT' }
-        }
+        $current = [IO.Path]::Combine($current, $part)
+        try { $attributes = [IO.File]::GetAttributes($current) }
+        catch [IO.FileNotFoundException] { continue }
+        catch [IO.DirectoryNotFoundException] { continue }
+        if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Fail 'KB_REPARSE_POINT' }
     }
     return $current
 }
@@ -297,7 +315,7 @@ function Load-Catalog {
         if ($record.kind -cnotin @('lesson','decision','reference','research')) { Fail 'KB_KIND' }
         if ($record.status -cnotin @('draft','reviewed','accepted','superseded','withdrawn')) { Fail 'KB_STATUS' }
         Assert-String $record.path
-        if ($record.path -cnotmatch '^knowledge/records/[a-z0-9][a-z0-9-]*\.md$' -or -not $paths.Add($record.path)) { Fail 'KB_PATH_INVALID' }
+        if ($record.path -cnotmatch '\Aknowledge/records/[a-z0-9][a-z0-9-]*\.md\z' -or -not $paths.Add($record.path)) { Fail 'KB_PATH_INVALID' }
         if ($record.contentSha256 -isnot [string] -or $record.contentSha256 -cnotmatch '^[a-f0-9]{64}$') { Fail 'KB_HASH_INVALID' }
         if ($record.sources -isnot [array] -or $record.sources.Count -gt 30) { Fail 'KB_SOURCES_INVALID' }
         foreach ($source in $record.sources) { Assert-String $source 1000; Assert-NoObviousSecret $source }
