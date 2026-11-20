@@ -117,6 +117,43 @@ try {
     Case 'LKB-002 valid local corpus' { if((Run @('check')).result.records -ne 3){throw 'count'} }
     Case 'LKB-004 Unicode search and withdrawn exclusion' { if((Run @('search','-Query','Привет')).result.records.Count -ne 2){throw 'search count'} }
     Case 'LKB-004 literal metacharacters' { if((Run @('search','-Query','[x]')).result.records.Count -ne 2){throw 'literal'} }
+    Case 'LKB-010 compact uses the same matching and preserves order and status' {
+        foreach($options in @(@(),@('-Limit','1'),@('-IncludeWithdrawn'))){
+            $arguments=@('SEARCH','-Query','Привет')+$options
+            $full=(Run $arguments).result
+            $small=(Run ($arguments+@('-Compact'))).result
+            if($small.representation -cne 'compact' -or $small.projectId -cne $full.projectId -or
+               $small.totalMatches -ne $full.totalMatches -or $small.returned -ne $full.returned -or
+               $small.truncated -ne $full.truncated -or ($small.records.id -join '|') -cne ($full.records.id -join '|')){
+                throw 'compact selection differs'
+            }
+            foreach($record in $small.records){
+                if((($record.PSObject.Properties.Name | Sort-Object) -join ',') -cne 'contentSha256,id,kind,status,title'){
+                    throw 'compact fields differ'
+                }
+                $readback=(Run (@('get','-Id',$record.id)+@($options|Where-Object {$_ -eq '-IncludeWithdrawn'}))).result.record
+                foreach($field in 'id','kind','title','status','contentSha256'){
+                    if($record.$field -cne $readback.$field){throw "compact readback differs: $field"}
+                }
+            }
+        }
+        $empty=(Run @('search','-Compact','-Query','absent-test-token')).result
+        if($empty.records.Count -ne 0 -or $empty.totalMatches -ne 0 -or $empty.truncated){throw 'compact empty result'}
+    }
+    Case 'LKB-010 compact obeys the byte boundary and fails closed' {
+        $arguments=@('search','-Compact','-Query','Привет')
+        $baseline=Run-Captured $arguments
+        if($baseline.exitCode -ne 0 -or $baseline.stdoutBytes.Length -le 512){throw 'compact baseline'}
+        $exact=Run-Captured ($arguments+@('-MaxOutputBytes',[string]$baseline.stdoutBytes.Length))
+        $under=Run-Captured ($arguments+@('-MaxOutputBytes',[string]($baseline.stdoutBytes.Length-1)))
+        if($exact.exitCode -ne 0 -or $exact.stdoutBytes.Length -ne $baseline.stdoutBytes.Length -or
+           $under.exitCode -ne 1 -or $under.stdoutBytes.Length -ne 0 -or $under.stderr.Trim() -cne 'KB_OUTPUT_LIMIT'){
+            throw 'compact budget differs'
+        }
+        $null=Run @('get','-Compact','-Id','alpha') 1 'KB_COMPACT_SEARCH_ONLY'
+        Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') 'Changed'
+        $null=Run $arguments 1 'KB_CONTENT_CHANGED'
+    }
     Case 'LKB-011 selected collection ID is checked for every read command' {
         $id=$script:catalog.projectId
         $wrong=[guid]::NewGuid().ToString('D')

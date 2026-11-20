@@ -9,7 +9,8 @@ param(
     [ValidateRange(512,262144)][int]$MaxBytes = 131072,
     [ValidateRange(512,2097152)][int]$MaxOutputBytes = 131072,
     [switch]$IncludeWithdrawn,
-    [string]$ExpectedCollectionId
+    [string]$ExpectedCollectionId,
+    [switch]$Compact
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -359,6 +360,7 @@ function Read-Rules {
         lockSha256=(Hash-Bytes $lockBytes)}
 }
 try {
+    if ($Compact -and $Command -ne 'search') { Fail 'KB_COMPACT_SEARCH_ONLY' }
     $expectedId = $null
     if ($PSBoundParameters.ContainsKey('ExpectedCollectionId')) {
         if ($Command -notin @('check','search','get','context')) { Fail 'KB_COLLECTION_ID_READ_ONLY' }
@@ -404,6 +406,18 @@ try {
                 if ([string]::IsNullOrWhiteSpace($Query)) { Fail 'KB_QUERY_REQUIRED' }
                 $selection=Select-Entries $catalog
                 $result=@{projectId=$catalog.projectId;records=$selection.records;matching='literal';limit=$Limit;totalMatches=$selection.total;returned=$selection.records.Count;truncated=$selection.truncated}
+                if ($Compact) {
+                    $result.representation = 'compact'
+                    $result.records = @(foreach ($record in $selection.records) {
+                        @{
+                            id = $record.id
+                            kind = $record.kind
+                            title = $record.title
+                            status = $record.status
+                            contentSha256 = $record.contentSha256
+                        }
+                    })
+                }
             }
             'get' {
                 if (-not $Id) { Fail 'KB_ID_REQUIRED' }
@@ -448,8 +462,8 @@ try {
     $json=@{schemaVersion=1;command=$Command;result=$result} | ConvertTo-Json -Depth 20
     if ($Command -eq 'context' -and $utf8.GetByteCount($json) -gt $MaxBytes) { Fail 'KB_CONTEXT_LIMIT' }
     if ($Command -in @('search','get')) {
+        if (($utf8.GetByteCount($json) + 1) -gt $MaxOutputBytes) { Fail 'KB_OUTPUT_LIMIT' }
         $outputBytes=$utf8.GetBytes($json+[char]10)
-        if ($outputBytes.Length -gt $MaxOutputBytes) { Fail 'KB_OUTPUT_LIMIT' }
         $stdout=[Console]::OpenStandardOutput()
         $stdout.Write($outputBytes,0,$outputBytes.Length)
     } else {
