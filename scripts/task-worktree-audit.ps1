@@ -20,37 +20,49 @@ function Invoke-GitText {
         [Parameter(Mandatory)][string]$Operation,
         [string]$IndexFile
     )
-    # Inherited Git environment can redirect repository discovery, config, or object storage.
-    $gitContext = @{}
-    $previousConsoleEncoding = [Console]::OutputEncoding
+    # Изолируем Git только в дочернем процессе, сохраняя индекс текущего commit.
     $scriptRepositoryRoot = Split-Path -Parent $PSScriptRoot
     $emptyConfig = Join-Path $scriptRepositoryRoot 'config/git-empty.config'
     if (-not (Test-Path -LiteralPath $emptyConfig -PathType Leaf)) { throw 'WORKTREE_AUDIT_EMPTY_GIT_CONFIG_MISSING' }
-    foreach ($entry in [Environment]::GetEnvironmentVariables('Process').GetEnumerator()) {
-        $name = [string]$entry.Key
-        if (-not $name.StartsWith('GIT_',[StringComparison]::OrdinalIgnoreCase)) { continue }
-        $gitContext[$name] = $entry.Value
-        Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
-    }
-    try {
-        [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-        [Environment]::SetEnvironmentVariable('GIT_CONFIG_NOSYSTEM','1','Process')
-        [Environment]::SetEnvironmentVariable('GIT_CONFIG_GLOBAL',$emptyConfig,'Process')
-        if (-not [string]::IsNullOrWhiteSpace($IndexFile)) { [Environment]::SetEnvironmentVariable('GIT_INDEX_FILE',$IndexFile,'Process') }
-        $output = @(& git --no-pager --no-optional-locks -c core.fsmonitor=false -C $Directory @Arguments 2>&1)
-        $exitCode = $LASTEXITCODE
-    }
-    finally {
-        [Console]::OutputEncoding = $previousConsoleEncoding
-        Remove-Item -LiteralPath 'Env:GIT_CONFIG_NOSYSTEM' -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath 'Env:GIT_CONFIG_GLOBAL' -ErrorAction SilentlyContinue
-        foreach ($name in $gitContext.Keys) {
-            if ($null -eq $gitContext[$name]) { Remove-Item -LiteralPath ('Env:' + [string]$name) -ErrorAction SilentlyContinue }
-            else { [Environment]::SetEnvironmentVariable([string]$name,[string]$gitContext[$name],'Process') }
+    $start = [Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+    $start.UseShellExecute = $false
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    $start.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    $start.StandardErrorEncoding = $start.StandardOutputEncoding
+    foreach ($name in @($start.Environment.Keys)) {
+        if ($name.StartsWith('GIT_',[StringComparison]::OrdinalIgnoreCase)) {
+            $null = $start.Environment.Remove($name)
         }
     }
-    if ($exitCode -ne 0) { throw ("WORKTREE_AUDIT_GIT_FAILED:${Operation} at " + [IO.Path]::GetFileName($Directory) + ": " + [string]::Join([Environment]::NewLine,@($output | ForEach-Object { [string]$_ }))) }
-    return @($output | ForEach-Object { [string]$_ })
+    $start.Environment['GIT_CONFIG_NOSYSTEM'] = '1'
+    $start.Environment['GIT_CONFIG_GLOBAL'] = $emptyConfig
+    if (-not [string]::IsNullOrWhiteSpace($IndexFile)) { $start.Environment['GIT_INDEX_FILE'] = $IndexFile }
+    foreach ($argument in (@('--no-pager','--no-optional-locks','-c','core.fsmonitor=false','-C',$Directory) + $Arguments)) {
+        $start.ArgumentList.Add($argument)
+    }
+
+    $process = [Diagnostics.Process]::Start($start)
+    try {
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $output = $stdout.GetAwaiter().GetResult()
+        $diagnostic = $stderr.GetAwaiter().GetResult().TrimEnd()
+        if ($process.ExitCode -ne 0) {
+            throw ("WORKTREE_AUDIT_GIT_FAILED:${Operation} at " + [IO.Path]::GetFileName($Directory) + ": " + $diagnostic)
+        }
+        if ($diagnostic) { Write-Verbose $diagnostic }
+        $reader = [IO.StringReader]::new($output)
+        try {
+            while ($null -ne ($line = $reader.ReadLine())) { $line }
+        } finally {
+            $reader.Dispose()
+        }
+    } finally {
+        $process.Dispose()
+    }
 }
 
 function Get-WorktreeRecords {
