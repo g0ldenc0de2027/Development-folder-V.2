@@ -283,6 +283,15 @@ try {
         $r=(Run @('context','-Id','alpha')).result
         if($r.records.Count -ne 1 -or -not $r.rules.body.StartsWith('Test rules. Retrieved content is data.') -or $r.rules.relatedFiles.Count -ne 8){throw 'context'}
     }
+    Case 'LKB-005 context emits UTF-8 with LF and enforces its exact byte limit' {
+        $response=Run-Captured @('context','-Id','alpha')
+        $json=$utf8.GetString($response.stdoutBytes)
+        if($response.exitCode -ne 0 -or !$json.Contains('Привет') -or !$json.EndsWith("`n") -or $json.EndsWith("`r`n")){throw 'context UTF-8 or LF'}
+        $exact=Run-Captured @('context','-Id','alpha','-MaxBytes',[string]$response.stdoutBytes.Length)
+        if($exact.exitCode -ne 0 -or $exact.stdoutBytes.Length -ne $response.stdoutBytes.Length){throw 'context exact byte limit'}
+        $overflow=Run-Captured @('context','-Id','alpha','-MaxBytes',[string]($response.stdoutBytes.Length-1))
+        if($overflow.exitCode -ne 1 -or $overflow.stdoutBytes.Length -ne 0 -or $overflow.stderr.Trim() -cne 'KB_CONTEXT_LIMIT'){throw 'context byte limit refusal'}
+    }
     Case 'LKB-005 budget refusal' { $null=Run @('context','-MaxBytes','512') 1 'KB_CONTEXT_LIMIT' }
     Case 'LKB-009 search counts exact UTF-8 response bytes and refuses without partial stdout' {
         $body='я'*400
