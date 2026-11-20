@@ -229,7 +229,7 @@ function Assert-String($Value, [int]$Maximum = 300) {
     if ($Value -isnot [string] -or [string]::IsNullOrWhiteSpace($Value) -or
         $Value.Length -gt $Maximum -or $Value -match '[\x00-\x08\x0B\x0C\x0E-\x1F]') { Fail 'KB_STRING_INVALID' }
 }
-function Load-Catalog {
+function Load-Catalog([switch]$ValidateOnly) {
     $catalogBytes = Read-Bytes 'knowledge/catalog.json' 1048576 -CheckHardLinks
     $catalog = Parse-Json $catalogBytes
     Assert-Keys $catalog @('schemaVersion','projectId','records')
@@ -272,11 +272,13 @@ function Load-Catalog {
                 $record.sources.Count -eq 0) { Fail 'KB_REVIEW_INVALID' }
             foreach ($e in $record.review.evidence) { Assert-String $e 1000; Assert-NoObviousSecret $e }
         } elseif ($null -ne $record.review) { Fail 'KB_REVIEW_STATUS' }
-        $entries.Add([ordered]@{
-            id=$record.id;kind=$record.kind;title=$record.title;status=$record.status
-            path=$record.path;contentSha256=$record.contentSha256;sources=$record.sources
-            review=$record.review;body=$body
-        })
+        if (-not $ValidateOnly) {
+            $entries.Add([ordered]@{
+                id=$record.id;kind=$record.kind;title=$record.title;status=$record.status
+                path=$record.path;contentSha256=$record.contentSha256;sources=$record.sources
+                review=$record.review;body=$body
+            })
+        }
     }
     $recordsPath = Safe-Path 'knowledge/records'
     if (-not [IO.Directory]::Exists($recordsPath)) { Fail 'KB_FILE_MISSING' }
@@ -284,7 +286,7 @@ function Load-Catalog {
         if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Fail 'KB_REPARSE_POINT' }
         if (-not $paths.Contains(('knowledge/records/'+$file.Name))) { Fail 'KB_ORPHAN_RECORD' }
     }
-    return @{projectId=$catalog.projectId;catalogSha256=(Hash-Bytes $catalogBytes);entries=$entries.ToArray()}
+    return @{projectId=$catalog.projectId;catalogSha256=(Hash-Bytes $catalogBytes);entries=$entries.ToArray();recordCount=$catalog.records.Count}
 }
 function Select-Entries($Catalog) {
     $selected = @($Catalog.entries | Where-Object { $IncludeWithdrawn -or $_.status -cnotin @('withdrawn','superseded') })
@@ -381,10 +383,10 @@ try {
         $result = @{source=$source;sharedStatus=$status;federatedSearch='not_implemented';compatibility='not_verified'}
         if ($status -eq 'unavailable') { Fail 'KB_SHARED_UNAVAILABLE' }
     } else {
-        $catalog = Load-Catalog
+        $catalog = Load-Catalog -ValidateOnly:($Command -eq 'check')
         $rules = Read-Rules
         switch ($Command) {
-            'check' { $result=@{projectId=$catalog.projectId;records=$catalog.entries.Count;catalogSha256=$catalog.catalogSha256;rulesSha256=$rules.sha256;rulesLockSha256=$rules.lockSha256;rulesFiles=(1+$rules.relatedFiles.Count);integrity='pass';truth='not_assessed';reviewIdentity='not_authenticated'} }
+            'check' { $result=@{projectId=$catalog.projectId;records=$catalog.recordCount;catalogSha256=$catalog.catalogSha256;rulesSha256=$rules.sha256;rulesLockSha256=$rules.lockSha256;rulesFiles=(1+$rules.relatedFiles.Count);integrity='pass';truth='not_assessed';reviewIdentity='not_authenticated'} }
             'search' {
                 if ([string]::IsNullOrWhiteSpace($Query)) { Fail 'KB_QUERY_REQUIRED' }
                 $selection=Select-Entries $catalog
