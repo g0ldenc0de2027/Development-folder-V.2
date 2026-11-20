@@ -445,15 +445,12 @@ try {
         }
     }
     $json=@{schemaVersion=1;command=$Command;result=$result} | ConvertTo-Json -Depth 20
-    if ($Command -eq 'context' -and $utf8.GetByteCount($json) -gt $MaxBytes) { Fail 'KB_CONTEXT_LIMIT' }
-    if ($Command -in @('search','get')) {
-        if (($utf8.GetByteCount($json) + 1) -gt $MaxOutputBytes) { Fail 'KB_OUTPUT_LIMIT' }
-        $outputBytes=$utf8.GetBytes($json+[char]10)
-        $stdout=[Console]::OpenStandardOutput()
-        $stdout.Write($outputBytes,0,$outputBytes.Length)
-    } else {
-        [Console]::Out.WriteLine($json)
-    }
+    $responseByteCount=$utf8.GetByteCount($json)+1
+    if ($Command -eq 'context' -and $responseByteCount -gt $MaxBytes) { Fail 'KB_CONTEXT_LIMIT' }
+    if ($Command -in @('search','get') -and $responseByteCount -gt $MaxOutputBytes) { Fail 'KB_OUTPUT_LIMIT' }
+    $outputBytes=$utf8.GetBytes($json+[char]10)
+    $stdout=[Console]::OpenStandardOutput()
+    $stdout.Write($outputBytes,0,$outputBytes.Length)
     exit 0
 } catch {
     $code=$_.Exception.Message
