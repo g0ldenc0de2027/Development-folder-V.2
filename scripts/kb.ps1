@@ -143,11 +143,11 @@ function Safe-Path([string]$Relative) {
         $Relative.StartsWith('/') -or $Relative.Contains('//')) { Fail 'KB_PATH_INVALID' }
     $current = $root
     foreach ($part in $Relative.Split('/')) {
-        $current = Join-Path $current $part
-        if (Test-Path -LiteralPath $current) {
-            $item = Get-Item -LiteralPath $current -Force
-            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Fail 'KB_REPARSE_POINT' }
-        }
+        $current = [IO.Path]::Combine($current, $part)
+        try { $attributes = [IO.File]::GetAttributes($current) }
+        catch [IO.FileNotFoundException] { continue }
+        catch [IO.DirectoryNotFoundException] { continue }
+        if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Fail 'KB_REPARSE_POINT' }
     }
     return $current
 }
