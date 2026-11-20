@@ -41,6 +41,13 @@ Read-only сверка live GitHub settings с versioned config (repository, rul
 
 Версии аудит-инструментов и SHA-256 находятся в config/security/tools.json. Gate проверяет hash перед запуском и удаляет только свой временный каталог. Перед push hook передает локальные и удаленные SHA обновляемых refs; Gitleaks проверяет их диапазоны и сканирует доступную локальную историю.
 
+## Слияние проверенного PR и аудит worktree
+
+- [check-squash-preflight.ps1](../scripts/github/check-squash-preflight.ps1) выполняет read-only проверку PR, переведённого в Ready. Передайте номер PR, проверенные head/base/merge-result SHA и номер успешного запуска CI.
+- [merge-reviewed-pr.ps1](../scripts/github/merge-reviewed-pr.ps1) без флага выполнения запускает тот же preflight. Порядок допуска владельца, squash и проверки результата описан в [GitHub workflow](github-workflow.md).
+- [task-worktree-audit.ps1](../scripts/task-worktree-audit.ps1) запускайте из зарегистрированного рабочего дерева. [Реестр карантина](../config/worktree-quarantine.json) содержит утверждённые исключения для проверяемых снимков. При блокировке сначала проверьте содержимое рабочего дерева и причину отказа.
+- [git-empty.config](../config/git-empty.config) — пустой глобальный Git-конфиг для изолированных проверок. Пользовательские настройки Git в него не добавляйте.
+
 ## Обновления
 Обновление toolchain требует старой версии, официального источника, проверки совместимости, rollback plan и post-update gate. Не меняйте dependency manifests будущего проекта как часть обновления среды.
 
@@ -53,7 +60,7 @@ Python не нужен этому срезу. Это inventory, а не pin targ
     pwsh -NoProfile -File scripts/kb.ps1 check
     pwsh -NoProfile -File tests/kb-regressions.ps1
 
-Сценарии пользователя и подключения общей БЗ: local-knowledge.md.
+Сценарии работы с локальной БЗ и подключения общей БЗ описаны в [руководстве](local-knowledge.md).
 Gate запускает integrity check текущего корпуса и KB-регрессии.
 Каталог, Markdown и rules lock проверяются вместе. Inbox data/knowledge/inbox игнорируется Git.
 
