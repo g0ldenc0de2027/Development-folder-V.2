@@ -44,10 +44,18 @@ if ($commit.parents.Count -ne 2 -or $commit.parents[0].sha -cne $BaseSha -or $co
     throw 'Merge-result parent tuple differs'
 }
 
+$rulesManifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../config/github/main-ruleset.json') -Raw | ConvertFrom-Json -AsHashtable
+$checkPolicy = $rulesManifest.rules.requiredStatusChecks
+$integrationId = $checkPolicy.integrationId
+if ($checkPolicy.context -cne 'quality-gate' -or $checkPolicy.strict -cne $true -or $checkPolicy.state -cne 'enforced' -or
+    ($integrationId -isnot [int] -and $integrationId -isnot [long]) -or $integrationId -le 0) {
+    throw 'Invalid required quality-gate manifest'
+}
+
 $rules = Read-GitHubJson @('api','--hostname','github.com',"repos/$slug/rules/branches/main")
 $required = @($rules | Where-Object {
     $_.type -ceq 'required_status_checks' -and $_.parameters.strict_required_status_checks_policy -eq $true -and
-    ($_.parameters.required_status_checks | Where-Object { $_.context -ceq 'quality-gate' -and $_.integration_id -eq 15368 })
+    ($_.parameters.required_status_checks | Where-Object { $_.context -ceq 'quality-gate' -and $_.integration_id -eq $integrationId })
 })
 if ($required.Count -eq 0) { throw 'Strict GitHub Actions quality-gate is not required' }
 
