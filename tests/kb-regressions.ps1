@@ -162,6 +162,32 @@ try {
             $failure=Run-Captured ($argsList+@('-ExpectedCollectionId',$wrong))
             if($failure.exitCode -ne 1 -or $failure.stdoutBytes.Length -ne 0 -or $failure.stderr.Trim() -cne 'KB_COLLECTION_ID_MISMATCH'){throw 'collection ID mismatch response'}
         }
+        $firstRoot=$fixture
+        $firstHash=$script:catalog.records[0].contentSha256
+        Reset-Fixture
+        $secondId=[guid]::NewGuid().ToString('D')
+        $script:catalog.projectId=$secondId
+        $alpha=Join-Path $fixture 'knowledge/records/alpha.md'
+        Write-Text $alpha 'Привет from second project'
+        $secondHash=Hash $alpha
+        $script:catalog.records[0].contentSha256=$secondHash
+        Save-Catalog
+        $compact=@('search','-Compact','-Id','alpha','-Query','Привет')
+        foreach($project in @(
+            @{root=$firstRoot;id=$id;sha=$firstHash;wrong=$secondId}
+            @{root=$fixture;id=$secondId;sha=$secondHash;wrong=$id}
+        )){
+            $result=Run-Captured ($compact+@('-ExpectedCollectionId',$project.id)) -Root $project.root
+            if($result.exitCode -ne 0){throw 'compact project search failed'}
+            $value=($utf8.GetString($result.stdoutBytes)|ConvertFrom-Json).result
+            if($value.projectId -cne $project.id -or $value.representation -cne 'compact' -or
+               $value.records.Count -ne 1 -or $value.records[0].id -cne 'alpha' -or
+               $value.records[0].contentSha256 -cne $project.sha){throw 'compact result crossed project boundary'}
+            $failure=Run-Captured ($compact+@('-ExpectedCollectionId',$project.wrong)) -Root $project.root
+            if($failure.exitCode -ne 1 -or $failure.stdoutBytes.Length -ne 0 -or
+               $failure.stderr.Trim() -cne 'KB_COLLECTION_ID_MISMATCH'){throw 'wrong collection returned compact output'}
+        }
+        $script:fixture=$firstRoot
         Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') 'Changed'
         $null=Run @('check','-ExpectedCollectionId',$wrong) 1 'KB_COLLECTION_ID_MISMATCH'
         $null=Run @('check','-ExpectedCollectionId',$id) 1 'KB_CONTENT_CHANGED'
