@@ -5,6 +5,12 @@
 
 Записи ниже описывают исторические проверки и отдельные остаточные замечания аудита.
 
+### Итог по замечаниям Antigravity P2-01–P2-03
+
+- **P2-01 и P2-02 закрыты** в [PR #11](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/11). Штатный набор запускает настоящий pre-commit в изолированном bare-admin стенде. Проверяются автокоррекция identity с синтетическим gh, повторный commit после подтверждения identity и реальные commit -a / commit с pathspec.
+- **P2-03 закрыт** в [PR #12](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/12). Регрессии LKB-009 подтверждают бюджет UTF-8 вывода search/get и отказ с пустым stdout при превышении.
+- Результаты подтверждены на main `7fa2442cbac61639cc93af7b0c9f06f1899ecf63`: [post-merge quality-gate #44756799418](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44756799418/job/136358531731).
+
 **Evidence checkpoint (2026-11-15):** Перед этой записью PR #8 был OPEN/Draft, head 337de0d48f8edfeb521167270306516ac3cdb476, base f577dc70e58d75ab5fd61d0c2e712c27b590713a. Hosted quality-gate run 43753125152 SUCCESS на merge-result 184666c6328cd68da399746804217cf30b91bb0c с точными родителями base/head; локальный и pre-push gate прошли. На том head GitHub-native reviews/comments отсутствовали; независимый review PENDING. Эта карточка — контрольная точка: актуальный head/base/checks после её изменения следует брать из live PR #8.
 **PR:** https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/8
 **База при старте:** `f577dc70e58d75ab5fd61d0c2e712c27b590713a` (origin/main).
