@@ -1,5 +1,10 @@
 # T-008 — Исправления аудита и понятная передача следующему агенту
 
+**Статус:** merged
+**Интеграция:** [PR #8](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/8), squash `af9210e7aa73b9ec3aa63160686f88af6990096e` в `main`.
+
+Записи ниже описывают исторические проверки и отдельные остаточные замечания аудита.
+
 **Evidence checkpoint (2026-11-15):** Перед этой записью PR #8 был OPEN/Draft, head 337de0d48f8edfeb521167270306516ac3cdb476, base f577dc70e58d75ab5fd61d0c2e712c27b590713a. Hosted quality-gate run 43753125152 SUCCESS на merge-result 184666c6328cd68da399746804217cf30b91bb0c с точными родителями base/head; локальный и pre-push gate прошли. На том head GitHub-native reviews/comments отсутствовали; независимый review PENDING. Эта карточка — контрольная точка: актуальный head/base/checks после её изменения следует брать из live PR #8.
 **PR:** https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/8
 **База при старте:** `f577dc70e58d75ab5fd61d0c2e712c27b590713a` (origin/main).
