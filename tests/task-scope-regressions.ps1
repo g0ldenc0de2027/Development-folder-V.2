@@ -18,7 +18,7 @@ if (
 ) {
     throw 'Task scope regression TempRoot must be outside every Git repository'
 }
-$scratch = Join-Path $tempRootFull ('ts-' + [guid]::NewGuid().ToString('N'))
+$scratch = Join-Path $tempRootFull ('t[s]-' + [guid]::NewGuid().ToString('N'))
 $fixtureRoot = Join-Path $scratch 'repo'
 $taskWorktree = Join-Path $scratch 'wt'
 $utf8 = [Text.UTF8Encoding]::new($false)
