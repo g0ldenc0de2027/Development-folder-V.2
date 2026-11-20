@@ -1,6 +1,8 @@
 # T-036 — Отвязать актуальный handoff от исторического PR
 
-Статус: in_progress. Аудиты ZCode V2Z-003 и Kimi L-1.
+Статус: merged. Аудиты ZCode V2Z-003 и Kimi L-1.
+
+Интеграция: [PR #35](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/35), squash `f1a90f7e4fdaa6de23410f2e71f0d09872b3b85f`.
 
 ## Зона файлов
 

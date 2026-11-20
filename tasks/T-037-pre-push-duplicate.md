@@ -1,6 +1,8 @@
 # T-037 — Убрать повторную проверку ref в pre-push
 
-Статус: in_progress. Аудиты Kimi M-1 и Qoder B-019/S-013/C-010.
+Статус: merged. Аудиты Kimi M-1 и Qoder B-019/S-013/C-010.
+
+Интеграция: [PR #36](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/36), squash `ee38460643bca7f7cf600f372c33e84e3ea5eeec`.
 
 ## Зона файлов
 

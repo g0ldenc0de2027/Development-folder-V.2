@@ -26,6 +26,10 @@
 - `tasks/T-031-kb-compact-search.md`
 - `tasks/T-034-kb-utf8.md`
 - `tasks/T-035-isolate-merge-fixtures.md`
+- `tasks/T-036-handoff-live-links.md`
+- `tasks/T-037-pre-push-duplicate.md`
+- `tasks/T-047-kb-path-attributes.md`
+- `tasks/T-048-kb-path-validation.md`
 - `tasks/T-039-task-card-closeout.md`
 
 ## Приёмка
