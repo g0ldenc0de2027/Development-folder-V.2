@@ -1,6 +1,8 @@
 # T-035 — Изолировать Git-окружение регрессий merge-result
 
-Статус: in_progress. Аудит ZCode, V2Z-005.
+Статус: merged. Аудит ZCode, V2Z-005.
+
+Интеграция: [PR #34](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/34), squash `5870385d0ffe131500538f8fd30210dbe560c211`.
 
 ## Зона файлов
 

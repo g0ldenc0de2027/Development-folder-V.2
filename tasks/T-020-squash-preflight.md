@@ -1,6 +1,8 @@
 # T-020 — Проверка допуска к squash без записи
 
-Статус: in_progress. Основание: T-019 и согласованный workflow.
+Статус: merged. Основание: T-019 и согласованный workflow.
+
+Интеграция: [PR #19](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/19), squash `6b328874f3c4c4d11a60d0239a0865f17fe01835`.
 
 ## Зона файлов
 

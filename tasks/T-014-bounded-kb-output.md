@@ -1,6 +1,8 @@
 # T-014 — Ограничение объёма выдачи локальной БЗ
 
-- **Статус:** in_progress
+- **Статус:** merged
+
+Интеграция: [PR #12](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/12), squash `e5da775adbc5aea10f786a8be34b435de02dcfb5`.
 - **Ветка/worktree:** `task/T-014-bounded-kb-output` / `.worktrees/T-014`
 - **Историческая база первых проверок:** `f577dc70e58d75ab5fd61d0c2e712c27b590713a` (`origin/main`; сверена с live `origin/main` 2026-11-17)
 - **Автор:** Codex, GPT-6

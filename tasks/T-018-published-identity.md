@@ -1,6 +1,8 @@
 # T-018 — Проверять identity новых Git-коммитов
 
-Статус: in_progress. База: main 6dd65d9. Блокирует штатное обновление PR #13.
+Статус: merged. База: main 6dd65d9. Блокирует штатное обновление PR #13.
+
+Интеграция: [PR #17](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/17), squash `004d6df392f180bee40e2fe47e13cc66f94db8ba`.
 
 ## Зона файлов
 
