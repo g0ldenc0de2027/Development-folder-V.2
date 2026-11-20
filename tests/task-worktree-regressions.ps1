@@ -45,6 +45,8 @@ function Invoke-NativeProcess([string]$Executable,[string[]]$Arguments,[switch]$
     if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) { $start.WorkingDirectory = $WorkingDirectory }
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
+    $start.StandardOutputEncoding = [Text.Encoding]::UTF8
+    $start.StandardErrorEncoding = $start.StandardOutputEncoding
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     if (-not $PreserveGitContext) {
         foreach ($name in @($start.Environment.Keys | Where-Object { ([string]$_).StartsWith('GIT_',[StringComparison]::OrdinalIgnoreCase) })) {
