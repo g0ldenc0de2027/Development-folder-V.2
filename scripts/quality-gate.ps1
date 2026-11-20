@@ -106,7 +106,7 @@ function Get-PinnedExecutable {
     $toolRoot = Join-Path $temporaryRoot $Name
     New-Item -ItemType Directory -Path $toolRoot -Force | Out-Null
     $archive = Join-Path $toolRoot 'download.zip'
-    Invoke-WebRequest -Uri $Tool.url -OutFile $archive
+    Invoke-WebRequest -Uri $Tool.url -OutFile $archive -ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60
     $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actualHash -ne $Tool.sha256.ToLowerInvariant()) {
         throw "$Name archive SHA-256 did not match the pinned value"
