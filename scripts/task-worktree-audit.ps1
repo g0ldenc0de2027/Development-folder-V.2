@@ -67,7 +67,7 @@ function Invoke-GitText {
 
 function Get-WorktreeRecords {
     param([Parameter(Mandatory)][string]$Directory)
-    $lines = Invoke-GitText -Directory $Directory -Arguments @('worktree','list','--porcelain') -Operation 'list'
+    $lines = @(Invoke-GitText -Directory $Directory -Arguments @('worktree','list','--porcelain') -Operation 'list')
     $records = [Collections.Generic.List[object]]::new()
     $record = [ordered]@{ Path = $null; Head = $null; Branch = $null; Bare = $false; Prunable = $false }
     foreach ($line in @($lines + '')) {
