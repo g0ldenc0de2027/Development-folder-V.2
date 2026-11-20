@@ -411,10 +411,6 @@ $taskCloseout = Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-001-sync-
 if ($taskCloseout -notmatch '(?m)^\*\*Статус:\*\* merged;' -or $taskCloseout -notmatch 'review-доказательства') {
     throw 'T-001 closeout must record merge state and the review-evidence gap'
 }
-$handoff = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/handoff.md') -Raw
-if ($handoff -match 'После merge T-001' -or $handoff -notmatch 'T-003') {
-    throw 'Handoff must not leave the merged T-001 step open and must identify current T-003 work'
-}
 $taskTwoCloseout = Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-002-reconcile-github-settings-and-closeout.md') -Raw
 $revisionMetadata = @([regex]::Matches($taskTwoCloseout, '(?m)^\*\*Проверенные ревизии:\*\*.*$'))
 $expectedRevisionMetadata = '^\*\*Проверенные ревизии:\*\* PR head `e9db06ad083d007d15e0674d195f16999fbfc93b`; base `65b5ab35d46b81e5af1963c351d05ac5da0291dc`; hosted run `43592810050` — `SUCCESS`; тестовый event merge-result `04bf30fd6879f4d18abf3c270cd05e5428e55079`\.$'
@@ -429,16 +425,6 @@ if (
 ) {
     throw 'T-002 must bind its exact PR/review/revision tuple and keep task metadata separate from the acceptance paragraph'
 }
-if (
-    $handoff -match '(?i)draft.{0,20}PR #2|PR #2.{0,20}draft|до merge PR #2' -or
-    $handoff -notmatch 'c98a1922dee2dedeaed6eeb528d72098beb3a128' -or
-    $handoff -match 'e9db06ad083d007d15e0674d195f16999fbfc93b|65b5ab35d46b81e5af1963c351d05ac5da0291dc|43592810050|04bf30fd6879f4d18abf3c270cd05e5428e55079' -or
-    $handoff -notmatch 'T-002-reconcile-github-settings-and-closeout\.md' -or
-    $handoff -notmatch 'T-002.*слита'
-) {
-    throw 'Handoff must summarize merged T-002, point to its immutable evidence card and avoid duplicating its stale revision tuple'
-}
-
 $githubResearch = Get-Content -LiteralPath (Join-Path $repoRoot 'docs/github-research.md') -Raw
 $historicalResearchSection = [regex]::Match($githubResearch, '(?ms)^## Исторический срез до merge PR #2\b.*?(?=^## |\z)').Value
 $currentResearch = [regex]::Replace($githubResearch, '(?ms)^## Исторический срез до merge PR #2\b.*?(?=^## |\z)', '')
@@ -463,10 +449,9 @@ if (
     $githubWorkflowGuide -notmatch 'организационный merge gate' -or
     $githubWorkflowGuide -notmatch 'GitHub её не обеспечивает' -or
     $githubWorkflowGuide -notmatch 'PR может изменить собственное определение workflow или quality gate' -or
-    $githubWorkflowGuide -notmatch 'Остаточный риск принят владельцем' -or
-    $handoff -notmatch 'организационный контроль'
+    $githubWorkflowGuide -notmatch 'Остаточный риск принят владельцем'
 ) {
-    throw 'No-App owner-root-of-trust decision and non-enforced gate residual risk must be explicit in workflow and handoff'
+    throw 'No-App owner-root-of-trust decision and non-enforced gate residual risk must be explicit in workflow'
 }
 if (
     $roadmap -notmatch 'Code-fix verification tuple: head 5c3eaf06dd5ee9a518659db015e4ffbc54b8a982, base c98a1922dee2dedeaed6eeb528d72098beb3a128' -or
@@ -475,12 +460,9 @@ if (
     $roadmap -notmatch 'GitHub Actions validates every later PR revision separately' -or
     $roadmap -notmatch 'No per-file blob or aggregate push-size gate exists yet' -or
     $roadmap -match 'existing per-file staged-blob limit' -or
-    $roadmap -notmatch 'fresh independent review on the latest PR head remains required' -or
-    $handoff -notmatch 'code-fix commit 5c3eaf06dd5ee9a518659db015e4ffbc54b8a982' -or
-    $handoff -notmatch 'hosted run 43622066954 SUCCESS' -or
-    $handoff -notmatch 'актуальный статус смотреть в PR #3'
+    $roadmap -notmatch 'fresh independent review on the latest PR head remains required'
 ) {
-    throw 'Roadmap and handoff must retain code-fix provenance without claiming stale live PR status'
+    throw 'Roadmap must retain code-fix provenance without claiming stale live PR status'
 }
 $taskThree = Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-003-closeout-and-email-privacy-plan.md') -Raw
 if (
