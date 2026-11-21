@@ -161,6 +161,7 @@ exit 0
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($logPosix)) { throw 'GIT_IDENTITY_SHIM_LOG_PATH_INVALID' }
     return [pscustomobject]@{
         Directory=$Directory
+        ShellPath=$sh
         DirectoryPosix=(& $cygpath -u $Directory).Trim()
         LogPath=$logPosix
         StatePath=(& $cygpath -u (Join-Path $Directory 'state.txt')).Trim()
@@ -513,8 +514,6 @@ try {
         if ($verifyRange -cne $hookShaB -or $gateRange -cne $verifyRange) { throw 'TASK_PUSH_RANGE_MISMATCH' }
     }
     Case 'GIT-ID-032 pre-push rejects detached HEAD, invalid slug, deletion and non-fast-forward' {
-        $git = (Get-Command git -ErrorAction Stop).Source
-        $shell = Join-Path (Split-Path (Split-Path $git)) 'bin/sh.exe'
         $ref = 'refs/heads/task/T-902-hook-b'
         $badRef = 'refs/heads/task/T-903-Bad'
         $zero = '0' * $hookShaB.Length
@@ -528,7 +527,7 @@ try {
         try {
             foreach ($case in $cases) {
                 Invoke-GitFixture -Directory $hookRepo -Arguments (@('switch','--quiet') + $case.checkout) | Out-Null
-                $result = Invoke-GitProcess -Executable $shell -WorkingDirectory $hookRepo -Arguments @($hookShim.PrePushHookPosix,'origin',$hookRemote) -Environment $script:hookTestEnvironment -InputLine $case.input
+                $result = Invoke-GitProcess -Executable $hookShim.ShellPath -WorkingDirectory $hookRepo -Arguments @($hookShim.PrePushHookPosix,'origin',$hookRemote) -Environment $script:hookTestEnvironment -InputLine $case.input
                 if ($result.ExitCode -ne 1 -or $result.StdErr -notlike ('*' + $case.error + '*')) {
                     throw ('PRE_PUSH_EXPECTED_REJECTION:' + $case.error + ':' + $result.StdErr)
                 }
