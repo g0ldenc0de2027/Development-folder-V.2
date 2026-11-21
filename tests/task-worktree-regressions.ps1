@@ -166,10 +166,10 @@ try {
         $auditSource = [IO.File]::ReadAllText($scriptPath)
         if ($auditSource -notmatch "GIT_CONFIG_NOSYSTEM.*1") { throw 'AUDIT_SYSTEM_GIT_CONFIG_ISOLATION_MISSING' }
         if (-not $auditSource.Contains('$emptyConfig = Join-Path $scriptRepositoryRoot ''config/git-empty.config''')) { throw 'AUDIT_EMPTY_GIT_CONFIG_PATH_MISSING' }
-        if ($auditSource -notmatch 'SetEnvironmentVariable\(''GIT_CONFIG_GLOBAL'',\$emptyConfig,''Process''\)') { throw 'AUDIT_GLOBAL_GIT_CONFIG_ISOLATION_MISSING' }
+        if (-not $auditSource.Contains('$start.Environment[''GIT_CONFIG_GLOBAL''] = $emptyConfig')) { throw 'AUDIT_GLOBAL_GIT_CONFIG_ISOLATION_MISSING' }
         if ($auditSource -notmatch "--no-pager") { throw 'AUDIT_PAGER_ISOLATION_MISSING' }
         if ($auditSource -notmatch "--no-optional-locks") { throw 'AUDIT_OPTIONAL_LOCK_ISOLATION_MISSING' }
-        if ($auditSource -notmatch '-c core\.fsmonitor=false') { throw 'AUDIT_REPOSITORY_FSMONITOR_ISOLATION_MISSING' }
+        if ($auditSource -notmatch "'-c','core\.fsmonitor=false'") { throw 'AUDIT_REPOSITORY_FSMONITOR_ISOLATION_MISSING' }
         foreach ($required in @(
             'function Assert-NoReparseAncestors',
             '$repositoryRootFull = Assert-NoReparseAncestors',
