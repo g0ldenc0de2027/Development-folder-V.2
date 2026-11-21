@@ -191,7 +191,7 @@ try {
         $auditSource = [IO.File]::ReadAllText($scriptPath)
         if ($auditSource -notmatch "--no-pager") { throw 'AUDIT_PAGER_ISOLATION_MISSING' }
         if ($auditSource -notmatch "--no-optional-locks") { throw 'AUDIT_OPTIONAL_LOCK_ISOLATION_MISSING' }
-        if ($auditSource -notmatch '-c core\.fsmonitor=false') { throw 'AUDIT_REPOSITORY_FSMONITOR_ISOLATION_MISSING' }
+        if ($auditSource -notmatch "'-c','core\.fsmonitor=false'") { throw 'AUDIT_REPOSITORY_FSMONITOR_ISOLATION_MISSING' }
         foreach ($required in @(
             'function Assert-NoReparseAncestors',
             '$repositoryRootFull = Assert-NoReparseAncestors',
