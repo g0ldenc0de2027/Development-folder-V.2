@@ -77,9 +77,11 @@ function Case([string]$Name,[scriptblock]$Action) {
     $script:passed++
     Write-Output ('PASS: ' + $Name)
 }
-function Invoke-GitProcess([string[]]$Arguments,[hashtable]$Environment=@{}) {
+function Invoke-GitProcess([string[]]$Arguments,[hashtable]$Environment=@{},[string]$Executable=(Get-Command git -ErrorAction Stop).Source,[string]$WorkingDirectory,[string]$InputLine) {
     $startInfo = [Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = (Get-Command git -ErrorAction Stop).Source
+    $startInfo.FileName = $Executable
+    if ($WorkingDirectory) { $startInfo.WorkingDirectory = $WorkingDirectory }
+    $startInfo.RedirectStandardInput = $PSBoundParameters.ContainsKey('InputLine')
     $startInfo.UseShellExecute = $false
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
@@ -90,6 +92,10 @@ function Invoke-GitProcess([string[]]$Arguments,[hashtable]$Environment=@{}) {
     $null = $process.Start()
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
     $stderrTask = $process.StandardError.ReadToEndAsync()
+    if ($startInfo.RedirectStandardInput) {
+        $process.StandardInput.Write($InputLine + [char]10)
+        $process.StandardInput.Close()
+    }
     $process.WaitForExit()
     return [pscustomobject]@{ ExitCode=$process.ExitCode; StdOut=$stdoutTask.Result; StdErr=$stderrTask.Result }
 }
@@ -477,7 +483,7 @@ try {
         $script:hookShim = New-PwshShim -Directory (Join-Path $scratch 'pwsh-shim') -LogPath (Join-Path $scratch 'pwsh-calls.bin')
         $script:hookProxy = New-HookProxy -Directory (Join-Path $scratch 'hook-proxy')
         Invoke-GitFixture -Directory $hookRepo -Arguments @('config','core.hooksPath',$hookProxy.Directory) | Out-Null
-        $envs = @{
+        $script:hookTestEnvironment = @{
             PATH=($hookShim.Directory + [IO.Path]::PathSeparator + $env:PATH)
             PWSSHIM_LOG=$hookShim.LogPath
             PWSSHIM_STATE=$hookShim.StatePath
@@ -486,14 +492,14 @@ try {
             REAL_PRE_PUSH_HOOK=$hookShim.PrePushHookPosix
             REAL_PRE_COMMIT_HOOK=$hookShim.PreCommitHookPosix
         }
-        $result = Invoke-GitProcess -Arguments @('-C',$hookRepo,'push','origin','task/T-901-hook-a','task/T-902-hook-b') -Environment $envs
+        $result = Invoke-GitProcess -Arguments @('-C',$hookRepo,'push','origin','task/T-901-hook-a','task/T-902-hook-b') -Environment $script:hookTestEnvironment
         if ($result.ExitCode -eq 0 -or $result.StdErr -notmatch 'only the current same-named task branch') {
             throw 'MULTI_REF_PUSH_WAS_NOT_REJECTED_BY_TASK_BRANCH_GUARD'
         }
         $remoteRefs = Invoke-GitFixture -Directory $hookRemote -Arguments @('for-each-ref','refs/heads/task/')
         if ($remoteRefs) { throw 'REJECTED_PUSH_CHANGED_FIXTURE_REMOTE' }
         Remove-Item -LiteralPath (Join-Path $scratch 'pwsh-calls.bin')
-        $result = Invoke-GitProcess -Arguments @('-C',$hookRepo,'push','origin','task/T-902-hook-b') -Environment $envs
+        $result = Invoke-GitProcess -Arguments @('-C',$hookRepo,'push','origin','task/T-902-hook-b') -Environment $script:hookTestEnvironment
         if ($result.ExitCode -ne 0) { throw ('SINGLE_TASK_PUSH_FAILED:' + $result.StdErr) }
         $calls = @((Read-PwshShimCalls -LogPath (Join-Path $scratch 'pwsh-calls.bin')).Calls)
         if ($calls.Count -ne 5 -or
@@ -505,6 +511,33 @@ try {
         $verifyRange = Get-PwshParameterValue -Arguments $calls[3] -Name '-CommitRange'
         $gateRange = Get-PwshParameterValue -Arguments $calls[4] -Name '-PushRange'
         if ($verifyRange -cne $hookShaB -or $gateRange -cne $verifyRange) { throw 'TASK_PUSH_RANGE_MISMATCH' }
+    }
+    Case 'GIT-ID-032 pre-push rejects detached HEAD, invalid slug, deletion and non-fast-forward' {
+        $git = (Get-Command git -ErrorAction Stop).Source
+        $shell = Join-Path (Split-Path (Split-Path $git)) 'bin/sh.exe'
+        $ref = 'refs/heads/task/T-902-hook-b'
+        $badRef = 'refs/heads/task/T-903-Bad'
+        $zero = '0' * $hookShaB.Length
+        $before = Invoke-GitFixture -Directory $hookRemote -Arguments @('show-ref')
+        $cases = @(
+            @{ checkout=@('--detach',$hookShaB); input="HEAD $hookShaB $ref $hookShaB"; error='detached HEAD is not allowed' }
+            @{ checkout=@('-c','task/T-903-Bad',$hookShaB); input="$badRef $hookShaB $badRef $zero"; error='task branch slug must' }
+            @{ checkout=@('task/T-902-hook-b'); input="(delete) $zero $ref $hookShaB"; error='only the current same-named task branch' }
+            @{ checkout=@('task/T-902-hook-b'); input="$ref $hookShaB $ref $hookShaA"; error='non-fast-forward update' }
+        )
+        try {
+            foreach ($case in $cases) {
+                Invoke-GitFixture -Directory $hookRepo -Arguments (@('switch','--quiet') + $case.checkout) | Out-Null
+                $result = Invoke-GitProcess -Executable $shell -WorkingDirectory $hookRepo -Arguments @($hookShim.PrePushHookPosix,'origin',$hookRemote) -Environment $script:hookTestEnvironment -InputLine $case.input
+                if ($result.ExitCode -ne 1 -or $result.StdErr -notlike ('*' + $case.error + '*')) {
+                    throw ('PRE_PUSH_EXPECTED_REJECTION:' + $case.error + ':' + $result.StdErr)
+                }
+            }
+            $after = Invoke-GitFixture -Directory $hookRemote -Arguments @('show-ref')
+            if ($before -cne $after) { throw 'REJECTED_PUSH_CHANGED_FIXTURE_REMOTE' }
+        } finally {
+            Invoke-GitFixture -Directory $hookRepo -Arguments @('switch','--quiet','task/T-902-hook-b') | Out-Null
+        }
     }
     Case 'GIT-ID-028 pre-push blocks protected T-013 local and remote refs from another worktree' {
         $protectedRef = 'refs/heads/task/T-013-agent-orchestration-research'
@@ -845,7 +878,7 @@ try {
             if ((Invoke-GitFixture -Directory $secondLinked -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw ('LINKED_WORKTREE_CORE_BARE_INVALID:' + $scenario) }
         }
     }
-    if ($passed -ne 31) { throw ('GIT_IDENTITY_REGRESSION_COUNT_MISMATCH: expected 31, got ' + $passed) }
+    if ($passed -ne 32) { throw ('GIT_IDENTITY_REGRESSION_COUNT_MISMATCH: expected 32, got ' + $passed) }
     Write-Output ('GIT-IDENTITY-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {
