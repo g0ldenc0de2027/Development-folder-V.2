@@ -1,11 +1,11 @@
 # Связь правил с исполнением
 
-Редакция 0.2.0, 2026-11-15. Область: первый файловый срез V2.
+Редакция 0.5.0, 2026-11-16. Область: текущий текстовый срез и явные пробелы покрытия.
 Это карта текущего охвата; обязательства нормы определяются соответствующим модулем.
 
 | Правило | Механизм/свидетельство | Охват и пробел |
 |---|---|---|
-| 1 | kb.ps1 check/search/get/context/capture/doctor | Hash/schema/path/budget, drafts; truth/reviewer identity не аутентифицированы; federated search отсутствует |
+| 1 | kb.ps1 check/search/get/context/capture/doctor | Ручные запросы по отдельным коллекциям; текущая schema 1 не содержит per-record origin/scope/classification/audience; CLI не аутентифицирует субъект и не фильтрует записи. Namespaces, ACL, федерация и promotion не реализованы. До ACL закрытые данные запрещено помещать в общую коллекцию; ingestion форматов и parser isolation — будущий scope |
 | 2 | Карточка задачи и bounded scope review | Организационный контроль; общего enforcement процесса нет |
 | 3 | quality-gate.ps1, actionlint, Gitleaks, KB regressions | Host scope; application coverage/performance/SBOM/DAST NOT COVERED |
 | 4 | Regression failing-before/passing-after, draft capture | Автоматического продвижения урока в accepted нет |
@@ -21,10 +21,10 @@
 | 14 | Gitleaks/history, actionlint, KB path checks | Не общий security audit; security-watch/onboarding не реализованы |
 | 15 | Regression утверждённых locale IDs в policy | Это проверка нормы; UI keys/plural/layout всех 10 языков NOT COVERED |
 | 16 | docs/local-knowledge.md, RU/EN и command scenarios | Полный валидатор полноты справки/переводов не реализован |
-| 17 | Evidence, альтернативы и решение владельца | Качество решения проверяется review |
+| 17 | Доказательства, альтернативы и решение владельца | Сравнение вариантов — процессная норма; автоматического decision record gate нет |
 | 18 | Scoped READY в spec/local-knowledge.md, tz_state | Весь продукт остаётся DRAFT; universal spec gate V2 не реализован |
 | 19 | Source ID/commit/coverage donor report | Донорский код не импортирован; exhaustive audit не заявлен |
-| 20 | Research receipts/ограничения и stop gate | Неавтоматический judgement; фактические участники называются явно |
+| 20 | Исследование R0–R3, источники, экспертные роли | Во всех тяжёлых случаях обязательны OSINT, Deep Research и профильные специалисты; для R2/R3 — 2–4 независимые экспертные роли, для R3 — отдельная итоговая проверка. Автоматическое назначение экспертов, учёт участия и проверка независимости пока не реализованы |
 
 Полнота пакета: policy-lock schema 2 фиксирует index, все модули и эту карту;
 check/context сверяют каждый файл. Изменённый/непоставленный файл блокирует чтение пакета.
