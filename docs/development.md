@@ -29,6 +29,20 @@ Git for Windows и GitHub CLI нужны для GitHub workflow. Интерне�
 
     pwsh -NoProfile -File scripts/quality-gate.ps1
 
+Если встроенный PowerShell ниже минимальной версии, проверьте все варианты через `Get-Command pwsh -All`. В отдельной сессии поставьте каталог поддерживаемого `pwsh.exe` первым в `PATH`: этот порядок используют также дочерние тесты и Git-хуки. Сверьте версию именно найденной команды.
+
+При сообщении о лимите `GIT_DIR` используйте существующий короткий каталог вне всех репозиториев. Для одного запуска согласуйте `TEMP`, `TMP` и `-TemporaryRoot`, чтобы вложенные тесты видели тот же корень. Пример для отдельной сессии, в которой оба указанных пути уже существуют:
+
+    $pwsh = 'C:\Program Files\PowerShell\7\pwsh.exe'
+    $tempRoot = (Resolve-Path -LiteralPath 'C:\tmp').ProviderPath
+    $env:PATH = (Split-Path -Parent $pwsh) + ';' + $env:PATH
+    $env:TEMP = $tempRoot
+    $env:TMP = $tempRoot
+    pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+    pwsh -NoProfile -File scripts/quality-gate.ps1 -TemporaryRoot $tempRoot
+
+При `GIT_IDENTITY_CONFIG_ENVIRONMENT_OVERRIDE` или `GIT_IDENTITY_REPOSITORY_CONTEXT_OVERRIDE` повторите прямой запуск из отдельной среды без указанных в диагностике Git-переопределений. Изменения окружения в примере действуют только в текущем процессе и его потомках. Gate удаляет созданную им подпапку, а общий временный каталог сохраняется.
+
 Read-only сверка live GitHub settings с versioned config (repository, ruleset, Actions, Dependabot и security):
 
     pwsh -NoProfile -File scripts/github/verify-settings.ps1 -RequireStatusCheck
