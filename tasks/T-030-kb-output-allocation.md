@@ -1,6 +1,8 @@
 # T-030 — Проверить бюджет ответа до выделения UTF-8 буфера
 
-Статус: in_progress. Оптимизация действующего LKB-009.
+Статус: merged. Оптимизация действующего LKB-009.
+
+Интеграция: [PR #29](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/29), squash `f173e3056b97edffdc3e3610aab1243067897ddc`.
 
 ## Зона файлов
 

@@ -1,6 +1,8 @@
 # T-021 — Команда squash с проверкой допуска
 
-Статус: in_progress. База: 6b32887.
+Статус: merged. База: 6b32887.
+
+Интеграция: [PR #20](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/20), squash `07ed7bd8214e14c1bff7e4a2befbd53295ace636`.
 
 ## Зона файлов
 

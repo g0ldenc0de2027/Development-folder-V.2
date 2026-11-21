@@ -1,6 +1,8 @@
 # T-012 — Проверять точный merge-result PR в hosted gate
 
-**Статус:** in_progress
+**Статус:** merged
+
+Интеграция: [PR #13](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/13), squash `436aa6f8570ab82f7d425a1859221862a8b328cb`.
 **Тип:** maintenance / GitHub Actions quality gate
 **Главный ИИ / исполнитель:** Codex (OpenAI), GPT-6
 **Дата:** 2026-11-16

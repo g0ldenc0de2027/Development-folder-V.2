@@ -1,6 +1,8 @@
 # T-026 — Проверка источника файлов PowerShell-скана по AST
 
-Статус: in_progress. Источник: дополнительное ревью PR #23.
+Статус: merged. Источник: дополнительное ревью PR #23.
+
+Интеграция: [PR #25](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/25), squash `a865cba3670585ab2a8ca6d34cf09659da886be9`.
 
 ## Зона файлов
 
