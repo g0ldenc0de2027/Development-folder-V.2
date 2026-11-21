@@ -47,7 +47,13 @@ function Invoke-GitText {
     try {
         $stdout = $process.StandardOutput.ReadToEndAsync()
         $stderr = $process.StandardError.ReadToEndAsync()
-        $process.WaitForExit()
+        if (-not $process.WaitForExit(30000)) {
+            if (-not $process.HasExited) { $process.Kill($true) }
+            throw "WORKTREE_AUDIT_GIT_TIMEOUT:$Operation"
+        }
+        if (-not [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdout,$stderr),1000)) {
+            throw "WORKTREE_AUDIT_GIT_OUTPUT_TIMEOUT:$Operation"
+        }
         $output = $stdout.GetAwaiter().GetResult()
         $diagnostic = $stderr.GetAwaiter().GetResult().TrimEnd()
         if ($process.ExitCode -ne 0) {
@@ -325,9 +331,9 @@ try {
 
         $statusIndexFile = $null
         if ($isCurrent -and $Mode -ceq 'Commit') { $statusIndexFile = $commitIndexFile }
-        $statusLines = @(Invoke-GitText -Directory $treePath -Arguments @('-c','core.quotepath=false','status','--porcelain=v1','--untracked-files=all','--ignore-submodules=none') -Operation 'status' -IndexFile $statusIndexFile)
-        $ignoredLines = @(Invoke-GitText -Directory $treePath -Arguments @('-c','core.quotepath=false','status','--porcelain=v1','--ignored=matching','--untracked-files=all','--ignore-submodules=none') -Operation 'ignored-status' -IndexFile $statusIndexFile)
-        $visualStudioArtifacts = @($ignoredLines | Where-Object {
+        $allStatusLines = @(Invoke-GitText -Directory $treePath -Arguments @('-c','core.quotepath=false','status','--porcelain=v1','--ignored=matching','--untracked-files=all','--ignore-submodules=none') -Operation 'status' -IndexFile $statusIndexFile)
+        $statusLines = @($allStatusLines | Where-Object { -not $_.StartsWith('!! ',[StringComparison]::Ordinal) })
+        $visualStudioArtifacts = @($allStatusLines | Where-Object {
             $_.StartsWith('!! ',[StringComparison]::Ordinal) -and $_.Substring(3).Trim('"') -match '(?i)(?:^|[\\/])\.vs(?:[\\/]|["]|$)'
         })
         if ($visualStudioArtifacts.Count -gt 0) {
