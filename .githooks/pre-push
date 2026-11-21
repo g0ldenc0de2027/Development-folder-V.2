@@ -59,15 +59,8 @@ esac
 
 task_branch=${current_ref#refs/heads/task/}
 task_id=${task_branch%${task_branch#?????}}
-push_ranges=
-append_range() {
-    if [ -n "$push_ranges" ]; then
-        push_ranges="$push_ranges
-$1"
-    else
-        push_ranges=$1
-    fi
-}
+push_range=
+outgoing_sha=
 while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
     if [ -z "$local_ref" ] && [ -z "$local_sha" ]; then continue; fi
     case "$local_ref:$remote_ref" in
@@ -78,6 +71,10 @@ while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
     esac
     if [ "$local_ref" != "$current_ref" ] || [ "$remote_ref" != "$local_ref" ]; then
         echo "pre-push: only the current same-named task branch may be updated" >&2
+        exit 1
+    fi
+    if [ -n "$outgoing_sha" ]; then
+        echo "pre-push: only one task ref may be updated" >&2
         exit 1
     fi
     case "$local_sha" in
@@ -96,20 +93,30 @@ while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
                 echo "pre-push: non-fast-forward update or missing remote object is forbidden" >&2
                 exit 1
             fi
-            append_range "$remote_sha..$local_sha"
+            push_range="$remote_sha..$local_sha"
             ;;
-        *) append_range "$local_sha" ;;
+        *) push_range="$local_sha" ;;
     esac
+    outgoing_sha=$local_sha
 done
-if [ -n "$push_ranges" ]; then
-    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-task-scope.ps1" -TaskId "$task_id" -BaseRef origin/main
-fi
-if [ -n "$push_ranges" ]; then
-    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name" -RemoteUrl "$remote_url" -CommitRange "$push_ranges"
-else
+if [ -z "$outgoing_sha" ]; then
     pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name"
+    exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -RemoteName "$remote_name" -RemoteUrl "$remote_url"
 fi
-if [ -n "$push_ranges" ]; then
-    exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -RemoteName "$remote_name" -RemoteUrl "$remote_url" -PushRange "$push_ranges"
+
+published_main=$(pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name" -RemoteUrl "$remote_url" -CommitRange "$push_range" -PassThruPublishedMainSha)
+published_main=$(printf '%s' "$published_main" | tr -d '\r')
+case "$published_main" in
+    ''|*[!0123456789abcdef]*) echo "pre-push: verified live main SHA is invalid" >&2; exit 1 ;;
+esac
+if [ "${#published_main}" -ne 40 ]; then
+    echo "pre-push: verified live main SHA is invalid" >&2
+    exit 1
 fi
-exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -RemoteName "$remote_name" -RemoteUrl "$remote_url"
+pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-task-scope.ps1" -TaskId "$task_id" -BaseRef "$published_main" -ExpectedHeadSha "$outgoing_sha"
+pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -BaseRef "$published_main" -RemoteName "$remote_name" -RemoteUrl "$remote_url" -PushRange "$push_range"
+
+if [ "$(git symbolic-ref --quiet HEAD)" != "$current_ref" ] || [ "$(git rev-parse --verify HEAD)" != "$outgoing_sha" ]; then
+    echo "pre-push: the checked-out task revision changed during checks; retry after reviewing it" >&2
+    exit 1
+fi
