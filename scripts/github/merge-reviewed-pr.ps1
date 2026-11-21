@@ -24,33 +24,77 @@ if ($login -notmatch '^[A-Za-z0-9-]+$' -or $userId -notmatch '^[1-9][0-9]*$') { 
 $email = "$userId+$login@users.noreply.github.com"
 if (-not $PSCmdlet.ShouldProcess("$slug PR #$Number at $HeadSha", 'Squash merge with noreply')) { return }
 
-$prJson = & gh pr view $Number -R "github.com/$slug" --json id,state,isDraft,headRefOid,baseRefOid 2>$null
-if ($LASTEXITCODE -ne 0) { throw 'Unable to recheck PR' }
-$pr = $prJson | ConvertFrom-Json
-if (!$pr.id -or $pr.state -cne 'OPEN' -or $pr.isDraft -ne $false -or $pr.headRefOid -cne $HeadSha -or $pr.baseRefOid -cne $BaseSha) {
+function Read-MergeEvidenceJson {
+    param([Parameter(Mandatory)][string[]]$Arguments)
+
+    $response = & gh @Arguments 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'GitHub evidence request failed.' }
+    try {
+        $result = ($response -join [char]10) | ConvertFrom-Json -AsHashtable
+    } catch {
+        throw 'GitHub evidence response was not valid JSON.'
+    }
+    if ($result -isnot [System.Collections.IDictionary] -or $result.Contains('errors')) {
+        throw 'GitHub evidence response was incomplete.'
+    }
+    return $result
+}
+
+$testedCommit = Read-MergeEvidenceJson @('api','--hostname','github.com',"repos/$slug/git/commits/$MergeResultSha")
+if ($testedCommit['sha'] -cne $MergeResultSha -or
+    $testedCommit['tree'] -isnot [System.Collections.IDictionary] -or
+    $testedCommit['tree']['sha'] -cnotmatch '^[0-9a-f]{40}$') {
+    throw 'Unable to identify the tree of the approved merge-result.'
+}
+$approvedTree = $testedCommit['tree']['sha']
+
+$pr = Read-MergeEvidenceJson @('pr','view',"$Number",'-R',"github.com/$slug",'--json','id,state,isDraft,baseRefName,headRefOid,baseRefOid')
+if (!$pr['id'] -or $pr['state'] -cne 'OPEN' -or $pr['isDraft'] -ne $false -or
+    $pr['baseRefName'] -cne 'main' -or $pr['headRefOid'] -cne $HeadSha -or $pr['baseRefOid'] -cne $BaseSha) {
     throw 'PR changed after preflight'
 }
 $main = & gh api --hostname github.com "repos/$slug/git/ref/heads/main" --jq '.object.sha' 2>$null
 if ($LASTEXITCODE -ne 0 -or $main -cne $BaseSha) { throw 'Main changed after preflight' }
 
-$query = 'mutation($id:ID!,$head:GitObjectID!,$email:String!){mergePullRequest(input:{pullRequestId:$id,expectedHeadOid:$head,mergeMethod:SQUASH,authorEmail:$email}){pullRequest{merged mergeCommit{oid author{email}}}}}'
-$reply = & gh api --hostname github.com graphql -f "query=$query" -f "id=$($pr.id)" -f "head=$HeadSha" -f "email=$email" 2>$null
-if ($LASTEXITCODE -eq 0) {
-    try {
-        $result = ($reply -join [char]10) | ConvertFrom-Json -AsHashtable
-        if ($result -is [System.Collections.IDictionary] -and -not $result['errors']) {
-            $merged = $result.data.mergePullRequest.pullRequest
-            if ($merged.merged -eq $true -and $merged.mergeCommit.oid -cmatch '^[0-9a-f]{40}$' -and
-                $merged.mergeCommit.author.email -ceq $email) {
-                Write-Output "PR #$Number merged at $($merged.mergeCommit.oid) with the expected noreply author."
-                return
-            }
-        }
-    } catch {
-        # Неполный или повреждённый ответ не определяет результат операции.
-        Write-Verbose 'The merge response could not be parsed or was incomplete.'
-    }
+$query = 'mutation($id:ID!,$head:GitObjectID!,$email:String!){mergePullRequest(input:{pullRequestId:$id,expectedHeadOid:$head,mergeMethod:SQUASH,authorEmail:$email}){pullRequest{merged}}}'
+try {
+    $null = & gh api --hostname github.com graphql -f "query=$query" -f "id=$($pr['id'])" -f "head=$HeadSha" -f "email=$email" 2>$null
+} catch {
+    Write-Verbose 'GitHub did not confirm the mutation. Checking the current PR and commit.'
 }
 
-& gh pr view $Number -R "github.com/$slug" --json state,mergeCommit 2>$null
-throw 'Squash or expected author could not be confirmed. Verify PR state before retrying.'
+try {
+    $mergedPr = Read-MergeEvidenceJson @('pr','view',"$Number",'-R',"github.com/$slug",'--json','id,state,baseRefName,headRefOid,mergeCommit')
+} catch {
+    throw 'PR state could not be verified after the squash attempt. Check it before retrying.'
+}
+if ($mergedPr['state'] -cne 'MERGED') {
+    throw 'PR was not confirmed merged after the squash attempt. Verify its current state before retrying.'
+}
+if ($mergedPr['id'] -cne $pr['id'] -or $mergedPr['baseRefName'] -cne 'main' -or
+    $mergedPr['headRefOid'] -cne $HeadSha -or
+    $mergedPr['mergeCommit'] -isnot [System.Collections.IDictionary] -or
+    $mergedPr['mergeCommit']['oid'] -cnotmatch '^[0-9a-f]{40}$') {
+    throw 'PR is already merged, but its recorded revision does not match the approval. Investigate the merged PR.'
+}
+$mergedSha = $mergedPr['mergeCommit']['oid']
+
+try {
+    $squash = Read-MergeEvidenceJson @('api','--hostname','github.com',"repos/$slug/git/commits/$mergedSha")
+} catch {
+    throw "PR is already merged at ${mergedSha}, but its commit evidence could not be read."
+}
+if ($squash['sha'] -cne $mergedSha) {
+    throw "PR is already merged at ${mergedSha}, but GitHub returned a different commit."
+}
+$parents = @($squash['parents'])
+if ($parents.Count -ne 1 -or $parents[0] -isnot [System.Collections.IDictionary] -or $parents[0]['sha'] -cne $BaseSha) {
+    throw "PR is already merged at ${mergedSha}, but its sole parent does not match the approved base."
+}
+if ($squash['tree'] -isnot [System.Collections.IDictionary] -or $squash['tree']['sha'] -cne $approvedTree) {
+    throw "PR is already merged at ${mergedSha}, but its tree does not match the tested merge-result."
+}
+if ($squash['author'] -isnot [System.Collections.IDictionary] -or $squash['author']['email'] -cne $email) {
+    throw "PR is already merged at ${mergedSha}, but its author does not match the expected noreply identity."
+}
+Write-Output "PR #$Number merged at $mergedSha. Verified the approved base, tested tree and expected noreply author."
