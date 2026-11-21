@@ -44,10 +44,32 @@ if ($commit.parents.Count -ne 2 -or $commit.parents[0].sha -cne $BaseSha -or $co
     throw 'Merge-result parent tuple differs'
 }
 
+$rulesManifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../config/github/main-ruleset.json') -Raw | ConvertFrom-Json -AsHashtable
+$checkPolicy = $null
+if ($rulesManifest -is [System.Collections.IDictionary] -and
+    $rulesManifest['rules'] -is [System.Collections.IDictionary]) {
+    $checkPolicy = $rulesManifest['rules']['requiredStatusChecks']
+}
+if ($checkPolicy -isnot [System.Collections.IDictionary]) { throw 'Invalid required quality-gate manifest' }
+$integrationId = $checkPolicy['integrationId']
+if ($checkPolicy['context'] -cne 'quality-gate' -or $checkPolicy['state'] -cne 'enforced' -or
+    $checkPolicy['strict'] -isnot [bool] -or !$checkPolicy['strict'] -or
+    ($integrationId -isnot [int] -and $integrationId -isnot [long]) -or $integrationId -le 0) {
+    throw 'Invalid required quality-gate manifest'
+}
+
 $rules = Read-GitHubJson @('api','--hostname','github.com',"repos/$slug/rules/branches/main")
 $required = @($rules | Where-Object {
-    $_.type -ceq 'required_status_checks' -and $_.parameters.strict_required_status_checks_policy -eq $true -and
-    ($_.parameters.required_status_checks | Where-Object { $_.context -ceq 'quality-gate' -and $_.integration_id -eq 15368 })
+    if ($_ -isnot [System.Collections.IDictionary] -or $_['type'] -cne 'required_status_checks') { return $false }
+    $parameters = $_['parameters']
+    if ($parameters -isnot [System.Collections.IDictionary] -or
+        $parameters['strict_required_status_checks_policy'] -isnot [bool] -or
+        !$parameters['strict_required_status_checks_policy']) { return $false }
+    $parameters['required_status_checks'] | Where-Object {
+        if ($_ -isnot [System.Collections.IDictionary]) { return $false }
+        $sourceId = $_['integration_id']
+        $_['context'] -ceq 'quality-gate' -and ($sourceId -is [int] -or $sourceId -is [long]) -and $sourceId -eq $integrationId
+    }
 })
 if ($required.Count -eq 0) { throw 'Strict GitHub Actions quality-gate is not required' }
 
