@@ -12,8 +12,28 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $temporaryBaseRoot = [System.IO.Path]::GetFullPath($TemporaryRoot)
-$temporaryRoot = Join-Path $temporaryBaseRoot ('gate-' + [guid]::NewGuid().ToString('N'))
+$runId = [guid]::NewGuid().ToString('N')
+$temporaryRoot = Join-Path $temporaryBaseRoot ('gate-' + $runId)
+$ownershipMarker = Join-Path $temporaryRoot '.gate-owner'
+$temporaryRootCreated = $false
+$gateExit = 0
 $taskScopeGitDirByteBudget = 200
+
+function Assert-DirectoryChainWithoutReparsePoints([string]$Path) {
+    $directory = [IO.DirectoryInfo]::new($Path)
+    while ($null -ne $directory) {
+        try {
+            $item = Get-Item -LiteralPath $directory.FullName -Force -ErrorAction Stop
+            if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw "QUALITY-GATE: temporary path must be a directory without reparse points: $($directory.FullName)"
+            }
+        }
+        catch [System.Management.Automation.ItemNotFoundException] {
+            # A missing leaf is allowed during preflight. Its ancestors still need checking.
+        }
+        $directory = $directory.Parent
+    }
+}
 
 function Assert-TemporaryRootOutsideRepository {
     $separators = [char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
@@ -24,6 +44,7 @@ function Assert-TemporaryRootOutsideRepository {
         throw 'QUALITY-GATE: temporary root must be outside the source repository and every Git repository'
     }
 
+    Assert-DirectoryChainWithoutReparsePoints $temporaryBaseRoot
     $probe = $candidate
     while (-not [IO.Directory]::Exists($probe)) {
         $parent = Split-Path -Parent $probe
@@ -123,7 +144,13 @@ try {
     Assert-TemporaryRootOutsideRepository
     & (Join-Path $PSScriptRoot 'verify-runtime.ps1')
     $null = Get-Command git -ErrorAction Stop
-    New-Item -ItemType Directory -Path $temporaryRoot -Force | Out-Null
+    if (-not [IO.Directory]::Exists($temporaryBaseRoot)) {
+        throw "QUALITY-GATE: TemporaryRoot must be an existing directory: $temporaryBaseRoot"
+    }
+    Assert-DirectoryChainWithoutReparsePoints $temporaryBaseRoot
+    New-Item -ItemType Directory -Path $temporaryBaseRoot -Name ('gate-' + $runId) | Out-Null
+    $temporaryRootCreated = $true
+    [IO.File]::WriteAllText($ownershipMarker, $runId)
     Set-Location -LiteralPath $repoRoot
     Import-Module (Join-Path $PSScriptRoot 'lib/GitIdentity.psm1') -Force
     $null = Assert-GitWorktreeEnvironment -RepositoryRoot $repoRoot -HookContext
@@ -291,16 +318,33 @@ try {
     Invoke-NativeChecked -Executable (Get-Command git).Source -Arguments @('--no-pager','diff', '--cached', '--check') -Label 'staged diff check'
 
     Write-Output 'NOT COVERED: no application stack is selected in the template; stack build and dependency audit do not apply to this baseline.'
-    Write-Output 'QUALITY-GATE=PASS'
-    exit 0
 }
 catch {
     [Console]::Error.WriteLine('QUALITY-GATE=FAIL: ' + $_.Exception.Message)
-    exit 1
+    $gateExit = 1
 }
 finally {
-    Set-Location -LiteralPath $repoRoot
-    if (Test-Path -LiteralPath $temporaryRoot) {
-        Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
+    if ($temporaryRootCreated) {
+        try {
+            Set-Location -LiteralPath $repoRoot
+            Assert-DirectoryChainWithoutReparsePoints $temporaryRoot
+            $marker = Get-Item -LiteralPath $ownershipMarker -Force -ErrorAction Stop
+            if ($marker.PSIsContainer -or ($marker.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+                $marker.Length -ne $runId.Length -or [IO.File]::ReadAllText($ownershipMarker) -cne $runId) {
+                throw 'Temporary directory ownership could not be verified.'
+            }
+            Remove-Item -LiteralPath $temporaryRoot -Recurse -Force -ErrorAction Stop
+            if (Test-Path -LiteralPath $temporaryRoot -ErrorAction Stop) {
+                throw 'Temporary directory still exists after cleanup.'
+            }
+        }
+        catch {
+            [Console]::Error.WriteLine("QUALITY-GATE=FAIL: cleanup of '$temporaryRoot': $($_.Exception.Message)")
+            $gateExit = 1
+        }
     }
 }
+if ($gateExit -eq 0) {
+    Write-Output 'QUALITY-GATE=PASS'
+}
+exit $gateExit

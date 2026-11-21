@@ -374,6 +374,24 @@ try {
     Write-Output 'PASS: task-scope and quality gates refuse long UTF-8 Git paths before writes'
     Write-Output 'PASS: quality gate refuses a TempRoot inside a linked worktree before writes'
 
+    $junctionTarget = Join-Path $scratch 'target'
+    $junction = Join-Path $scratch 'link'
+    $null = New-Item -ItemType Directory -Path $junctionTarget
+    $null = New-Item -ItemType Junction -Path $junction -Target $junctionTarget
+    try {
+        $gateOutput = @(& $pwsh -NoLogo -NoProfile -File $gatePath -TemporaryRoot (Join-Path $junction 'missing') 2>&1)
+        $gateExit = $LASTEXITCODE
+        if ($gateExit -eq 0 -or
+            ($gateOutput -join [Environment]::NewLine) -notlike '*temporary path must be a directory without reparse points*' -or
+            @(Get-ChildItem -LiteralPath $junctionTarget -Force).Count -ne 0) {
+            throw 'Quality gate must reject a junction ancestor before writing to its target.'
+        }
+        $passed++
+        Write-Output 'PASS: quality gate refuses a junction ancestor before writes'
+    } finally {
+        [IO.Directory]::Delete($junction)
+    }
+
     $null = Invoke-Git $taskWorktree @('branch', '-m', 'task/T-008-scope-fixture')
     Assert-Scope 0 'TASK-SCOPE=PASS' 'TASK-SCOPE=PASS (2 changed paths; 3 allowed paths)'
     $passed++
@@ -398,7 +416,7 @@ try {
     $passed++
     Write-Output 'PASS: scope rejects a committed out-of-scope path'
 
-    if ($passed -ne 8) { throw ('Expected 8 task-scope cases; found ' + $passed) }
+    if ($passed -ne 9) { throw ('Expected 9 task-scope cases; found ' + $passed) }
     Write-Output ("TASK-SCOPE-REGRESSIONS: {0} passed, 0 failed" -f $passed)
 } finally {
     try {
