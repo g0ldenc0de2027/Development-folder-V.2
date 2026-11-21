@@ -25,6 +25,9 @@ Literal case-insensitive search text required by search.
 .PARAMETER Limit
 Maximum records selected, from 1 through 1000. Defaults to 100.
 
+.PARAMETER ExpectedCollectionId
+Expected collection UUID in D format for check, search, get or context. A mismatch stops the command before record bodies are read.
+
 .PARAMETER Compact
 Return search metadata without record bodies. Applies to search only.
 
@@ -71,6 +74,7 @@ param(
     [ValidateRange(512,262144)][int]$MaxBytes = 131072,
     [ValidateRange(512,2097152)][int]$MaxOutputBytes = 131072,
     [switch]$IncludeWithdrawn,
+    [string]$ExpectedCollectionId,
     [switch]$Compact
 )
 Set-StrictMode -Version Latest
@@ -79,7 +83,7 @@ $ErrorActionPreference = 'Stop'
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 
 function Fail([string]$Code) { throw $Code }
-function Assert-SupportedVolume([string]$Path) {
+function Assert-SupportedVolume([string]$Path,[switch]$ReportMissingRoot) {
     $fullPath = [IO.Path]::GetFullPath($Path)
     $volumeRoot = [IO.Path]::GetPathRoot($fullPath)
     if ([string]::IsNullOrWhiteSpace($volumeRoot)) { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
@@ -88,6 +92,10 @@ function Assert-SupportedVolume([string]$Path) {
     foreach ($part in $relativePath.Split([IO.Path]::DirectorySeparatorChar,[StringSplitOptions]::RemoveEmptyEntries)) {
         $current = Join-Path $current $part
         try { $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop }
+        catch [System.Management.Automation.ItemNotFoundException] {
+            if ($ReportMissingRoot) { Fail 'KB_ROOT_UNAVAILABLE' }
+            Fail 'KB_LINK_ENUMERATION_UNAVAILABLE'
+        }
         catch { Fail 'KB_LINK_ENUMERATION_UNAVAILABLE' }
         if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Fail 'KB_REPARSE_POINT' }
     }
@@ -300,6 +308,7 @@ function Load-Catalog {
     if ($catalog.schemaVersion -ne 1) { Fail 'KB_SCHEMA_VERSION' }
     $guid = [guid]::Empty
     if ($catalog.projectId -isnot [string] -or -not [guid]::TryParseExact($catalog.projectId,'D',[ref]$guid) -or $guid -eq [guid]::Empty) { Fail 'KB_PROJECT_ID' }
+    if ($null -ne $expectedId -and $guid -ne $expectedId) { Fail 'KB_COLLECTION_ID_MISMATCH' }
     if ($catalog.records -isnot [array] -or $catalog.records.Count -gt 1000) { Fail 'KB_RECORD_LIMIT' }
     # Prefer one same-handle API query for large catalogs; safely fall back to fsutil when unavailable.
     if ($catalog.records.Count -gt 24 -and $script:KbVolumeFormat -notin @('FAT','FAT32','EXFAT')) { Initialize-NativeLinkCounter }
@@ -417,8 +426,17 @@ function Read-Rules {
 }
 try {
     if ($Compact -and $Command -ne 'search') { Fail 'KB_COMPACT_SEARCH_ONLY' }
+    $expectedId = $null
+    if ($PSBoundParameters.ContainsKey('ExpectedCollectionId')) {
+        if ($Command -notin @('check','search','get','context')) { Fail 'KB_COLLECTION_ID_READ_ONLY' }
+        $parsedId = [guid]::Empty
+        if (-not [guid]::TryParseExact($ExpectedCollectionId,'D',[ref]$parsedId) -or $parsedId -eq [guid]::Empty) {
+            Fail 'KB_EXPECTED_COLLECTION_ID_INVALID'
+        }
+        $expectedId = $parsedId
+    }
     $root = [IO.Path]::GetFullPath($ProjectRoot)
-    $script:KbVolumeFormat = Assert-SupportedVolume $root
+    $script:KbVolumeFormat = Assert-SupportedVolume $root -ReportMissingRoot:($null -ne $expectedId)
     $script:HardLinkMode = 'fsutil'
     $rootItem = Get-Item -LiteralPath $root -Force
     if (-not $rootItem.PSIsContainer -or ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Fail 'KB_ROOT_INVALID' }
