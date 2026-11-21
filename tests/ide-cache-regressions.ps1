@@ -75,6 +75,38 @@ try {
         if (@($paths -like "$relative/*").Count -ne 0) { throw "Excluded directory enumerated: $relative" }
     }
     if ('knowledge/.vs-cache/valid.ps1' -notin $paths) { throw 'Similar directory was excluded' }
+    [IO.File]::WriteAllText((Join-Path $similar 'valid.psm1'),('function Test-Fixture {}' + [char]10),$utf8)
+    [IO.File]::WriteAllText((Join-Path $similar 'valid.psd1'),('@{}' + [char]10),$utf8)
+    [IO.File]::WriteAllText((Join-Path $similar 'keep.txt'),('ordinary text' + [char]10),$utf8)
+    $powerShellPaths = @(Get-ProjectPowerShellFiles $fixture | ForEach-Object {
+        [IO.Path]::GetRelativePath($fixture,$_.FullName).Replace('\','/')
+    })
+    foreach ($extension in @('ps1','psm1','psd1')) {
+        if ("knowledge/.vs-cache/valid.$extension" -notin $powerShellPaths) { throw "PowerShell scan skipped .$extension" }
+    }
+    foreach ($relative in $excluded) {
+        if (@($powerShellPaths -like "$relative/*").Count -ne 0) { throw "PowerShell scan entered $relative" }
+    }
+    if ('knowledge/.vs-cache/keep.txt' -in $powerShellPaths) { throw 'PowerShell scan included ordinary text' }
+
+    $linkedFile = Join-Path $fixture 'fixture-linked.ps1'
+    $fileLink = $null
+    try {
+        $fileLink = New-Item -ItemType SymbolicLink -Path $linkedFile -Target (Join-Path $similar 'valid.ps1')
+    } catch {
+        Write-Output 'NOT COVERED: file symbolic link could not be created on this host'
+    }
+    if ($null -ne $fileLink) {
+        try {
+            if ($linkedFile -in @(Get-ProjectFiles $fixture | ForEach-Object FullName)) {
+                throw 'Source scan included a file symbolic link'
+            }
+            Write-Output 'PASS: source scan excluded a file symbolic link'
+        } finally {
+            [IO.File]::Delete($linkedFile)
+        }
+    }
+
     $junction = Join-Path $fixture 'fixture-junction[probe]'
     New-Item -ItemType Junction -Path $junction -Target $similar | Out-Null
     try {
@@ -133,6 +165,16 @@ public static class V2ProjectedFixture {
         throw 'Ordinary untracked file escaped hygiene'
     }
     [IO.File]::Delete($normal)
+    $nestedScratch = 'knowledge/.work/invalid.ps1'
+    & git -C $fixture add -f -- $nestedScratch
+    if ($LASTEXITCODE -ne 0) { throw 'Could not stage nested scratch fixture' }
+    $output=@(& pwsh -NoLogo -NoProfile -File (Join-Path $fixture 'tests/quality-gate-regressions.ps1') 2>&1)
+    if ($LASTEXITCODE -eq 0 -or -not (($output -join [char]10).Contains('Local scratch paths must not contain tracked files'))) {
+        throw 'Tracked nested scratch file was not rejected'
+    }
+    & git -C $fixture rm --cached -f -- $nestedScratch
+    if ($LASTEXITCODE -ne 0) { throw 'Could not unstage nested scratch fixture' }
+
     & git -C $fixture add -f -- 'knowledge/.vs/ProjectSettings.json'
     if ($LASTEXITCODE -ne 0) { throw 'Could not stage tracked cache fixture' }
     $output=@(& pwsh -NoLogo -NoProfile -File (Join-Path $fixture 'tests/quality-gate-regressions.ps1') 2>&1)

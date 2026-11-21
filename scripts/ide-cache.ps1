@@ -60,7 +60,13 @@ function Get-ProjectFiles([string]$Root) {
                 if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -and
                     -not (Test-ProjectedDirectory $item.FullName)) { continue }
                 $directories.Push($item.FullName)
-            } else { $item }
+            } elseif (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) {
+                $item
+            }
         }
     }
+}
+
+function Get-ProjectPowerShellFiles([string]$Root) {
+    Get-ProjectFiles $Root | Where-Object { $_.Extension -iin @('.ps1', '.psm1', '.psd1') }
 }

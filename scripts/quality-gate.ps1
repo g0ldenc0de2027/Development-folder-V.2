@@ -141,13 +141,7 @@ try {
     }
 
     . (Join-Path $repoRoot 'scripts/ide-cache.ps1')
-    $scriptFiles = @(
-        Get-ProjectFiles $repoRoot | Where-Object { $_.Extension -ieq '.ps1' } |
-            Where-Object {
-                $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $_.FullName)
-                $relativePath -notmatch '(^|[\\/])(\.git|\.worktrees|\.work|\.manus|temp)([\\/]|$)'
-            }
-    )
+    $scriptFiles = @(Get-ProjectPowerShellFiles $repoRoot)
     if ($scriptFiles.Count -eq 0) {
         throw 'PowerShell syntax scan found no repository scripts'
     }
