@@ -9,7 +9,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $policyPath = Join-Path $repoRoot 'config/runtime-support.json'
 $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
 if ($policy.schemaVersion -ne 1) {
