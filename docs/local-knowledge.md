@@ -2,6 +2,8 @@
 
 ## Быстрый старт
 
+Встроенная справка: `Get-Help ./scripts/kb.ps1 -Full`.
+
 Из корня task worktree на проверенной Windows 11 x64 GA 26H2/build 26300, ветка `ge_release`, с PowerShell 7.6 LTS не ниже 7.6.10:
 
 ~~~powershell
@@ -15,7 +17,7 @@ pwsh -NoProfile -File scripts/kb.ps1 capture -Title 'Наблюдение' -Text
 
 CLI возвращает JSON в stdout, короткий код ошибки в stderr и exit 1 при отказе.
 Check проверяет catalog, hashes и локальную поставку RULES, а не истинность записей.
-Search — буквальный case-insensitive поиск, без русской морфологии/векторов.
+Search — буквальный поиск без учёта регистра и морфологии. Пустой результат содержит records: [] и totalMatches: 0. Если get не нашёл запрошенный ID, он возвращает KB_NOT_FOUND. Doctor проверяет обнаружение и доступность пути общей БЗ, а совместимость оставляет непроверенной.
 Get/search исключают withdrawn и superseded по умолчанию; явный -IncludeWithdrawn
 предназначен для исторического чтения, а не текущей рекомендации. Search сообщает
 общее число совпадений, число выданных записей и `truncated`; результат сверх `-Limit`
@@ -144,7 +146,7 @@ KB_CONTENT_CHANGED — bytes расходятся с catalog; выясните �
 KB_CONTEXT_LIMIT — указанный byte budget недостаточен; полный контекст не выдан.
 KB_CONTEXT_RECORD_LIMIT — набор больше `-Limit`; уменьшите выборку или явно повысьте лимит.
 KB_POLICY_CHANGED — файл пакета правил расходится с lock; восстановите согласованную поставку.
-KB_POLICY_INCOMPLETE — каноническая поставка RULES 0.2.0 не содержит всех девяти закреплённых файлов.
+KB_OUTPUT_LIMIT — ответ search/get превышает бюджет; уменьшите выборку или увеличьте лимит.
 KB_POLICY_LINK — локальная ссылка ведёт к файлу вне закреплённого пакета.
 KB_POLICY_LOCK — неподдерживаемая схема, повтор пути или некорректный lock.
 KB_HARDLINK — файл записи имеет несколько hard links; используйте отдельную обычную копию внутри базы.
@@ -172,6 +174,14 @@ refuses an insufficient byte budget. Hash integrity does not establish truth or 
 Do not store credentials or personal data. Back up ignored inbox separately.
 
 
+See command syntax and examples with `Get-Help ./scripts/kb.ps1 -Full`. Use `check` for
+catalogue and policy integrity and `doctor` to inspect shared collection discovery and availability.
+Doctor reports compatibility as unverified. An empty search returns `records: []` and
+`totalMatches: 0`; a missing record ID in `get` returns `KB_NOT_FOUND`.
+Use `-Limit` to bound record selection (default 100, maximum 1000) and inspect `truncated`.
+Context rejects an incomplete record selection with `KB_CONTEXT_RECORD_LIMIT`.
+`search -Compact` returns metadata including `contentSha256`. Use `get -Id` for the body.
+
 ### English policy-package update and recovery
 
 The editable rules canon is in the shared collection; projects keep a byte-identical snapshot.
@@ -198,3 +208,5 @@ Capture schema 2 требует заявленные source, scope, author, runt
 ## Сверка выбранной коллекции
 
 Для check, search, get и context передайте `-ExpectedCollectionId <UUID>`, полученный из доверенной конфигурации. При несовпадении CLI возвращает `KB_COLLECTION_ID_MISMATCH` с пустым stdout. При отсутствующем корне возвращается KB_ROOT_UNAVAILABLE. Перенос коллекции сохраняет её ID. Используйте параметр в каждом вызове чтения.
+
+Capture schema 2 requires declared source, scope, author and runtime. The author identity is unauthenticated and schema 1 proposals are preserved as written. Check rejects uncatalogued top-level Markdown records and scans records and rules for common secret patterns. The scan does not establish absence of secrets or personal data. Treat draft records as unreviewed.

@@ -1,4 +1,69 @@
 #Requires -Version 7.6
+
+<#
+.SYNOPSIS
+Read or validate a local Markdown knowledge collection, or capture a draft proposal.
+
+.DESCRIPTION
+Check verifies catalogue and pinned rules integrity. Doctor checks shared-collection discovery and directory availability.
+Search is literal and reports the total, returned count and truncation. No matches returns an empty records array.
+Get reads one record by ID. Context returns pinned rules and the selected records within its limits.
+Capture requires Title, Text, Source, Scope, Author and Runtime and writes a draft proposal to the local inbox.
+
+.PARAMETER Command
+check (default), search, get, context, capture or doctor.
+
+.PARAMETER ProjectRoot
+Collection root. Defaults to the project containing this script.
+
+.PARAMETER Id
+Record ID required by get and optional for context.
+
+.PARAMETER Query
+Literal case-insensitive search text required by search.
+
+.PARAMETER Limit
+Maximum records selected, from 1 through 1000. Defaults to 100.
+
+.PARAMETER ExpectedCollectionId
+Expected collection UUID in D format for check, search, get or context. A mismatch stops the command before record bodies are read.
+
+.PARAMETER Compact
+Return search metadata without record bodies. Applies to search only.
+
+.PARAMETER MaxBytes
+Context UTF-8 response budget including the final LF. Defaults to 131072 bytes. Range 512 through 262144.
+
+.PARAMETER MaxOutputBytes
+Search and get UTF-8 response budget including the final LF. Defaults to 131072 bytes. Range 512 through 2097152.
+
+.PARAMETER IncludeWithdrawn
+Enable historical search or get, including withdrawn and superseded records. Context refuses this switch.
+
+.PARAMETER Title
+Title of the draft proposal. Required by capture.
+
+.PARAMETER Text
+Text of the draft proposal. Required by capture.
+
+.PARAMETER Source
+Provenance of the information recorded in the draft. Required by capture.
+
+.PARAMETER Scope
+Scope to which the draft proposal applies. Required by capture.
+
+.PARAMETER Author
+Declared author of the draft proposal. Required by capture.
+
+.PARAMETER Runtime
+Runtime or model identifier associated with the draft. Required by capture.
+
+.EXAMPLE
+pwsh -NoProfile -File scripts/kb.ps1 search -Query 'backup' -Compact -Limit 20
+
+.EXAMPLE
+pwsh -NoProfile -File scripts/kb.ps1 context -Id local-first -MaxBytes 131072
+#>
 [CmdletBinding()]
 param(
     [ValidateSet('check','search','get','context','capture','doctor')][string]$Command = 'check',
