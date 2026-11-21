@@ -945,8 +945,10 @@ if ($currentHandoff -match '\b[a-f0-9]{40}\b') {
 if ($currentHandoff -match '(?im)PR #\d+[^\r\n]*\b(?:Draft|open|merged|success|pending)\b') {
     throw 'Current handoff must not freeze mutable PR or CI status'
 }
-if ($currentHandoff -notmatch '(?im)PR #10.*(?:live PR|live GitHub|источник истины)') {
-    throw 'Current handoff must direct readers to the live PR for mutable status'
+$handoffRepo = [regex]::Escape((Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/repository.json') -Raw | ConvertFrom-Json).repository)
+if ($currentHandoff -cnotmatch "\]\(https://github\.com/$handoffRepo/(?:pulls|pull/[1-9][0-9]*)\)" -or
+    $currentHandoff -cnotmatch "\]\(https://github\.com/$handoffRepo/actions\)") {
+    throw 'Current handoff must link to live repository PRs and Actions'
 }
 $trailing = [System.Collections.Generic.List[string]]::new()
 $missingFinalNewline = [System.Collections.Generic.List[string]]::new()

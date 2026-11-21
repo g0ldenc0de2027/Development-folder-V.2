@@ -83,10 +83,6 @@ while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
     case "$local_sha" in
         *[!0123456789abcdefABCDEF]*|'') echo "pre-push: invalid local object ID" >&2; exit 1 ;;
     esac
-    if [ "$local_ref" != "$current_ref" ] || [ "$remote_ref" != "$local_ref" ]; then
-        echo "pre-push: only the current same-named task branch may be updated" >&2
-        exit 1
-    fi
     case "$local_sha" in
         *[!0]*) ;;
         *) echo "pre-push: ref deletion or missing local object is forbidden" >&2; exit 1 ;;

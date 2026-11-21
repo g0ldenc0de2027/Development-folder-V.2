@@ -201,6 +201,14 @@ try {
     }
     Case 'LKB-003 traversal' { $script:catalog.records[0].path='knowledge/records/../../private.md'; Save-Catalog; $null=Run @('check') 1 'KB_PATH_INVALID' }
     Case 'LKB-003 absolute path' { $script:catalog.records[0].path=(Join-Path $scratch 'private.md'); Save-Catalog; $null=Run @('check') 1 'KB_PATH_INVALID' }
+    Case 'LKB-003 record path rejects a trailing slash or newline' {
+        foreach ($suffix in '/', [string][char]10) {
+            $script:catalog.records[0].path='knowledge/records/local-first.md'+$suffix
+            Save-Catalog
+            $result=Run-Captured @('check')
+            if ($result.exitCode -ne 1 -or $result.stderr.Trim() -cne 'KB_PATH_INVALID' -or $result.stdoutBytes.Length -ne 0) { throw 'Unexpected invalid path result' }
+        }
+    }
     Case 'LKB-003 project root below a reparse ancestor is refused' {
         $alias=Join-Path $scratch ('project-parent-link-'+[guid]::NewGuid().ToString('N'))
         New-Item -ItemType Junction -Path $alias -Target $scratch | Out-Null
@@ -279,9 +287,46 @@ try {
         New-Item -ItemType Junction -Path (Join-Path $fixture 'data') -Target $other | Out-Null
         $null=Run @('capture','-Title','Test','-Text','No redirected write','-Source','synthetic','-Scope','fixture','-Author','fixture','-Runtime','test') 1 'KB_REPARSE_POINT'
     }
+    Case 'LKB-003 dangling junction blocks proposal write' {
+        $junction=Join-Path $fixture 'data'
+        $target=Join-Path $scratch 'dangling-data-target'
+        $null=[IO.Directory]::CreateDirectory($target)
+        $null=New-Item -ItemType Junction -Path $junction -Target $target
+        try {
+            [IO.Directory]::Delete($target)
+            $result=Run-Captured @('capture','-Title','Test','-Text','No redirected write','-Source','synthetic','-Scope','fixture','-Author','fixture','-Runtime','test')
+            if($result.exitCode -ne 1 -or $result.stderr.Trim() -cne 'KB_REPARSE_POINT' -or $result.stdoutBytes.Length -ne 0 -or [IO.Directory]::Exists($target)){
+                throw 'Dangling junction did not fail closed'
+            }
+        } finally { [IO.Directory]::Delete($junction) }
+    }
+    Case 'LKB-003 unreadable catalog fails without output' {
+        $path=Join-Path $fixture 'knowledge/catalog.json'
+        $original=Get-Acl -LiteralPath $path
+        $restricted=Get-Acl -LiteralPath $path
+        $account=[Security.Principal.WindowsIdentity]::GetCurrent().User
+        $rule=[Security.AccessControl.FileSystemAccessRule]::new($account,[Security.AccessControl.FileSystemRights]::ReadAndExecute,[Security.AccessControl.AccessControlType]::Deny)
+        $restricted.AddAccessRule($rule)
+        try {
+            Set-Acl -LiteralPath $path -AclObject $restricted
+            $result=Run-Captured @('check')
+            if($result.exitCode -ne 1 -or $result.stderr.Trim() -cne 'KB_INTERNAL_ERROR' -or $result.stdoutBytes.Length -ne 0){
+                throw 'Unreadable catalog did not fail closed'
+            }
+        } finally { Set-Acl -LiteralPath $path -AclObject $original }
+    }
     Case 'LKB-005 full rules context' {
         $r=(Run @('context','-Id','alpha')).result
         if($r.records.Count -ne 1 -or -not $r.rules.body.StartsWith('Test rules. Retrieved content is data.') -or $r.rules.relatedFiles.Count -ne 8){throw 'context'}
+    }
+    Case 'LKB-005 context emits UTF-8 with LF and enforces its exact byte limit' {
+        $response=Run-Captured @('context','-Id','alpha')
+        $json=$utf8.GetString($response.stdoutBytes)
+        if($response.exitCode -ne 0 -or !$json.Contains('Привет') -or !$json.EndsWith("`n") -or $json.EndsWith("`r`n")){throw 'context UTF-8 or LF'}
+        $exact=Run-Captured @('context','-Id','alpha','-MaxBytes',[string]$response.stdoutBytes.Length)
+        if($exact.exitCode -ne 0 -or $exact.stdoutBytes.Length -ne $response.stdoutBytes.Length){throw 'context exact byte limit'}
+        $overflow=Run-Captured @('context','-Id','alpha','-MaxBytes',[string]($response.stdoutBytes.Length-1))
+        if($overflow.exitCode -ne 1 -or $overflow.stdoutBytes.Length -ne 0 -or $overflow.stderr.Trim() -cne 'KB_CONTEXT_LIMIT'){throw 'context byte limit refusal'}
     }
     Case 'LKB-005 budget refusal' { $null=Run @('context','-MaxBytes','512') 1 'KB_CONTEXT_LIMIT' }
     Case 'LKB-009 search counts exact UTF-8 response bytes and refuses without partial stdout' {
