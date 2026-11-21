@@ -11,7 +11,7 @@ $setupIncomplete = $false
 
 function Get-GitHubJson {
     param([Parameter(Mandatory)][string]$Endpoint)
-    $raw = & gh api $Endpoint 2>$null
+    $raw = & gh api --hostname github.com $Endpoint 2>$null
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) {
         throw "Read-only GitHub API request failed: $Endpoint"
@@ -36,7 +36,7 @@ try {
     $repositoryConfig = Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/repository.json') -Raw | ConvertFrom-Json
     $actionConfig = Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/actions-policy.json') -Raw | ConvertFrom-Json
     $rulesConfig = Get-Content -LiteralPath (Join-Path $repoRoot 'config/github/main-ruleset.json') -Raw | ConvertFrom-Json
-    $login = & gh api user --jq .login 2>$null
+    $login = & gh api --hostname github.com user --jq .login 2>$null
     $authExit = $LASTEXITCODE
     if ($authExit -ne 0 -or -not ($login -join '').Trim()) {
         throw 'GitHub CLI authentication is missing, invalid, or expired; run gh auth login and retry.'
@@ -61,7 +61,7 @@ try {
     Assert-Value 'issues enabled' $repo.has_issues $repositoryConfig.issues
     Assert-Value 'discussions setting' $repo.has_discussions $repositoryConfig.discussions
 
-    $alertResponse = & gh api --include "repos/$slug/vulnerability-alerts" 2>$null
+    $alertResponse = & gh api --hostname github.com --include "repos/$slug/vulnerability-alerts" 2>$null
     $alertExit = $LASTEXITCODE
     $alertStatus = @($alertResponse | Where-Object { $_ -match '^HTTP/' } | Select-Object -Last 1)
     if ($alertExit -ne 0 -or $alertStatus.Count -eq 0 -or $alertStatus[0] -notmatch '\s204\s') {
