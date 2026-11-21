@@ -1,8 +1,8 @@
 # T-006 — не блокировать проверки кэшем Visual Studio
 
-Статус: merged · Исполнитель: Codex · 2026-11-15.
+Статус: merged · Исполнитель: Codex · Дата в исходной карточке: 2026-11-15.
 
-Интеграция: [PR #6](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/6), squash `bee6648c5f786629d514cc50d98a66a650418da0`.
+Интеграция: [PR #6](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/6), squash `bee6648c5f786629d514cc50d98a66a650418da0`, дата слияния 2026-11-19 (UTC).
 Основание: локальный gate T-004 ошибочно проверял `knowledge/.vs/ProjectSettings.json`
 и блокировался на CRLF, хотя это служебный кэш IDE, не исходник проекта.
 
