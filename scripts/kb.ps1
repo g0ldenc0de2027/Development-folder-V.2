@@ -299,7 +299,7 @@ function Select-Entries($Catalog) {
     return @{records=$records;total=$total;truncated=($total -gt $records.Count)}
 }
 function Read-Rules {
-    $lockBytes = Read-Bytes 'rules/policy-lock.json' 65536
+    $lockBytes = Read-Bytes 'rules/policy-lock.json' 65536 -CheckHardLinks
     $lock = Parse-Json $lockBytes
     Assert-Keys $lock @('schemaVersion','packageId','version','files','sourceCollectionId')
     if (($lock.schemaVersion -isnot [long] -and $lock.schemaVersion -isnot [int]) -or
@@ -328,7 +328,7 @@ function Read-Rules {
         if ($entry.path -cnotmatch '\Arules/(RULES\.md|COVERAGE\.md|modules/[0-9]{2}-[a-z0-9-]+\.md)\z' -or
             -not $paths.Add($entry.path)) { Fail 'KB_POLICY_LOCK' }
         if ($entry.sha256 -isnot [string] -or $entry.sha256 -cnotmatch '^[a-f0-9]{64}$') { Fail 'KB_POLICY_LOCK' }
-        $bytes = Read-Bytes $entry.path
+        $bytes = Read-Bytes $entry.path -CheckHardLinks
         if ((Hash-Bytes $bytes) -cne $entry.sha256) { Fail 'KB_POLICY_CHANGED' }
         try { $body = $utf8.GetString($bytes) } catch { Fail 'KB_UTF8_INVALID' }
         Assert-NoObviousSecret $body

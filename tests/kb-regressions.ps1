@@ -216,14 +216,23 @@ try {
         $result=Run-Captured @('check') $aliasRoot
         if($result.exitCode -ne 1 -or -not $result.stderr.Contains('KB_REPARSE_POINT') -or $result.stdoutBytes.Length -ne 0){throw 'reparse ancestor refusal'}
     }
-    Case 'LKB-003 hard-linked catalog is refused before output' {
-        $outside=Join-Path $scratch ('catalog-outside-'+[guid]::NewGuid().ToString('N')+'.json')
-        $catalogPath=Join-Path $fixture 'knowledge/catalog.json'
-        Copy-Item -LiteralPath $catalogPath -Destination $outside
-        Remove-Item -LiteralPath $catalogPath -Force
-        New-Item -ItemType HardLink -Path $catalogPath -Target $outside | Out-Null
-        $result=Run-Captured @('check')
-        if($result.exitCode -ne 1 -or -not $result.stderr.Contains('KB_HARDLINK') -or $result.stdoutBytes.Length -ne 0){throw 'hard-linked catalog refusal'}
+    Case 'LKB-003 hard-linked metadata and policy files are refused before output' {
+        foreach ($relative in @('knowledge/catalog.json','rules/policy-lock.json','rules/RULES.md')) {
+            $file = Join-Path $fixture $relative
+            $outside = Join-Path $scratch ('metadata-outside-' + [guid]::NewGuid().ToString('N'))
+            Copy-Item -LiteralPath $file -Destination $outside
+            Remove-Item -LiteralPath $file
+            try {
+                New-Item -ItemType HardLink -Path $file -Target $outside | Out-Null
+                $result = Run-Captured @('check')
+                if ($result.exitCode -ne 1 -or $result.stderr.Trim() -cne 'KB_HARDLINK' -or $result.stdoutBytes.Length -ne 0) {
+                    throw "Hard-linked file was not refused: $relative"
+                }
+            } finally {
+                if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file }
+                Copy-Item -LiteralPath $outside -Destination $file
+            }
+        }
     }
     Case 'LKB-003 hard-link alias to external file is refused before output' {
         $outside=Join-Path $scratch ('outside-'+[guid]::NewGuid().ToString('N')+'.md')
