@@ -144,15 +144,15 @@ function Hash-Bytes([byte[]]$Bytes) {
     return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($Bytes)).ToLowerInvariant()
 }
 function Safe-Path([string]$Relative) {
-    if ($Relative -notmatch '^[a-zA-Z0-9._/-]+$' -or $Relative -match '(^|/)\.\.?(/|$)' -or
-        $Relative.StartsWith('/') -or $Relative.Contains('//')) { Fail 'KB_PATH_INVALID' }
+    if ($Relative -notmatch '\A[a-zA-Z0-9._/-]+\z' -or $Relative -match '(^|/)\.\.?(/|$)' -or
+        $Relative.StartsWith('/') -or $Relative.EndsWith('/') -or $Relative.Contains('//')) { Fail 'KB_PATH_INVALID' }
     $current = $root
     foreach ($part in $Relative.Split('/')) {
-        $current = Join-Path $current $part
-        if (Test-Path -LiteralPath $current) {
-            $item = Get-Item -LiteralPath $current -Force
-            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Fail 'KB_REPARSE_POINT' }
-        }
+        $current = [IO.Path]::Combine($current, $part)
+        try { $attributes = [IO.File]::GetAttributes($current) }
+        catch [IO.FileNotFoundException] { continue }
+        catch [IO.DirectoryNotFoundException] { continue }
+        if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Fail 'KB_REPARSE_POINT' }
     }
     return $current
 }
@@ -259,7 +259,7 @@ function Load-Catalog {
         if ($record.kind -cnotin @('lesson','decision','reference','research')) { Fail 'KB_KIND' }
         if ($record.status -cnotin @('draft','reviewed','accepted','superseded','withdrawn')) { Fail 'KB_STATUS' }
         Assert-String $record.path
-        if ($record.path -cnotmatch '^knowledge/records/[a-z0-9][a-z0-9-]*\.md$' -or -not $paths.Add($record.path)) { Fail 'KB_PATH_INVALID' }
+        if ($record.path -cnotmatch '\Aknowledge/records/[a-z0-9][a-z0-9-]*\.md\z' -or -not $paths.Add($record.path)) { Fail 'KB_PATH_INVALID' }
         if ($record.contentSha256 -isnot [string] -or $record.contentSha256 -cnotmatch '^[a-f0-9]{64}$') { Fail 'KB_HASH_INVALID' }
         if ($record.sources -isnot [array] -or $record.sources.Count -gt 30) { Fail 'KB_SOURCES_INVALID' }
         foreach ($source in $record.sources) { Assert-String $source 1000; Assert-NoObviousSecret $source }
@@ -331,7 +331,7 @@ function Read-Rules {
     foreach ($entry in $lock.files) {
         Assert-Keys $entry @('path','sha256')
         Assert-String $entry.path 200
-        if ($entry.path -cnotmatch '^rules/(RULES\.md|COVERAGE\.md|modules/[0-9]{2}-[a-z0-9-]+\.md)$' -or
+        if ($entry.path -cnotmatch '\Arules/(RULES\.md|COVERAGE\.md|modules/[0-9]{2}-[a-z0-9-]+\.md)\z' -or
             -not $paths.Add($entry.path)) { Fail 'KB_POLICY_LOCK' }
         if ($entry.sha256 -isnot [string] -or $entry.sha256 -cnotmatch '^[a-f0-9]{64}$') { Fail 'KB_POLICY_LOCK' }
         $bytes = Read-Bytes $entry.path
@@ -460,15 +460,12 @@ try {
         }
     }
     $json=@{schemaVersion=1;command=$Command;result=$result} | ConvertTo-Json -Depth 20
-    if ($Command -eq 'context' -and $utf8.GetByteCount($json) -gt $MaxBytes) { Fail 'KB_CONTEXT_LIMIT' }
-    if ($Command -in @('search','get')) {
-        if (($utf8.GetByteCount($json) + 1) -gt $MaxOutputBytes) { Fail 'KB_OUTPUT_LIMIT' }
-        $outputBytes=$utf8.GetBytes($json+[char]10)
-        $stdout=[Console]::OpenStandardOutput()
-        $stdout.Write($outputBytes,0,$outputBytes.Length)
-    } else {
-        [Console]::Out.WriteLine($json)
-    }
+    $responseByteCount=$utf8.GetByteCount($json)+1
+    if ($Command -eq 'context' -and $responseByteCount -gt $MaxBytes) { Fail 'KB_CONTEXT_LIMIT' }
+    if ($Command -in @('search','get') -and $responseByteCount -gt $MaxOutputBytes) { Fail 'KB_OUTPUT_LIMIT' }
+    $outputBytes=$utf8.GetBytes($json+[char]10)
+    $stdout=[Console]::OpenStandardOutput()
+    $stdout.Write($outputBytes,0,$outputBytes.Length)
     exit 0
 } catch {
     $code=$_.Exception.Message
