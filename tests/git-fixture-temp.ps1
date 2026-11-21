@@ -13,6 +13,32 @@ function Assert-GitFixtureTempRoot([string]$Root) {
             throw "Git fixture TempRoot must be outside every Git repository: $Root"
         }
     }
+
+    $savedGitEnvironment = @{}
+    $savedLocale = $env:LC_ALL
+    foreach ($name in @(Get-ChildItem Env: | Where-Object Name -like 'GIT_*' | ForEach-Object Name)) {
+        $savedGitEnvironment[$name] = [Environment]::GetEnvironmentVariable($name,'Process')
+        Remove-Item -LiteralPath "Env:$name"
+    }
+    try {
+        $env:GIT_CONFIG_NOSYSTEM = '1'
+        $env:GIT_CONFIG_GLOBAL = Join-Path $PSScriptRoot '../config/git-empty.config'
+        $env:LC_ALL = 'C'
+        $discovery = @(& git --no-optional-locks -C $Root rev-parse --git-dir 2>&1)
+        $discoveryExit = $LASTEXITCODE
+        if ($discoveryExit -eq 0) {
+            throw "Git fixture TempRoot must be outside every Git repository: $Root"
+        }
+        if ($discoveryExit -ne 128 -or ($discovery -join ' ') -notmatch '^fatal: not a git repository(?:\s|$)') {
+            throw "Git fixture TempRoot could not be verified by Git: $Root"
+        }
+    } finally {
+        Remove-Item Env:GIT_CONFIG_NOSYSTEM,Env:GIT_CONFIG_GLOBAL -ErrorAction SilentlyContinue
+        $env:LC_ALL = $savedLocale
+        foreach ($name in $savedGitEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name,$savedGitEnvironment[$name],'Process')
+        }
+    }
 }
 
 function New-GitFixtureTempDirectory([string]$Path) {

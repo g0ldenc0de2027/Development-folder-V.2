@@ -98,6 +98,18 @@ try {
     New-GitFixtureTempDirectory $scratch
     $fixtureOwned = $true
     [IO.File]::WriteAllText($fixtureEmptyConfig,"# Isolated regression fixture config.`n",$utf8)
+    $configlessBare = Join-Path $scratch 'configless.git'
+    Invoke-Git $scratch @('init','--bare','--quiet',$configlessBare) | Out-Null
+    Remove-Item -LiteralPath (Join-Path $configlessBare 'config')
+    $configlessRejected = $false
+    try { Assert-GitFixtureTempRoot $configlessBare }
+    catch {
+        if ($_.Exception.Message -notlike '*Git fixture TempRoot must be outside every Git repository*') { throw }
+        $configlessRejected = $true
+    }
+    if (-not $configlessRejected) { throw 'Git recognized a bare repository without config but fixture admission accepted it' }
+    Write-Output 'PASS: direct fixture rejects a bare repository without config'
+
     Invoke-Git $scratch @('init','--bare','--quiet',$admin) | Out-Null
     Invoke-Git $scratch @('init','--bare','--quiet',$remote) | Out-Null
     Invoke-Git $scratch @('init','--quiet',$seed) | Out-Null
