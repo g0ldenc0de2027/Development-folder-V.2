@@ -60,9 +60,16 @@ if ($checkPolicy['context'] -cne 'quality-gate' -or $checkPolicy['state'] -cne '
 
 $rules = Read-GitHubJson @('api','--hostname','github.com',"repos/$slug/rules/branches/main")
 $required = @($rules | Where-Object {
-    $_.type -ceq 'required_status_checks' -and $_.parameters['strict_required_status_checks_policy'] -is [bool] -and
-    $_.parameters['strict_required_status_checks_policy'] -and
-    ($_.parameters.required_status_checks | Where-Object { $_.context -ceq 'quality-gate' -and $_.integration_id -eq $integrationId })
+    if ($_ -isnot [System.Collections.IDictionary] -or $_['type'] -cne 'required_status_checks') { return $false }
+    $parameters = $_['parameters']
+    if ($parameters -isnot [System.Collections.IDictionary] -or
+        $parameters['strict_required_status_checks_policy'] -isnot [bool] -or
+        !$parameters['strict_required_status_checks_policy']) { return $false }
+    $parameters['required_status_checks'] | Where-Object {
+        if ($_ -isnot [System.Collections.IDictionary]) { return $false }
+        $sourceId = $_['integration_id']
+        $_['context'] -ceq 'quality-gate' -and ($sourceId -is [int] -or $sourceId -is [long]) -and $sourceId -eq $integrationId
+    }
 })
 if ($required.Count -eq 0) { throw 'Strict GitHub Actions quality-gate is not required' }
 
