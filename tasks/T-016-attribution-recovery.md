@@ -16,14 +16,14 @@
 
 ## Зона файлов
 
-- tasks/T-016-attribution-recovery.md
-- tasks/T-013-agent-orchestration-research-and-spec.md
-- docs/handoff.md
-- docs/agent-orchestration-roadmap.md
-- specification-system/tz_state.md
-- spec/agent-orchestration.md
-- knowledge/records/agent-orchestration-research-2026-11-16.md
-- knowledge/catalog.json
+- `tasks/T-016-attribution-recovery.md`
+- `tasks/T-013-agent-orchestration-research-and-spec.md`
+- `docs/handoff.md`
+- `docs/agent-orchestration-roadmap.md`
+- `specification-system/tz_state.md`
+- `spec/agent-orchestration.md`
+- `knowledge/records/agent-orchestration-research-2026-11-16.md`
+- `knowledge/catalog.json`
 
 ## Recovery input manifest
 
