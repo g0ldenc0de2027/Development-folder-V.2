@@ -46,7 +46,7 @@ CI_HEAD_SHA: $old
 "@
     [IO.File]::WriteAllText($a, $sample)
     [IO.File]::WriteAllText($b, $sample)
-    [IO.File]::WriteAllText($c, ('# T-001 — Другой проект' + [char]10 + '**Статус:** merged'))
+    [IO.File]::WriteAllText($c, ('# T-001 — Другой проект' + [char]10 + '**Статус:** merged · **Исполнитель и координатор:** Kimi.'))
     [void](New-Item -ItemType Junction -Path $junction -Target (Join-Path $root 'other'))
     $registry = Join-Path $root 'projects.json'
     @{
@@ -85,6 +85,8 @@ CI_HEAD_SHA: $old
             Where-Object Name -CMatch '^T-[0-9]{3,}(?:-[^.]+)?\.md$').Count
         Assert-That ($expected -gt 0 -and $first[2].tasks.Count -eq $expected -and !$first[2].sources[0].error) 'PTR-001 real V2 checkout'
     }
+    Assert-That ($first[1].tasks[0].versions[0].assignee -ceq 'Kimi') 'PTR-002 inline Markdown assignee'
+    Assert-That ($first[1].tasks[0].versions[0].sources[0].path -ceq (Get-Item -LiteralPath $c).FullName) 'PTR-003 native source path'
     $version = $first[0].tasks[0].versions[0]
     Assert-That ($version.blocker -eq 'CI' -and $version.needsDecision -and $version.assignee -eq 'Codex' -and $version.status -eq 'in_progress') 'PTR-002 explicit fields'
     Assert-That ($first[0].tasks[0].versions.Count -eq 1 -and $version.sources.Count -eq 2) 'PTR-003 duplicate grouping'

@@ -47,7 +47,7 @@ function Read-Card([IO.FileInfo]$File, [string]$Source) {
     $status = Read-Field $card 'Статус'
     $assignee = Read-Field $card 'Исполнитель'
     if (!$assignee) {
-        $assignee = [regex]::Match($card, '(?im)\bИсполнитель(?: и координатор)?:[ \t]*([^.\r\n·]+)').Groups[1].Value.Trim()
+        $assignee = [regex]::Match($card, '(?im)\bИсполнитель(?: и координатор)?:(?:\*\*)?[ \t]*([^.\r\n·]+)').Groups[1].Value.Trim()
     }
     @{
         hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes))
