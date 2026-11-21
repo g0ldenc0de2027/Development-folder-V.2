@@ -207,7 +207,17 @@ try {
             $null=Run @($command,'-ExpectedCollectionId',$script:catalog.projectId) 1 'KB_COLLECTION_ID_READ_ONLY'
         }
     }
-    Case 'LKB-004 exact ID' { if((Run @('get','-Id','alpha')).result.record.id -cne 'alpha'){throw 'id'} }
+    Case 'LKB-004 exact ID' {
+        if((Run @('get','-Id','alpha')).result.record.id -cne 'alpha'){throw 'id'}
+        $missingRoot=Join-Path $fixture 'missing-collection'
+        foreach($query in @('unmatched text','')){
+            $result=Run-Captured @('GET','-Id','alpha','-Query',$query) -Root $missingRoot
+            if($result.exitCode -ne 1 -or $result.stdoutBytes.Length -ne 0 -or
+                $result.stderr.Trim() -cne 'KB_QUERY_NOT_SUPPORTED_FOR_GET'){
+                throw 'get must reject an explicitly supplied Query before opening the collection'
+            }
+        }
+    }
     Case 'LKB-004 missing ID' { $null=Run @('get','-Id','missing') 1 'KB_NOT_FOUND' }
     Case 'LKB-004 withdrawn default refusal' { $null=Run @('get','-Id','old') 1 'KB_NOT_FOUND' }
     Case 'LKB-004 explicit historical read' { if((Run @('get','-Id','old','-IncludeWithdrawn')).result.record.status -ne 'withdrawn'){throw 'historical'} }

@@ -370,6 +370,7 @@ try {
         }
         $expectedId = $parsedId
     }
+    if ($Command -eq 'get' -and $PSBoundParameters.ContainsKey('Query')) { Fail 'KB_QUERY_NOT_SUPPORTED_FOR_GET' }
     $root = [IO.Path]::GetFullPath($ProjectRoot)
     $script:KbVolumeFormat = Assert-SupportedVolume $root -ReportMissingRoot:($null -ne $expectedId)
     $script:HardLinkMode = 'fsutil'
