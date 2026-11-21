@@ -33,8 +33,8 @@ Git for Windows и GitHub CLI нужны для GitHub workflow. Интерне�
 
 При сообщении о лимите `GIT_DIR` используйте существующий короткий каталог вне всех репозиториев. Для одного запуска согласуйте `TEMP`, `TMP` и `-TemporaryRoot`, чтобы вложенные тесты видели тот же корень. Пример для отдельной сессии, в которой оба указанных пути уже существуют:
 
-    $pwsh = 'C:\Program Files\PowerShell\7\pwsh.exe'
-    $tempRoot = (Resolve-Path -LiteralPath 'C:\tmp').ProviderPath
+    $pwsh = (Resolve-Path -LiteralPath (Read-Host 'Путь к поддерживаемому pwsh.exe')).ProviderPath
+    $tempRoot = (Resolve-Path -LiteralPath (Read-Host 'Короткий временный каталог')).ProviderPath
     $env:PATH = (Split-Path -Parent $pwsh) + ';' + $env:PATH
     $env:TEMP = $tempRoot
     $env:TMP = $tempRoot
