@@ -4,6 +4,10 @@
 - Состояние проверок сверяйте в [GitHub Actions V2](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions) по точной ревизии.
 - Перед интеграцией применяйте [штатный GitHub workflow](github-workflow.md).
 
+## Исторический Handoff — T-004
+
+- Первый срез локальной БЗ и правил интегрирован через [PR #4](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/4). Ссылки на ревью, CI и ограничения среза сохранены в [карточке T-004](../tasks/T-004-rules-and-local-knowledge.md).
+
 ## Исторический Handoff — T-014
 
 - T-014 обновляется на актуальной main. Зона, результаты прошлых проверок и критерии приёмки сохранены в карточке задачи.
