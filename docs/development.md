@@ -29,6 +29,20 @@ Git for Windows и GitHub CLI нужны для GitHub workflow. Интерне�
 
     pwsh -NoProfile -File scripts/quality-gate.ps1
 
+Если встроенный PowerShell ниже минимальной версии, проверьте все варианты через `Get-Command pwsh -All`. В отдельной сессии поставьте каталог поддерживаемого `pwsh.exe` первым в `PATH`: этот порядок используют также дочерние тесты и Git-хуки. Сверьте версию именно найденной команды.
+
+При сообщении о лимите `GIT_DIR` используйте существующий короткий каталог вне всех репозиториев. Для одного запуска согласуйте `TEMP`, `TMP` и `-TemporaryRoot`, чтобы вложенные тесты видели тот же корень. Пример для отдельной сессии, в которой оба указанных пути уже существуют:
+
+    $pwsh = (Resolve-Path -LiteralPath (Read-Host 'Путь к поддерживаемому pwsh.exe')).ProviderPath
+    $tempRoot = (Resolve-Path -LiteralPath (Read-Host 'Короткий временный каталог')).ProviderPath
+    $env:PATH = (Split-Path -Parent $pwsh) + ';' + $env:PATH
+    $env:TEMP = $tempRoot
+    $env:TMP = $tempRoot
+    pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+    pwsh -NoProfile -File scripts/quality-gate.ps1 -TemporaryRoot $tempRoot
+
+При `GIT_IDENTITY_CONFIG_ENVIRONMENT_OVERRIDE` или `GIT_IDENTITY_REPOSITORY_CONTEXT_OVERRIDE` повторите прямой запуск из отдельной среды без указанных в диагностике Git-переопределений. Изменения окружения в примере действуют только в текущем процессе и его потомках. Gate удаляет созданную им подпапку, а общий временный каталог сохраняется.
+
 Read-only сверка live GitHub settings с versioned config (repository, ruleset, Actions, Dependabot и security):
 
     pwsh -NoProfile -File scripts/github/verify-settings.ps1 -RequireStatusCheck
@@ -40,6 +54,13 @@ Read-only сверка live GitHub settings с versioned config (repository, rul
     pwsh -NoProfile -File scripts/quality-gate.ps1 -BaseRef origin/main
 
 Версии аудит-инструментов и SHA-256 находятся в config/security/tools.json. Gate проверяет hash перед запуском и удаляет только свой временный каталог. Перед push hook передает локальные и удаленные SHA обновляемых refs; Gitleaks проверяет их диапазоны и сканирует доступную локальную историю.
+
+## Слияние проверенного PR и аудит worktree
+
+- [check-squash-preflight.ps1](../scripts/github/check-squash-preflight.ps1) выполняет read-only проверку PR, переведённого в Ready. Передайте номер PR, проверенные head/base/merge-result SHA и номер успешного запуска CI.
+- [merge-reviewed-pr.ps1](../scripts/github/merge-reviewed-pr.ps1) без флага выполнения запускает тот же preflight. Порядок допуска владельца, squash и проверки результата описан в [GitHub workflow](github-workflow.md).
+- [task-worktree-audit.ps1](../scripts/task-worktree-audit.ps1) запускайте из зарегистрированного рабочего дерева. [Реестр карантина](../config/worktree-quarantine.json) содержит утверждённые исключения для проверяемых снимков. При блокировке сначала проверьте содержимое рабочего дерева и причину отказа.
+- [git-empty.config](../config/git-empty.config) — пустой глобальный Git-конфиг для изолированных проверок. Пользовательские настройки Git в него не добавляйте.
 
 ## Обновления
 Обновление toolchain требует старой версии, официального источника, проверки совместимости, rollback plan и post-update gate. Не меняйте dependency manifests будущего проекта как часть обновления среды.
@@ -53,7 +74,7 @@ Python не нужен этому срезу. Это inventory, а не pin targ
     pwsh -NoProfile -File scripts/kb.ps1 check
     pwsh -NoProfile -File tests/kb-regressions.ps1
 
-Сценарии пользователя и подключения общей БЗ: local-knowledge.md.
+Сценарии работы с локальной БЗ и подключения общей БЗ описаны в [руководстве](local-knowledge.md).
 Gate запускает integrity check текущего корпуса и KB-регрессии.
 Каталог, Markdown и rules lock проверяются вместе. Inbox data/knowledge/inbox игнорируется Git.
 
