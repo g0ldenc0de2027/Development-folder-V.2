@@ -525,7 +525,7 @@ try {
                 $setOrigin = @('remote','set-url') + $scenario.Options + @('origin')
                 Invoke-Git $admin ($setOrigin + @($scenario.Url)) | Out-Null
                 try {
-                    $setupResult = Invoke-NativeProcess $setupPwsh @('-NoLogo','-NoProfile','-File',$setupPath,'-IdentityOnly')
+                    $setupResult = Invoke-NativeProcess $setupPwsh @('-NoLogo','-NoProfile','-File',$setupPath,'-IdentityOnly') -HookProcess
                     if ($setupResult.ExitCode -eq 0 -or $setupResult.Error -notlike '*origin fetch and push URLs must both match*') {
                         throw ('NONCANONICAL_ORIGIN_WAS_NOT_REJECTED:' + $setupResult.Output + $setupResult.Error)
                     }
