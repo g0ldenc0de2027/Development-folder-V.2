@@ -485,6 +485,16 @@ try {
         Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
         $null=Run @('check') 1 'KB_POLICY_LINK'
     }
+    Case 'LKB-001 policy lock path rejects trailing newline' {
+        $path=Join-Path $fixture 'rules/policy-lock.json'
+        $lock=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -AsHashtable
+        $lock.files[0].path+=[char]10
+        Write-Text $path ($lock | ConvertTo-Json -Depth 8)
+        $result=Run-Captured @('check')
+        if($result.exitCode -ne 1 -or $result.stderr.Trim() -cne 'KB_POLICY_LOCK' -or $result.stdoutBytes.Length -ne 0){
+            throw 'Unexpected malformed policy path result'
+        }
+    }
     Case 'LKB-001 duplicate policy path is refused' {
         Add-Module
         $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
@@ -517,7 +527,7 @@ try {
     if(($locales -join ',') -cne 'ru,en,zh-Hans,hi,es,ar,fr,bn,pt-BR,de'){throw 'owner contract: locale set'}
     $script:passed++
     Write-Output 'PASS: LKB-001 owner rule and locale contract'
-    if ($passed -ne 64) { throw ("KB_REGRESSION_COUNT_MISMATCH: expected 64, got " + $passed) }
+    if ($passed -ne 65) { throw ("KB_REGRESSION_COUNT_MISMATCH: expected 65, got " + $passed) }
     Write-Output ('KB-REGRESSIONS: '+$passed+' passed, 0 failed')
     exit 0
 } catch {
