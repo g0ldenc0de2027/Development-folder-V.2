@@ -327,7 +327,7 @@ function Read-Rules {
     foreach ($entry in $lock.files) {
         Assert-Keys $entry @('path','sha256')
         Assert-String $entry.path 200
-        if ($entry.path -cnotmatch '^rules/(RULES\.md|COVERAGE\.md|modules/[0-9]{2}-[a-z0-9-]+\.md)$' -or
+        if ($entry.path -cnotmatch '\Arules/(RULES\.md|COVERAGE\.md|modules/[0-9]{2}-[a-z0-9-]+\.md)\z' -or
             -not $paths.Add($entry.path)) { Fail 'KB_POLICY_LOCK' }
         if ($entry.sha256 -isnot [string] -or $entry.sha256 -cnotmatch '^[a-f0-9]{64}$') { Fail 'KB_POLICY_LOCK' }
         $bytes = Read-Bytes $entry.path
