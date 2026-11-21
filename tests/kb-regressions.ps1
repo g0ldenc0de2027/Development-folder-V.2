@@ -494,6 +494,16 @@ try {
         Write-Text (Join-Path $fixture 'rules/policy-lock.json') ($lock|ConvertTo-Json -Depth 8)
         $null=Run @('check') 1 'KB_POLICY_LINK'
     }
+    Case 'LKB-001 policy lock path rejects trailing newline' {
+        $path=Join-Path $fixture 'rules/policy-lock.json'
+        $lock=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -AsHashtable
+        $lock.files[0].path+=[char]10
+        Write-Text $path ($lock | ConvertTo-Json -Depth 8)
+        $result=Run-Captured @('check')
+        if($result.exitCode -ne 1 -or $result.stderr.Trim() -cne 'KB_POLICY_LOCK' -or $result.stdoutBytes.Length -ne 0){
+            throw 'Unexpected malformed policy path result'
+        }
+    }
     Case 'LKB-001 duplicate policy path is refused' {
         Add-Module
         $lock=Get-Content -LiteralPath (Join-Path $fixture 'rules/policy-lock.json') -Raw | ConvertFrom-Json -AsHashtable
