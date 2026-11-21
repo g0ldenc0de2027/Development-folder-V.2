@@ -4,6 +4,7 @@
 
 ## Зона файлов
 
+- `spec/СОСТОЯНИЕ.md`
 - `specification-system/tz_state.md`
 - `tasks/T-053-handoff-gate.md`
 - `tasks/T-059-audit-status-sync.md`
