@@ -30,6 +30,7 @@
 - `tasks/T-037-pre-push-duplicate.md`
 - `tasks/T-047-kb-path-attributes.md`
 - `tasks/T-048-kb-path-validation.md`
+- `tasks/T-038-worktree-git-output.md`
 - `tasks/T-039-task-card-closeout.md`
 
 ## Приёмка
