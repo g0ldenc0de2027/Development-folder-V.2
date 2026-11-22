@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Проекты и задачи</title>
+<style>
+:root {color-scheme:light dark; font:15px system-ui; --accent:#175eaa; --line:#89929b; --surface:#f2f6fa}
+@media(prefers-color-scheme:dark){:root{--accent:#9acaff;--surface:#202b38}}
+body{margin:0;padding:clamp(1rem,4vw,3rem);max-width:100rem}
+header, .tools {display:flex;flex-wrap:wrap;gap:1rem;align-items:center}
+header{justify-content:space-between} h1,h2{margin:.5rem 0}
+button,input,select{font:inherit;padding:.45rem .65rem} button{cursor:pointer}
+a,.task{color:var(--accent)} .task{background:none;border:0;text-align:start;padding:0;text-decoration:underline}
+label{display:inline-flex;align-items:center;gap:.4rem}.tools{margin:1rem 0}
+.table{overflow:auto;border:1px solid var(--line);border-radius:.6rem}
+table{width:100%;border-collapse:collapse;text-align:start} th,td{text-align:start;vertical-align:top;padding:.65rem;border-bottom:1px solid var(--line)}
+thead{background:var(--surface)} pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:1rem;background:var(--surface)}
+dialog{width:min(78rem,85vw);max-height:85vh;overflow:auto;border:1px solid var(--line);border-radius:.6rem}
+li{overflow-wrap:anywhere} .badge{font-weight:600}
+</style>
+<header><h1>Проекты и задачи</h1><button id="refresh">Обновить</button></header>
+<p id="notice" role="status"></p>
+<section id="portfolio" aria-labelledby="portfolio-title">
+<h2 id="portfolio-title">Проекты</h2><ul id="projects"></ul>
+</section>
+<section id="project" hidden aria-labelledby="name">
+<button id="back">Все проекты</button><h2 id="name" tabindex="-1"></h2><ul id="sources"></ul>
+<div class="tools">
+<label>Поиск <input id="query" type="search" placeholder="Номер или название"></label>
+<label>Состояние <select id="state"></select></label>
+<label><input id="blocked" type="checkbox"> Заблокировано</label>
+<label><input id="decision" type="checkbox"> Требует моего решения</label>
+</div>
+<p id="count" aria-live="polite"></p>
+<div class="table"><table><thead><tr><th>Задача</th><th>Состояние</th><th>Исполнитель</th><th>Блокер</th><th>Следующее действие</th></tr></thead><tbody id="rows"></tbody></table></div>
+</section>
+<dialog id="card" aria-labelledby="card-title">
+<header><h2 id="card-title"></h2><button id="close">Закрыть</button></header>
+<div id="versions"></div>
+</dialog>
+<script>
+'use strict';
+const byId = id => document.getElementById(id);
+const node = (tag, text) => {
+  const result = document.createElement(tag);
+  if (text !== undefined) result.textContent = text;
+  return result;
+};
+const controls = ['query', 'state', 'blocked', 'decision'];
+const missing = 'Не указано';
+let projects = [];
+let selected;
+let viewGeneration = 0;
+
+async function request(path, method = 'GET') {
+  const response = await fetch(path, {method, cache:'no-store'});
+  if (!response.ok) throw new Error('REQUEST_FAILED');
+  return response.json();
+}
+
+function showProject(id) {
+  selected = id;
+  for (const control of controls) {
+    const element = byId(control);
+    if (element.type === 'checkbox') element.checked = false;
+    else element.value = '';
+  }
+  render();
+  if (id) byId('name').focus();
+  else byId('projects').querySelector('button')?.focus();
+}
+
+function render() {
+  const project = projects.find(item => item.id === selected);
+  byId('portfolio').hidden = Boolean(project);
+  byId('project').hidden = !project;
+  byId('projects').replaceChildren(...projects.map(item => {
+    const entry = node('li');
+    const button = node('button', item.name);
+    button.addEventListener('click', () => showProject(item.id));
+    const unavailable = item.sources.some(source => source.error);
+    entry.append(button, ' · ' + item.tasks.length + ' задач' + (unavailable ? ' · Есть ошибки чтения' : ''));
+    return entry;
+  }));
+  if (!project) return;
+  byId('name').textContent = project.name;
+  byId('sources').replaceChildren(...project.sources.map(source =>
+    node('li', source.path + (source.error ? ' · ' + source.error : '') +
+      (source.updated ? ' · Прочитано ' + new Date(source.updated).toLocaleString('ru') : ''))));
+  const state = byId('state');
+  const previous = state.value;
+  const statuses = [...new Set(project.tasks.flatMap(task => task.versions.map(version => version.status)).filter(Boolean))].sort();
+  state.replaceChildren(new Option('Все состояния', ''), ...statuses.map(status => new Option(status, status)));
+  if (statuses.includes(previous)) state.value = previous;
+  renderRows();
+}
+
+function renderRows() {
+  const project = projects.find(item => item.id === selected);
+  if (!project) return;
+  const query = byId('query').value.trim().toLocaleLowerCase('ru');
+  const state = byId('state').value;
+  const blocked = byId('blocked').checked;
+  const decision = byId('decision').checked;
+  const idMatch = task => task.id.toLowerCase().includes(query);
+  const matching = project.tasks.filter(task =>
+    (!state && !blocked && !decision && idMatch(task)) ||
+    task.versions.some(version => (idMatch(task) || version.title.toLocaleLowerCase('ru').includes(query)) &&
+      (!state || version.status === state) && (!blocked || version.blocker) && (!decision || version.needsDecision)));
+  byId('count').textContent = matching.length + ' из ' + project.tasks.length + ' задач';
+  byId('rows').replaceChildren(...matching.map(task => {
+    const row = node('tr');
+    const cell = node('td');
+    const titles = [...new Set(task.versions.map(version => version.title).filter(Boolean))];
+    const button = node('button', titles.length === 1 && titles[0].startsWith(task.id) ? titles[0] :
+      [task.id, ...titles].join(' · '));
+    button.className = 'task';
+    button.addEventListener('click', () => openCard(project, task));
+    cell.append(button);
+    if (task.versions.length > 1) cell.append(node('div', 'Версии расходятся'));
+    if (task.unreadable.length) cell.append(node('div', 'Ошибка чтения'));
+    if (task.versions.some(version => version.sources.some(source => source.stale))) cell.append(node('div', 'Есть устаревший источник'));
+    row.append(cell);
+    for (const key of ['status','assignee','blocker','nextAction']) {
+      const values = [...new Set(task.versions.map(version => version[key] || missing))];
+      row.append(node('td', values.length ? values.join(' · ') : missing));
+    }
+    return row;
+  }));
+}
+
+async function openCard(project, task) {
+  const generation = ++viewGeneration;
+  byId('card-title').textContent = task.id;
+  const container = byId('versions');
+  container.replaceChildren(...task.unreadable.map(path => node('p', 'Ошибка чтения · ' + path)));
+  byId('card').showModal();
+  for (const [index, version] of task.versions.entries()) {
+    const section = node('section');
+    section.append(node('h3', 'Версия ' + (index + 1)));
+    const list = node('ul');
+    for (const source of version.sources) list.append(node('li', source.path + (source.stale ? ' · Устарело' : '')));
+    section.append(list);
+    if (version.links.length) {
+      const links = node('ul');
+      for (const link of version.links) {
+        const item = node('li');
+        const anchor = node('a', link.includes('/actions/runs/') ? 'CI · ' + link : 'PR · ' + link);
+        anchor.href = link;
+        anchor.target = '_blank';
+        anchor.rel = 'noopener noreferrer';
+        item.append(anchor); links.append(item);
+      }
+      section.append(links, node('p', {
+        previous:'Проверка прежней ревизии', matches:'Указанные ревизии совпадают', unknown:'Привязка не подтверждена'
+      }[version.binding]));
+    }
+    const text = node('pre', 'Загрузка…');
+    section.append(text);
+    container.append(section);
+    try {
+      const params = new URLSearchParams({project:project.id, task:task.id, version:version.hash});
+      const card = await request('card?' + params);
+      if (generation !== viewGeneration) return;
+      text.textContent = card.text;
+    } catch {
+      text.textContent = 'Не удалось загрузить версию. Обновите список задач.';
+    }
+  }
+}
+
+async function load(refresh) {
+  const button = byId('refresh');
+  button.disabled = true;
+  byId('notice').textContent = 'Чтение источников…';
+  try {
+    projects = await request(refresh ? 'refresh' : 'summary', refresh ? 'POST' : 'GET');
+    render();
+    byId('notice').textContent = projects.some(project => project.sources.some(source => source.error))
+      ? 'Часть источников прочитать не удалось.' : '';
+  } catch {
+    byId('notice').textContent = 'Обновление не удалось. Показаны данные последней загрузки.';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+byId('refresh').addEventListener('click', () => load(true));
+byId('back').addEventListener('click', () => showProject(undefined));
+byId('close').addEventListener('click', () => byId('card').close());
+byId('card').addEventListener('close', () => { viewGeneration++; });
+for (const id of controls) byId(id).addEventListener('input', renderRows);
+load(false);
+</script>
+</html>
