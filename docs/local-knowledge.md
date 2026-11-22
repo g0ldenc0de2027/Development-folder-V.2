@@ -34,8 +34,11 @@ KB_CONTEXT_LIMIT. По умолчанию бюджет 128 KiB, диапазон
 Полные ответы `search` и `get` ограничены отдельно через `-MaxOutputBytes`: по умолчанию
 131072 байта, допустимый диапазон 512–2097152. Считаются UTF-8 байты точного JSON
 вместе с завершающим LF. Если ответ больше бюджета, CLI возвращает `KB_OUTPUT_LIMIT`
-и exit 1, пишет пустой stdout и не обрезает JSON. Лимит относится только к выдаче:
-он не ограничивает объём чтения и внутреннюю память до сериализации.
+и exit 1, пишет пустой stdout и не обрезает JSON. До сериализации поиск и context
+удерживают не более `-Limit` совпадений. Суммарный исходный размер удерживаемых тел
+ограничен соответствующим бюджетом выдачи. Все записи всё равно читаются для проверки
+целостности и точного подсчёта. Это ограничение тел, а итоговая память также зависит
+от каталога, метаданных, закреплённых правил и сериализации.
 Значение команды принимается PowerShell без учёта регистра; `SEARCH` и `GET` подчиняются
 тому же лимиту.
 
@@ -196,7 +199,10 @@ rather than silently migrated. Check validates every pinned file and local Markd
 The default context budget is 128 KiB (512–262144 bytes); an insufficient budget fails explicitly.
 Full `search` and `get` JSON output uses a separate `-MaxOutputBytes` budget (131072 default,
 512–2097152 range), counted as UTF-8 bytes including the final LF. Oversized output returns
-`KB_OUTPUT_LIMIT`, exit 1, and empty stdout without truncation; processing memory is not bounded.
+`KB_OUTPUT_LIMIT`, exit 1, and empty stdout without truncation.
+The command limits the total source bytes of retained record bodies to the applicable
+output budget. It still validates all records. Total memory also depends on the
+catalogue, metadata, pinned rules and serialization.
 PowerShell accepts command values case-insensitively, so uppercase `SEARCH` and `GET` use
 the same output limit.
 KB_FILE_MISSING means a required file is absent, for example a pinned policy file.
