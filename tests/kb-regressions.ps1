@@ -154,6 +154,66 @@ try {
         Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') 'Changed'
         $null=Run $arguments 1 'KB_CONTENT_CHANGED'
     }
+    Case 'Selective reads validate records outside the result' {
+        Write-Text (Join-Path $fixture 'knowledge/records/old.md') 'Changed'
+        foreach ($arguments in @(
+            @('search','-Compact','-Id','alpha','-Query','Привет','-Limit','1'),
+            @('get','-Id','alpha')
+        )) {
+            $result=Run-Captured $arguments
+            if ($result.exitCode -ne 1 -or $result.stdoutBytes.Length -ne 0 -or
+                $result.stderr.Trim() -cne 'KB_CONTENT_CHANGED') {
+                throw 'selective read skipped an excluded record'
+            }
+        }
+    }
+    Case 'Full search counts oversized matches beyond the retained limit' {
+        $large='Привет '+('я'*2500)
+        $record=$script:catalog.records[1]
+        Write-Text (Join-Path $fixture $record.path) $large
+        $record.contentSha256=Hash (Join-Path $fixture $record.path)
+        Save-Catalog
+
+        $limited=(Run @('search','-Query','Привет','-Limit','1','-MaxOutputBytes','4096')).result
+        if ($limited.totalMatches -ne 2 -or $limited.returned -ne 1 -or -not $limited.truncated -or
+            $limited.records[0].id -cne 'alpha' -or $limited.records[0].body -cne 'Привет. literal [x]. Record alpha') {
+            throw 'record beyond the limit affected the full search response'
+        }
+        $full=Run-Captured @('search','-Query','Привет','-Limit','2','-MaxOutputBytes','4096')
+        if ($full.exitCode -ne 1 -or $full.stdoutBytes.Length -ne 0 -or $full.stderr.Trim() -cne 'KB_OUTPUT_LIMIT') {
+            throw 'oversized full search emitted partial stdout'
+        }
+    }
+    Case 'Body budget preserves error precedence and validates remaining records' {
+        $large='Привет '+('я'*500)
+        $record=$script:catalog.records[0]
+        Write-Text (Join-Path $fixture $record.path) $large
+        $record.contentSha256=Hash (Join-Path $fixture $record.path)
+        Save-Catalog
+
+        $checks=@(
+            @{arguments=@('context','-Query','Привет','-Limit','1','-MaxBytes','512'); error='KB_CONTEXT_RECORD_LIMIT'},
+            @{arguments=@('context','-Id','alpha','-MaxBytes','512'); error='KB_CONTEXT_LIMIT'},
+            @{arguments=@('context','-Id','missing','-MaxBytes','512'); error='KB_NOT_FOUND'},
+            @{arguments=@('get','-Id','missing','-MaxOutputBytes','512'); error='KB_NOT_FOUND'},
+            @{arguments=@('get','-Id','alpha','-MaxOutputBytes','512'); error='KB_OUTPUT_LIMIT'}
+        )
+        foreach ($check in $checks) {
+            $result=Run-Captured $check.arguments
+            if ($result.exitCode -ne 1 -or $result.stdoutBytes.Length -ne 0 -or $result.stderr.Trim() -cne $check.error) {
+                throw "expected empty stdout and $($check.error)"
+            }
+        }
+
+        Write-Text (Join-Path $fixture 'knowledge/records/old.md') 'Changed'
+        foreach ($check in $checks) {
+            $result=Run-Captured $check.arguments
+            if ($result.exitCode -ne 1 -or $result.stdoutBytes.Length -ne 0 -or
+                $result.stderr.Trim() -cne 'KB_CONTENT_CHANGED') {
+                throw 'validation did not continue after the body budget was exceeded'
+            }
+        }
+    }
     Case 'LKB-011 selected collection ID is checked for every read command' {
         $id=$script:catalog.projectId
         $wrong=[guid]::NewGuid().ToString('D')
@@ -589,7 +649,7 @@ try {
     if(($locales -join ',') -cne 'ru,en,zh-Hans,hi,es,ar,fr,bn,pt-BR,de'){throw 'owner contract: locale set'}
     $script:passed++
     Write-Output 'PASS: LKB-001 owner rule and locale contract'
-    if ($passed -ne 68) { throw ("KB_REGRESSION_COUNT_MISMATCH: expected 68, got " + $passed) }
+    if ($passed -ne 71) { throw ("KB_REGRESSION_COUNT_MISMATCH: expected 71, got " + $passed) }
     Write-Output ('KB-REGRESSIONS: '+$passed+' passed, 0 failed')
     exit 0
 } catch {
