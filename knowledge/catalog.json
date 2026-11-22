@@ -58,7 +58,7 @@
       "id": "git-unicode-paths",
       "kind": "lesson",
       "title": "Урок: не зависеть от кодовой страницы консоли при чтении Git-путей",
-      "status": "reviewed",
+      "status": "draft",
       "path": "knowledge/records/git-unicode-paths.md",
       "contentSha256": "0351c6d7d9eb2ae866d56c9a731b3de807905d7087857cab709803aa307a690d",
       "sources": [
@@ -67,14 +67,7 @@
         "git:7da6c0f4f4367ec9465eafd16acf249dc9a0e277",
         "https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44901331572"
       ],
-      "review": {
-        "by": "Codex independent reviewer",
-        "at": "2026-11-22T05:07:33Z",
-        "contentSha256": "0351c6d7d9eb2ae866d56c9a731b3de807905d7087857cab709803aa307a690d",
-        "evidence": [
-          "T-068: independent comparison of exact record bytes with scope implementation, Windows CP866 regression and CI run 44901331572"
-        ]
-      }
+      "review": null
     },
     {
       "id": "git-windows-path-budget",
