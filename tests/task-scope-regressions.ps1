@@ -127,7 +127,7 @@ function Get-SourceGitState {
     }
 }
 
-function Assert-Scope([int]$ExpectedExit, [string]$ExpectedMessage, [string]$ExpectedSummary = '', [switch]$UseFixtureGitContext) {
+function Assert-Scope([int]$ExpectedExit, [string]$ExpectedMessage, [string]$ExpectedSummary = '', [switch]$UseFixtureGitContext, [string]$BaseRef = 'main', [string]$ExpectedHeadSha) {
     $verifier = Join-Path $taskWorktree 'scripts/verify-task-scope.ps1'
     $savedEnvironment = Clear-GitHookEnvironment
     try {
@@ -142,7 +142,9 @@ function Assert-Scope([int]$ExpectedExit, [string]$ExpectedMessage, [string]$Exp
             [Environment]::SetEnvironmentVariable('GIT_CEILING_DIRECTORIES', $scratch, 'Process')
             [Environment]::SetEnvironmentVariable('GIT_DISCOVERY_ACROSS_FILESYSTEM', '0', 'Process')
         }
-        $output = @(& $pwsh -NoLogo -NoProfile -File $verifier -TaskId T-008 -BaseRef main 2>&1)
+        $scopeArguments = @('-TaskId','T-008','-BaseRef',$BaseRef)
+        if ($ExpectedHeadSha) { $scopeArguments += @('-ExpectedHeadSha',$ExpectedHeadSha) }
+        $output = @(& $pwsh -NoLogo -NoProfile -File $verifier @scopeArguments 2>&1)
         $exitCode = $LASTEXITCODE
     } finally {
         Restore-GitHookEnvironment $savedEnvironment
@@ -376,6 +378,11 @@ try {
 
     $null = Invoke-Git $taskWorktree @('branch', '-m', 'task/T-008-scope-fixture')
     Assert-Scope 0 'TASK-SCOPE=PASS' 'TASK-SCOPE=PASS (2 changed paths; 3 allowed paths)'
+    $expectedHead = ((Invoke-Git $taskWorktree @('rev-parse','HEAD')) -join '').Trim()
+    $expectedBase = ((Invoke-Git $taskWorktree @('rev-parse','main')) -join '').Trim()
+    Assert-Scope 0 'TASK-SCOPE=PASS' -BaseRef $expectedBase -ExpectedHeadSha $expectedHead
+    Assert-Scope 1 'Current HEAD does not match the outgoing push SHA' -BaseRef $expectedBase -ExpectedHeadSha $expectedBase
+    Assert-Scope 1 'No local commit for the requested base' -BaseRef ('a' * 40) -ExpectedHeadSha $expectedHead
     $passed++
     Write-Output 'PASS: scope accepts the documented task ID with a lowercase hyphenated slug'
 
