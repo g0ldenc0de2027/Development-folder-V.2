@@ -9,7 +9,18 @@ main — защищенная интеграционная ветка. Изме�
 
 До появления `main` PR создать некуда, поэтому для чистого bootstrap допускается ровно один initial root commit на `main` — это одноразовое исключение владельца.
 
-Перед push главный агент обязан подтвердить: fetch и push URL `origin` точно совпадают с `config/github/repository.json`; `git ls-remote origin` завершается успешно и не выводит refs; локальный root commit содержит только проверенный bootstrap; полный quality gate пройден. Push запускает pre-push gate с конкретным SHA.
+Владелец принимает содержимое единственного root commit. В чистом рабочем дереве на `main` настройте hooks через `scripts/github/configure-local.ps1`. Привяжите push к полному SHA проверенного коммита в этой команде PowerShell.
+
+```powershell
+$env:DF_APPROVED_BOOTSTRAP_SHA = '<проверенный полный SHA>'
+try {
+    git push origin refs/heads/main:refs/heads/main
+} finally {
+    Remove-Item Env:DF_APPROVED_BOOTSTRAP_SHA -ErrorAction SilentlyContinue
+}
+```
+
+Hook принимает только создание `refs/heads/main` из одноимённой локальной ветки с этим SHA. Он сверяет оба URL `origin` с `config/github/repository.json`, проверяет отсутствие родителя у коммита и убеждается, что `git ls-remote origin` проходит без единой строки. Локальный аудит рабочих деревьев, проверка авторства коммита и полный quality gate обязательны. Доступность пустого remote и неизменность локального состояния сверяются ещё раз после quality gate. Фактическое создание ref контролирует GitHub. Состояние остальных удалённых refs подтверждается на момент последнего чтения, поэтому bootstrap выполняйте одним процессом.
 
 Если активный ruleset отклоняет initial root push из-за требования PR, не отключать и не ослаблять ruleset, не добавлять bypass actor и не повторять push другими способами. Зафиксировать отказ и остановиться для решения владельца. После создания `main` любой следующий push в неё разрешён только через PR.
 

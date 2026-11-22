@@ -42,7 +42,9 @@ current_ref=$(git symbolic-ref --quiet HEAD) || {
     echo "pre-push: detached HEAD is not allowed" >&2
     exit 1
 }
+bootstrap=false
 case "$current_ref" in
+    refs/heads/main) bootstrap=true ;;
     refs/heads/task/T-[0-9][0-9][0-9]) ;;
     refs/heads/task/T-[0-9][0-9][0-9]-*)
         task_slug=${current_ref#refs/heads/task/T-[0-9][0-9][0-9]-}
@@ -98,7 +100,27 @@ while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
         *) push_range="$local_sha" ;;
     esac
     outgoing_sha=$local_sha
+    previous_remote_sha=$remote_sha
 done
+
+if [ "$bootstrap" = true ]; then
+    if [ -z "$outgoing_sha" ] || [ "$push_range" != "$outgoing_sha" ] ||
+        [ "${DF_APPROVED_BOOTSTRAP_SHA:-}" != "$outgoing_sha" ]; then
+        echo "pre-push: main requires one approved bootstrap root SHA and a new remote ref" >&2
+        exit 1
+    fi
+    if [ "${#outgoing_sha}" -ne 40 ] || [ "${#previous_remote_sha}" -ne 40 ]; then
+        echo "pre-push: invalid bootstrap ref update SHA" >&2
+        exit 1
+    fi
+    bootstrap_gate="$repo_root/scripts/github/verify-bootstrap-push.ps1"
+    pwsh -NoLogo -NoProfile -File "$bootstrap_gate" -RemoteName "$remote_name" -RemoteUrl "$remote_url" -CommitSha "$outgoing_sha"
+    # No published main exists yet. Verify the whole root history without exclusions.
+    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -CommitRange "$outgoing_sha"
+    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -RemoteName "$remote_name" -RemoteUrl "$remote_url" -PushRange "$outgoing_sha"
+    exec pwsh -NoLogo -NoProfile -File "$bootstrap_gate" -RemoteName "$remote_name" -RemoteUrl "$remote_url" -CommitSha "$outgoing_sha"
+fi
+
 if [ -z "$outgoing_sha" ]; then
     pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name"
     exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -RemoteName "$remote_name" -RemoteUrl "$remote_url"
