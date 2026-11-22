@@ -323,7 +323,13 @@ try {
                 continue
             }
         }
-        if ($relativeWorktree -match '^\.worktrees/T-(?<id>\d{3,})$' -and $record.Branch -notmatch ('^task/T-' + $Matches.id + '(?:-|$)')) {
+        $taskBranch = [regex]::Match([string]$record.Branch, '^task/(?<id>T-[0-9]{3})(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$')
+        $taskPath = [regex]::Match($relativeWorktree, '^\.worktrees/(?<id>T-[0-9]{3})$', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if (
+            ($record.Branch -clike 'task/*' -and -not $taskBranch.Success) -or
+            ($taskBranch.Success -and (-not $taskPath.Success -or $taskPath.Groups['id'].Value -ine $taskBranch.Groups['id'].Value)) -or
+            ($taskPath.Success -and -not $taskBranch.Success)
+        ) {
             Write-Output ('BLOCKED: task branch/worktree ID mismatch: ' + $relativeWorktree)
             $failed = $true
             continue
@@ -333,9 +339,16 @@ try {
         if ($isCurrent -and $Mode -ceq 'Commit') { $statusIndexFile = $commitIndexFile }
         $allStatusLines = @(Invoke-GitText -Directory $treePath -Arguments @('-c','core.quotepath=false','status','--porcelain=v1','--ignored=matching','--untracked-files=all','--ignore-submodules=none') -Operation 'status' -IndexFile $statusIndexFile)
         $statusLines = @($allStatusLines | Where-Object { -not $_.StartsWith('!! ',[StringComparison]::Ordinal) })
-        $visualStudioArtifacts = @($allStatusLines | Where-Object {
-            $_.StartsWith('!! ',[StringComparison]::Ordinal) -and $_.Substring(3).Trim('"') -match '(?i)(?:^|[\\/])\.vs(?:[\\/]|["]|$)'
+        $ignoredPaths = @(foreach ($line in $allStatusLines) {
+            if ($line.StartsWith('!! ',[StringComparison]::Ordinal)) { $line.Substring(3).Trim('"') }
         })
+        $visualStudioArtifacts = @($ignoredPaths -match '(?i)(?:^|/)\.vs(?:/|$)')
+        if ($visualStudioArtifacts.Count -eq 0 -and $ignoredPaths -match '/$') {
+            # Porcelain status collapses ignored directories. Query matching artifacts only when needed.
+            $visualStudioArtifacts = @(Invoke-GitText -Directory $treePath -Arguments @(
+                'ls-files','--others','--ignored','--exclude-standard','--',':(icase,glob)**/.vs',':(icase,glob)**/.vs/**'
+            ) -Operation 'nested-ignored-vs' -IndexFile $statusIndexFile)
+        }
         if ($visualStudioArtifacts.Count -gt 0) {
             Write-Output ('BLOCKED: ignored Visual Studio artifact detected in ' + $relativeWorktree)
             $failed = $true

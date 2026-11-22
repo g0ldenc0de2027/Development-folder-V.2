@@ -264,6 +264,23 @@ try {
         }
         finally { Invoke-Git $mainTree @('branch','-m','task/T-018-worktree-guard') | Out-Null }
     }
+    Case 'task branches require matching paths but external diagnostic worktrees remain supported' {
+        $diagnostic = Join-Path $scratch 'diagnostic'
+        Invoke-Git $admin @('worktree','add','--quiet','--detach',$diagnostic,'main') | Out-Null
+        $taskBranchCreated = $false
+        try {
+            Invoke-Git $diagnostic @('config','--worktree','core.bare','false') | Out-Null
+            $null = Assert-AuditExit 0 'EXTERNAL_DIAGNOSTIC_WORKTREE'
+            Invoke-Git $diagnostic @('switch','--quiet','-c','task/T-020-external') | Out-Null
+            $taskBranchCreated = $true
+            $result = Assert-AuditExit 1 'EXTERNAL_TASK_WORKTREE'
+            if ($result.Output -notmatch 'task branch/worktree ID mismatch') { throw 'EXTERNAL_TASK_WORKTREE_REASON_MISSING' }
+        }
+        finally {
+            Invoke-Git $admin @('worktree','remove',$diagnostic) | Out-Null
+            if ($taskBranchCreated) { Invoke-Git $admin @('branch','-d','task/T-020-external') | Out-Null }
+        }
+    }
     Case 'fixture Git commands ignore inherited hook context' {
         $gitDir = Invoke-Git $mainTree @('rev-parse','--absolute-git-dir')
         $commonDir = Invoke-Git $mainTree @('rev-parse','--git-common-dir')
@@ -311,6 +328,23 @@ try {
         $result = Assert-AuditExit 1 'IGNORED_VS_AUDIT'
         if ($result.Output -notmatch 'ignored Visual Studio artifact') { throw 'IGNORED_VS_REASON_MISSING' }
         Remove-Item -LiteralPath (Join-Path $mainTree '.vs') -Recurse -Force
+    }
+    Case 'nested ignored Visual Studio artifacts block without rejecting ordinary ignored files' {
+        $exclude = Join-Path $admin 'info/exclude'
+        $originalExclude = [IO.File]::ReadAllBytes($exclude)
+        $cache = Join-Path $mainTree '.ignored-fixture'
+        try {
+            Write-Text $exclude ('.ignored-fixture/' + [Environment]::NewLine)
+            Write-Text (Join-Path $cache 'nested/normal.txt') 'synthetic ignored data'
+            $null = Assert-AuditExit 0 'IGNORED_PARENT_WITHOUT_VS'
+            Write-Text (Join-Path $cache 'nested/.VS/ProjectSettings.json') '{}'
+            $result = Assert-AuditExit 1 'NESTED_IGNORED_VS'
+            if ($result.Output -notmatch 'ignored Visual Studio artifact') { throw 'NESTED_IGNORED_VS_REASON_MISSING' }
+        }
+        finally {
+            [IO.File]::WriteAllBytes($exclude,$originalExclude)
+            if (Test-Path -LiteralPath $cache -PathType Container) { Remove-Item -LiteralPath $cache -Recurse -Force }
+        }
     }
     Case 'exact quarantine snapshot is detected as read-only' {
         $head = Invoke-Git $quarantineTree @('rev-parse','HEAD')
@@ -605,7 +639,7 @@ try {
         Remove-Item -LiteralPath $mainHookScripts -Force
     }
 
-    if ($passed -ne 25) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 25, got ' + $passed) }
+    if ($passed -ne 27) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 27, got ' + $passed) }
     Write-Output ('TASK-WORKTREE-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {
