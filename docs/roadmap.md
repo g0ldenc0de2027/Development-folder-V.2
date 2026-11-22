@@ -13,14 +13,15 @@
 - [ ] Обновить ТЗ, критерии приемки и readiness до READY.
 
 ## Этап 2 — надежное task lifecycle
-- [ ] Приоритет P0: автоматизировать создание worktrees и полный task lifecycle. Отдельный fail-closed scope guard по карточке задачи подготовлен в T-008; до merge его нельзя считать активным в main. FR-002/AC-007 требуют актуального review и CI на этой ветке.
+- [ ] Приоритет P0: автоматизировать создание worktrees и полный task lifecycle. FR-002/AC-007 сохраняют требования к полному циклу задачи.
+- [x] Локальная проверка worktree и файловой зоны по карточке задачи действует в pre-push после [PR #8](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/8).
 - [ ] Сверять base SHA и live origin/main до commit/publish.
 - [ ] Проверить реальные границы защиты GitHub Free.
 
 - [x] T-003 merged: PR #3, squash commit 9f98b28046ca605577e5a829e02818335f66174c; independent Antigravity review approved exact head. Historical pre-merge snapshot follows: T-003 remains open draft PR #3. Code-fix verification tuple: head 5c3eaf06dd5ee9a518659db015e4ffbc54b8a982, base c98a1922dee2dedeaed6eeb528d72098beb3a128, hosted run 43622066954 SUCCESS, event/test merge-result 5fb052c8094ceb3f530b306d8ba164416411d63f with exact parents. Copilot findings from bbd8abc (P2 copular false negative, P3 stale CI wording) were fixed in 5c3eaf0. Local quality gate and push preflight passed. GitHub Actions validates every later PR revision separately; fresh independent review on the latest PR head remains required and no GitHub-native review is present.
 - [ ] Implement remaining no-App merge safeguards: owner remains the trust root; manual review and gate-change residual risk are documented in docs/github-workflow.md; evaluate any additional local-only controls separately.
 - [ ] Verify both account email safeguards before the next GitHub-generated merge.
-- [ ] T-004 — add a fail-closed push-size policy. No per-file blob or aggregate push-size gate exists yet. Set lower project defaults against GitHub limits: [public pushes above 50 MB may skip push protection](https://docs.github.com/en/code-security/reference/secret-security/secret-scanning-scope), [single Git objects above 100 MB are blocked](https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits), and [a push is capped at 2 GB](https://docs.github.com/en/get-started/using-git/troubleshooting-the-2-gb-push-limit). Test exact size metrics and multi-ref pushes before claiming coverage.
+- [ ] Add a fail-closed push-size policy. No per-file blob or aggregate push-size gate exists yet. Set lower project defaults against GitHub limits: [push protection skips public-repository pushes above 50 MB](https://docs.github.com/en/code-security/reference/secret-security/secret-scanning-scope), [single Git objects above 100 MB are blocked](https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits), and [a push is capped at 2 GiB](https://docs.github.com/en/get-started/using-git/troubleshooting-the-2-gb-push-limit). Test exact size metrics and multi-ref pushes before claiming coverage.
 ## Этап 3 — reusable project profiles
 - [ ] Сервер/web/API, сайты и dashboards.
 - [ ] Mobile и desktop.
