@@ -371,6 +371,27 @@ try {
         $expectedId = $parsedId
     }
     if ($Command -eq 'get' -and $PSBoundParameters.ContainsKey('Query')) { Fail 'KB_QUERY_NOT_SUPPORTED_FOR_GET' }
+    if ($Command -eq 'context' -and $IncludeWithdrawn) { Fail 'KB_CONTEXT_WITHDRAWN' }
+    $optionCommands = @{
+        Id = @('search','get','context')
+        Query = @('search','context')
+        Title = @('capture')
+        Text = @('capture')
+        Source = @('capture')
+        Scope = @('capture')
+        Author = @('capture')
+        Runtime = @('capture')
+        Limit = @('search','context')
+        MaxBytes = @('context')
+        MaxOutputBytes = @('search','get')
+        IncludeWithdrawn = @('search','get')
+        Compact = @('search')
+    }
+    foreach ($option in $PSBoundParameters.Keys) {
+        if ($optionCommands.ContainsKey($option) -and $Command -notin $optionCommands[$option]) {
+            Fail 'KB_OPTION_NOT_SUPPORTED'
+        }
+    }
     $root = [IO.Path]::GetFullPath($ProjectRoot)
     $script:KbVolumeFormat = Assert-SupportedVolume $root -ReportMissingRoot:($null -ne $expectedId)
     $script:HardLinkMode = 'fsutil'
@@ -428,7 +449,6 @@ try {
                 $result=@{projectId=$catalog.projectId;record=$found[0]}
             }
             'context' {
-                if ($IncludeWithdrawn) { Fail 'KB_CONTEXT_WITHDRAWN' }
                 $selection=Select-Entries $catalog
                 if ($selection.truncated) { Fail 'KB_CONTEXT_RECORD_LIMIT' }
                 $found=$selection.records

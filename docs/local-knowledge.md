@@ -37,6 +37,25 @@ KB_CONTEXT_LIMIT. По умолчанию бюджет 128 KiB, диапазон
 Значение команды принимается PowerShell без учёта регистра; `SEARCH` и `GET` подчиняются
 тому же лимиту.
 
+## Параметры команд
+
+`-ProjectRoot` можно передать любой команде. Для `check`, `search`, `get` и `context` также доступен `-ExpectedCollectionId`.
+
+| Команда | Обязательные параметры | Дополнительные параметры команды |
+|---|---|---|
+| `check` | — | — |
+| `search` | `-Query` | `-Id`, `-Limit`, `-MaxOutputBytes`, `-IncludeWithdrawn`, `-Compact` |
+| `get` | `-Id` | `-MaxOutputBytes`, `-IncludeWithdrawn` |
+| `context` | — | `-Id`, `-Query`, `-Limit`, `-MaxBytes` |
+| `capture` | `-Title`, `-Text`, `-Source`, `-Scope`, `-Author`, `-Runtime` | — |
+| `doctor` | — | — |
+
+Явно переданный параметр для другой команды вызывает `KB_OPTION_NOT_SUPPORTED`
+до открытия коллекции, даже если его значение совпадает со значением по умолчанию.
+Для известных ошибок сохраняются отдельные коды `KB_QUERY_NOT_SUPPORTED_FOR_GET`,
+`KB_COMPACT_SEARCH_ONLY`, `KB_CONTEXT_WITHDRAWN` и `KB_COLLECTION_ID_READ_ONLY`.
+CLI возвращает exit 1, пустой stdout и код в stderr.
+
 ## Произвольное местоположение общей БЗ
 
 Путь задаётся через ETALON_KNOWLEDGE_BASE, иначе knowledge_base локального .etalon.json.
@@ -162,6 +181,8 @@ Backup содержит канон и нужный inbox. Restore не акти�
 
 Run the commands above from the worktree root on the verified Windows 11 x64 GA 26H2 (build 26300, `ge_release` branch), using PowerShell 7.6 LTS version 7.6.10 or newer. GitHub Actions separately validates on the Windows Server 2025 x64 `windows-2025` runner (build 26100).
 The CLI emits JSON; failures use stderr and exit code 1. Search is literal.
+See the command options table above. Options supplied to an unrelated command fail
+before the collection is opened, typically with `KB_OPTION_NOT_SUPPORTED`.
 Use -ProjectRoot to select any local/shared collection directory explicitly.
 Set ETALON_KNOWLEDGE_BASE or an ignored .etalon.json knowledge_base for discovery.
 An unavailable explicit location never falls back to another collection.
