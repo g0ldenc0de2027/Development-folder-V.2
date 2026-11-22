@@ -188,7 +188,10 @@ rather than silently migrated. Check validates every pinned file and local Markd
 The default context budget is 128 KiB (512–262144 bytes); an insufficient budget fails explicitly.
 Full `search` and `get` JSON output uses a separate `-MaxOutputBytes` budget (131072 default,
 512–2097152 range), counted as UTF-8 bytes including the final LF. Oversized output returns
-`KB_OUTPUT_LIMIT`, exit 1, and empty stdout without truncation; processing memory is not bounded.
+`KB_OUTPUT_LIMIT`, exit 1, and empty stdout without truncation.
+The command limits the total source bytes of retained record bodies to the applicable
+output budget. It still validates all records. Total memory also depends on the
+catalogue, metadata, pinned rules and serialization.
 PowerShell accepts command values case-insensitively, so uppercase `SEARCH` and `GET` use
 the same output limit.
 KB_FILE_MISSING means a required file is absent, for example a pinned policy file.
