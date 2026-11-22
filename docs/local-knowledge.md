@@ -146,6 +146,7 @@ KB_CONTENT_CHANGED — bytes расходятся с catalog; выясните �
 KB_CONTEXT_LIMIT — указанный byte budget недостаточен; полный контекст не выдан.
 KB_CONTEXT_RECORD_LIMIT — набор больше `-Limit`; уменьшите выборку или явно повысьте лимит.
 KB_POLICY_CHANGED — файл пакета правил расходится с lock; восстановите согласованную поставку.
+KB_FILE_MISSING — отсутствует обязательный файл, например файл из закреплённого пакета правил.
 KB_OUTPUT_LIMIT — ответ search/get превышает бюджет; уменьшите выборку или увеличьте лимит.
 KB_POLICY_LINK — локальная ссылка ведёт к файлу вне закреплённого пакета.
 KB_POLICY_LOCK — неподдерживаемая схема, повтор пути или некорректный lock.
@@ -198,6 +199,7 @@ Full `search` and `get` JSON output uses a separate `-MaxOutputBytes` budget (13
 `KB_OUTPUT_LIMIT`, exit 1, and empty stdout without truncation; processing memory is not bounded.
 PowerShell accepts command values case-insensitively, so uppercase `SEARCH` and `GET` use
 the same output limit.
+KB_FILE_MISSING means a required file is absent, for example a pinned policy file.
 KB_POLICY_CHANGED means bytes differ; KB_POLICY_LINK means an unpinned local link;
 KB_POLICY_LOCK means a malformed/unsupported package. Restore a reviewed package, do not bypass checks.
 Missing or null knowledge_base is not configured; a non-string location is invalid.
