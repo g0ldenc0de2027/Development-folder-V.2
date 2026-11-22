@@ -194,3 +194,7 @@ Missing or null knowledge_base is not configured; a non-string location is inval
 The coverage map openly lists missing application-stack, translation-validation and security-watch capabilities.
 
 Capture schema 2 требует заявленные source, scope, author, runtime; автор не аутентифицирован. Старые конверты schema 1 не переписываются. Check проверяет записи и правила на ограниченные признаки секретов и отклоняет неучтённые Markdown-файлы верхнего уровня knowledge/records; это не проверка PII и не гарантия отсутствия всех секретов. Draft возвращается со своим статусом и не является проверенным знанием.
+
+## Сверка выбранной коллекции
+
+Для check, search, get и context передайте `-ExpectedCollectionId <UUID>`, полученный из доверенной конфигурации. При несовпадении CLI возвращает `KB_COLLECTION_ID_MISMATCH` с пустым stdout. При отсутствующем корне возвращается KB_ROOT_UNAVAILABLE. Перенос коллекции сохраняет её ID. Используйте параметр в каждом вызове чтения.

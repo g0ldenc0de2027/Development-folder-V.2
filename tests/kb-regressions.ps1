@@ -154,6 +154,59 @@ try {
         Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') 'Changed'
         $null=Run $arguments 1 'KB_CONTENT_CHANGED'
     }
+    Case 'LKB-011 selected collection ID is checked for every read command' {
+        $id=$script:catalog.projectId
+        $wrong=[guid]::NewGuid().ToString('D')
+        foreach($argsList in @(@('check'),@('search','-Query','Привет'),@('get','-Id','alpha'),@('context','-Id','alpha'))){
+            if((Run ($argsList+@('-ExpectedCollectionId',$id.ToUpperInvariant()))).result.projectId -cne $id){throw 'collection ID changed'}
+            $failure=Run-Captured ($argsList+@('-ExpectedCollectionId',$wrong))
+            if($failure.exitCode -ne 1 -or $failure.stdoutBytes.Length -ne 0 -or $failure.stderr.Trim() -cne 'KB_COLLECTION_ID_MISMATCH'){throw 'collection ID mismatch response'}
+        }
+        $firstRoot=$fixture
+        $firstHash=$script:catalog.records[0].contentSha256
+        Reset-Fixture
+        $secondId=[guid]::NewGuid().ToString('D')
+        $script:catalog.projectId=$secondId
+        $alpha=Join-Path $fixture 'knowledge/records/alpha.md'
+        Write-Text $alpha 'Привет from second project'
+        $secondHash=Hash $alpha
+        $script:catalog.records[0].contentSha256=$secondHash
+        Save-Catalog
+        $compact=@('search','-Compact','-Id','alpha','-Query','Привет')
+        foreach($project in @(
+            @{root=$firstRoot;id=$id;sha=$firstHash;wrong=$secondId}
+            @{root=$fixture;id=$secondId;sha=$secondHash;wrong=$id}
+        )){
+            $result=Run-Captured ($compact+@('-ExpectedCollectionId',$project.id)) -Root $project.root
+            if($result.exitCode -ne 0){throw 'compact project search failed'}
+            $value=($utf8.GetString($result.stdoutBytes)|ConvertFrom-Json).result
+            if($value.projectId -cne $project.id -or $value.representation -cne 'compact' -or
+               $value.records.Count -ne 1 -or $value.records[0].id -cne 'alpha' -or
+               $value.records[0].contentSha256 -cne $project.sha){throw 'compact result crossed project boundary'}
+            $failure=Run-Captured ($compact+@('-ExpectedCollectionId',$project.wrong)) -Root $project.root
+            if($failure.exitCode -ne 1 -or $failure.stdoutBytes.Length -ne 0 -or
+               $failure.stderr.Trim() -cne 'KB_COLLECTION_ID_MISMATCH'){throw 'wrong collection returned compact output'}
+        }
+        $script:fixture=$firstRoot
+        Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') 'Changed'
+        $null=Run @('check','-ExpectedCollectionId',$wrong) 1 'KB_COLLECTION_ID_MISMATCH'
+        $null=Run @('check','-ExpectedCollectionId',$id) 1 'KB_CONTENT_CHANGED'
+    }
+    Case 'LKB-011 missing collection root is distinct from an ID mismatch' {
+        $missing=Join-Path $fixture 'missing-collection'
+        $result=Run-Captured @('check','-ExpectedCollectionId',$script:catalog.projectId) -Root $missing
+        if($result.exitCode -ne 1 -or $result.stdoutBytes.Length -ne 0 -or $result.stderr.Trim() -cne 'KB_ROOT_UNAVAILABLE'){
+            throw 'missing collection root response'
+        }
+    }
+    Case 'LKB-011 malformed IDs and non-read commands are rejected' {
+        foreach($invalid in @('bad',[guid]::Empty.ToString('D'),('{'+$script:catalog.projectId+'}'))){
+            $null=Run @('check','-ExpectedCollectionId',$invalid) 1 'KB_EXPECTED_COLLECTION_ID_INVALID'
+        }
+        foreach($command in @('doctor','capture')){
+            $null=Run @($command,'-ExpectedCollectionId',$script:catalog.projectId) 1 'KB_COLLECTION_ID_READ_ONLY'
+        }
+    }
     Case 'LKB-004 exact ID' { if((Run @('get','-Id','alpha')).result.record.id -cne 'alpha'){throw 'id'} }
     Case 'LKB-004 missing ID' { $null=Run @('get','-Id','missing') 1 'KB_NOT_FOUND' }
     Case 'LKB-004 withdrawn default refusal' { $null=Run @('get','-Id','old') 1 'KB_NOT_FOUND' }
@@ -527,6 +580,7 @@ try {
     if(($locales -join ',') -cne 'ru,en,zh-Hans,hi,es,ar,fr,bn,pt-BR,de'){throw 'owner contract: locale set'}
     $script:passed++
     Write-Output 'PASS: LKB-001 owner rule and locale contract'
+    if ($passed -ne 68) { throw ("KB_REGRESSION_COUNT_MISMATCH: expected 68, got " + $passed) }
     Write-Output ('KB-REGRESSIONS: '+$passed+' passed, 0 failed')
     exit 0
 } catch {
