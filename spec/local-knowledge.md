@@ -79,6 +79,8 @@ Doctor допускает отсутствие/null knowledge_base; нестро
 | LKB-008 | P1 | БЗ работает офлайн и после переноса проекта | Нет загрузок/телеметрии/сервисов; все canonical refs относительны |
 | LKB-009 | P1 | Полные JSON-ответы `search/get` ограничены явным UTF-8 byte budget | Default 131072, диапазон 512–2097152; точный сериализованный ответ + newline в бюджете; при превышении `KB_OUTPUT_LIMIT`, exit 1, stdout пустой, без truncation; Unicode-byte, accepted command casing и успешный увеличенный budget покрыты regressions |
 
+Команда `get -Id <id>` выбирает запись по точному ID. Явный `-Query` с `get` возвращает `KB_QUERY_NOT_SUPPORTED_FOR_GET`, exit 1 и пустой stdout до чтения каталога.
+
 LKB-002/003 предшествуют LKB-004/005. Capture не предоставляет права admission. LKB-009 ограничивает только итоговый stdout для search/get; внутренний working set не является гарантированно ограниченным.
 Проверки привязаны к этим IDs; CI запускает отдельный regression suite.
 

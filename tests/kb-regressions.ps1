@@ -267,7 +267,58 @@ try {
             $null=Run @($command,'-ExpectedCollectionId',$script:catalog.projectId) 1 'KB_COLLECTION_ID_READ_ONLY'
         }
     }
-    Case 'LKB-004 exact ID' { if((Run @('get','-Id','alpha')).result.record.id -cne 'alpha'){throw 'id'} }
+    Case 'LKB-004 exact ID' {
+        if((Run @('get','-Id','alpha')).result.record.id -cne 'alpha'){throw 'id'}
+        $missingRoot=Join-Path $fixture 'missing-collection'
+        foreach($query in @('unmatched text','')){
+            $result=Run-Captured @('GET','-Id','alpha','-Query',$query) -Root $missingRoot
+            if($result.exitCode -ne 1 -or $result.stdoutBytes.Length -ne 0 -or
+                $result.stderr.Trim() -cne 'KB_QUERY_NOT_SUPPORTED_FOR_GET'){
+                throw 'get must reject an explicitly supplied Query before opening the collection'
+            }
+        }
+    }
+    Case 'CLI rejects options not used by the selected command' {
+        $missingRoot=Join-Path $fixture 'missing-collection'
+        $checks=@(
+            @('CHECK','-Id','alpha'),
+            @('check','-Query','text'),
+            @('search','-Query','Привет','-Title',''),
+            @('search','-Query','Привет','-MaxBytes','512'),
+            @('get','-Id','alpha','-Limit','1'),
+            @('context','-MaxOutputBytes','512'),
+            @('capture','-Id','alpha'),
+            @('doctor','-IncludeWithdrawn'),
+            @('doctor','-Limit','100')
+        )
+        foreach ($arguments in $checks) {
+            $result=Run-Captured $arguments -Root $missingRoot
+            if ($result.exitCode -ne 1 -or $result.stdoutBytes.Length -ne 0 -or
+                $result.stderr.Trim() -cne 'KB_OPTION_NOT_SUPPORTED') {
+                throw 'unsupported option must fail before opening the collection'
+            }
+        }
+        $special=Run-Captured @('CONTEXT','-IncludeWithdrawn') -Root $missingRoot
+        if ($special.exitCode -ne 1 -or $special.stdoutBytes.Length -ne 0 -or
+            $special.stderr.Trim() -cne 'KB_CONTEXT_WITHDRAWN') {
+            throw 'context must keep the existing withdrawn-option error'
+        }
+    }
+    Case 'CLI preserves documented option combinations' {
+        $context=(Run @('CONTEXT','-Id','alpha','-Query','Привет','-Limit','1','-MaxBytes','262144')).result
+        if ($context.recordCount -ne 1 -or $context.records[0].id -cne 'alpha') {
+            throw 'context options changed'
+        }
+        $search=(Run @('SEARCH','-Id','old','-Query','Привет','-Limit','1','-MaxOutputBytes','8192','-IncludeWithdrawn','-Compact')).result
+        if ($search.representation -cne 'compact' -or $search.returned -ne 1 -or
+            $search.records[0].status -cne 'withdrawn') {
+            throw 'search options changed'
+        }
+        $get=(Run @('GET','-Id','old','-MaxOutputBytes','8192','-IncludeWithdrawn')).result
+        if ($get.record.id -cne 'old' -or $get.record.status -cne 'withdrawn') {
+            throw 'get options changed'
+        }
+    }
     Case 'LKB-004 missing ID' { $null=Run @('get','-Id','missing') 1 'KB_NOT_FOUND' }
     Case 'LKB-004 withdrawn default refusal' { $null=Run @('get','-Id','old') 1 'KB_NOT_FOUND' }
     Case 'LKB-004 explicit historical read' { if((Run @('get','-Id','old','-IncludeWithdrawn')).result.record.status -ne 'withdrawn'){throw 'historical'} }
@@ -649,7 +700,7 @@ try {
     if(($locales -join ',') -cne 'ru,en,zh-Hans,hi,es,ar,fr,bn,pt-BR,de'){throw 'owner contract: locale set'}
     $script:passed++
     Write-Output 'PASS: LKB-001 owner rule and locale contract'
-    if ($passed -ne 71) { throw ("KB_REGRESSION_COUNT_MISMATCH: expected 71, got " + $passed) }
+    if ($passed -ne 73) { throw ("KB_REGRESSION_COUNT_MISMATCH: expected 73, got " + $passed) }
     Write-Output ('KB-REGRESSIONS: '+$passed+' passed, 0 failed')
     exit 0
 } catch {
