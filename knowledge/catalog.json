@@ -21,7 +21,7 @@
       "title": "Карта проекта",
       "status": "draft",
       "path": "knowledge/records/project-map.md",
-      "contentSha256": "df6e15211b8723c5898df583f1d4bfe0cab9b9d053dbde219fdfb6d815f3b1bd",
+      "contentSha256": "24b65a061f45cc0fc65d585d4b25d08491cc6cc254f62c4017edb07bcaefb5ff",
       "sources": [
         "owner:2026-11-15",
         "author:Codex:gpt-6.1-sol"
@@ -101,13 +101,15 @@
       "title": "Урок: безопасная Git identity в linked worktrees",
       "status": "draft",
       "path": "knowledge/records/git-attribution-worktrees.md",
-      "contentSha256": "595bef98520f821c8eda5a9a0dd0c1b2e8e5d1607e08bc91cf9693968fecc1b2",
+      "contentSha256": "5089a2cabe7555bb2fc76d5cac1bb74a8f2aebfd4317c836ae13701d303f7eb8",
       "sources": [
         "owner:2026-11-17",
         "review:Xiaomi-MiMo:2026-11-17",
         "review:Antigravity:2026-11-17",
         "owner:2026-11-18",
-        "author:Codex:GPT-6"
+        "author:Codex:GPT-6",
+        "git:7da6c0f4f4367ec9465eafd16acf249dc9a0e277",
+        "https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44901331572"
       ],
       "review": null
     },

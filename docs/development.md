@@ -19,6 +19,8 @@
 
 Git for Windows и GitHub CLI нужны для GitHub workflow. Интернет нужен для загрузки SHA-256-проверенного PowerShell в CI и pinned actionlint/Gitleaks во временную папку локального gate.
 ## Проверки
+
+Откройте в IDE зарегистрированное рабочее дерево. Локальный quality gate запускайте из рабочего дерева задачи или из чистой main. В V2 путь к чистой main — .worktrees/main, к задаче — .worktrees/T-NNN. Административный корень хранит общие Git-метаданные.
 После clone настройте репозиторий и каждую новую linked worktree отдельной командой. Команда сверяет origin и текущий GitHub account, включает безопасную worktree-конфигурацию и записывает identity только в выбранную worktree:
 
     pwsh -NoProfile -File scripts/github/configure-local.ps1
@@ -57,9 +59,10 @@ Read-only сверка live GitHub settings с versioned config (repository, rul
 
 ## Слияние проверенного PR и аудит worktree
 
-- [check-squash-preflight.ps1](../scripts/github/check-squash-preflight.ps1) выполняет read-only проверку PR, переведённого в Ready. Передайте номер PR, проверенные head/base/merge-result SHA и номер успешного запуска CI.
-- [merge-reviewed-pr.ps1](../scripts/github/merge-reviewed-pr.ps1) без флага выполнения запускает тот же preflight. Порядок допуска владельца, squash и проверки результата описан в [GitHub workflow](github-workflow.md).
-- [task-worktree-audit.ps1](../scripts/task-worktree-audit.ps1) запускайте из зарегистрированного рабочего дерева. [Реестр карантина](../config/worktree-quarantine.json) содержит утверждённые исключения для проверяемых снимков. При блокировке сначала проверьте содержимое рабочего дерева и причину отказа.
+- [check-squash-preflight.ps1](../scripts/github/check-squash-preflight.ps1) выполняет read-only проверку PR, переведённого в Ready. Передайте параметры -Number, -HeadSha, -BaseSha, -MergeResultSha и -RunId успешного CI.
+- [merge-reviewed-pr.ps1](../scripts/github/merge-reviewed-pr.ps1) без -Execute запускает тот же preflight. При -Execute передайте -AcceptedHeadSha, равный принятому владельцем -HeadSha. Порядок допуска владельца, squash и проверки результата описан в [GitHub workflow](github-workflow.md).
+- [task-worktree-audit.ps1](../scripts/task-worktree-audit.ps1) запускайте с -Mode Audit из зарегистрированного рабочего дерева. [Реестр карантина](../config/worktree-quarantine.json) содержит утверждённые исключения для проверяемых снимков. При блокировке сначала проверьте содержимое рабочего дерева и причину отказа.
+- [verify-bootstrap-push.ps1](../scripts/github/verify-bootstrap-push.ps1) вызывает pre-push при первичной публикации в пустой remote. Проверяемые параметры — -RemoteName, -RemoteUrl и -CommitSha.
 - [git-empty.config](../config/git-empty.config) — пустой глобальный Git-конфиг для изолированных проверок. Пользовательские настройки Git в него не добавляйте.
 
 ## Обновления

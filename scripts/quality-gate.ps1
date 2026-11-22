@@ -106,7 +106,19 @@ function Get-PinnedExecutable {
     $toolRoot = Join-Path $temporaryRoot $Name
     New-Item -ItemType Directory -Path $toolRoot -Force | Out-Null
     $archive = Join-Path $toolRoot 'download.zip'
-    Invoke-WebRequest -Uri $Tool.url -OutFile $archive
+    $retryableStatus = @(408, 429, 500, 502, 503, 504)
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Invoke-WebRequest -Uri $Tool.url -OutFile $archive -ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60 -ErrorAction Stop
+            break
+        } catch [Microsoft.PowerShell.Commands.HttpResponseException] {
+            $status = [int]$_.Exception.Response.StatusCode
+            if ($attempt -eq 3 -or $status -notin $retryableStatus) { throw }
+            if ([IO.File]::Exists($archive)) { [IO.File]::Delete($archive) }
+            Write-Warning "$Name download returned HTTP $status (attempt $attempt/3); retrying"
+            Start-Sleep -Seconds $attempt
+        }
+    }
     $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actualHash -ne $Tool.sha256.ToLowerInvariant()) {
         throw "$Name archive SHA-256 did not match the pinned value"
@@ -195,6 +207,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Task-scope regressions failed' }
 
     $manifest = Get-Content -LiteralPath (Join-Path $repoRoot 'config/security/tools.json') -Raw | ConvertFrom-Json
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-viewer-regressions.ps1') -TempRoot $temporaryRoot
+    if ($LASTEXITCODE -ne 0) { throw "project-viewer-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
     $actionlint = Get-PinnedExecutable -Tool $manifest.tools.actionlint -Name 'actionlint'
     $gitleaks = Get-PinnedExecutable -Tool $manifest.tools.gitleaks -Name 'gitleaks'
 

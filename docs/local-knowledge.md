@@ -2,6 +2,8 @@
 
 ## Быстрый старт
 
+Встроенная справка: `Get-Help ./scripts/kb.ps1 -Full`.
+
 Из корня task worktree на проверенной Windows 11 x64 GA 26H2/build 26300, ветка `ge_release`, с PowerShell 7.6 LTS не ниже 7.6.10:
 
 ~~~powershell
@@ -15,7 +17,7 @@ pwsh -NoProfile -File scripts/kb.ps1 capture -Title 'Наблюдение' -Text
 
 CLI возвращает JSON в stdout, короткий код ошибки в stderr и exit 1 при отказе.
 Check проверяет catalog, hashes и локальную поставку RULES, а не истинность записей.
-Search — буквальный case-insensitive поиск, без русской морфологии/векторов.
+Search — буквальный поиск без учёта регистра и морфологии. Пустой результат содержит records: [] и totalMatches: 0. Если get не нашёл запрошенный ID, он возвращает KB_NOT_FOUND. Doctor проверяет обнаружение и доступность пути общей БЗ, а совместимость оставляет непроверенной.
 Get/search исключают withdrawn и superseded по умолчанию; явный -IncludeWithdrawn
 предназначен для исторического чтения, а не текущей рекомендации. Search сообщает
 общее число совпадений, число выданных записей и `truncated`; результат сверх `-Limit`
@@ -32,8 +34,11 @@ KB_CONTEXT_LIMIT. По умолчанию бюджет 128 KiB, диапазон
 Полные ответы `search` и `get` ограничены отдельно через `-MaxOutputBytes`: по умолчанию
 131072 байта, допустимый диапазон 512–2097152. Считаются UTF-8 байты точного JSON
 вместе с завершающим LF. Если ответ больше бюджета, CLI возвращает `KB_OUTPUT_LIMIT`
-и exit 1, пишет пустой stdout и не обрезает JSON. Лимит относится только к выдаче:
-он не ограничивает объём чтения и внутреннюю память до сериализации.
+и exit 1, пишет пустой stdout и не обрезает JSON. До сериализации поиск и context
+удерживают не более `-Limit` совпадений. Суммарный исходный размер удерживаемых тел
+ограничен соответствующим бюджетом выдачи. Все записи всё равно читаются для проверки
+целостности и точного подсчёта. Это ограничение тел, а итоговая память также зависит
+от каталога, метаданных, закреплённых правил и сериализации.
 Значение команды принимается PowerShell без учёта регистра; `SEARCH` и `GET` подчиняются
 тому же лимиту.
 
@@ -135,6 +140,9 @@ Policy-lock schemaVersion=2 фиксирует path/sha256 каждого фай
 молча: сохраните снимок, перенесите полную согласованную поставку и проверьте check/context.
 Каталог знаний сохраняет schemaVersion=1. Карта COVERAGE различает норму и реальную автоматику.
 
+Поле `sourceCollectionId` записывает заявленный ID источника. CLI проверяет формат
+этого UUID и закреплённые SHA-256. `-ExpectedCollectionId` сверяет ID открываемого
+каталога знаний. Для ID происхождения пакета отдельная доверенная сверка отсутствует.
 Hash pin не удостоверяет publisher, не сообщает о новых remote отзывах и не защищает
 от произвольного shell той же учётной записи. Автоматического sync/publisher пока нет.
 
@@ -144,7 +152,8 @@ KB_CONTENT_CHANGED — bytes расходятся с catalog; выясните �
 KB_CONTEXT_LIMIT — указанный byte budget недостаточен; полный контекст не выдан.
 KB_CONTEXT_RECORD_LIMIT — набор больше `-Limit`; уменьшите выборку или явно повысьте лимит.
 KB_POLICY_CHANGED — файл пакета правил расходится с lock; восстановите согласованную поставку.
-KB_POLICY_INCOMPLETE — каноническая поставка RULES 0.2.0 не содержит всех девяти закреплённых файлов.
+KB_FILE_MISSING — отсутствует обязательный файл, например файл из закреплённого пакета правил.
+KB_OUTPUT_LIMIT — ответ search/get превышает бюджет; уменьшите выборку или увеличьте лимит.
 KB_POLICY_LINK — локальная ссылка ведёт к файлу вне закреплённого пакета.
 KB_POLICY_LOCK — неподдерживаемая схема, повтор пути или некорректный lock.
 KB_HARDLINK — файл записи имеет несколько hard links; используйте отдельную обычную копию внутри базы.
@@ -155,7 +164,7 @@ KB_POSSIBLE_SECRET — не сохраняйте секрет в знания; s
 
 Нет внешних запросов моделей/телеметрии. Общая БЗ не публикуется автоматически в GitHub.
 Reparse checks не являются полной OS isolation и не устраняют все filesystem races.
-Корень проекта и все существующие компоненты его пути от корня тома проверяются на reparse point до определения типа volume; родительская junction блокируется. Для `knowledge/catalog.json`, записей `knowledge/records/*` и `.etalon.json` на NTFS/ReFS/UDF каталог до 24 записей сначала проверяется через `fsutil hardlink list`; при большем числе записей сначала используется `GetFileInformationByHandle` по открытому handle. Если выбранный способ не может получить полный достоверный результат, CLI однократно пробует альтернативный способ; native-проверка принимает только link count 1, а `fsutil` — ровно один путь, совпадающий с проверяемым. Несколько links дают `KB_HARDLINK`; если оба способа недоступны или неоднозначны — `KB_LINK_ENUMERATION_UNAVAILABLE`. FAT/FAT32/exFAT не поддерживают hard links и допускаются без перечисления. Сетевые и неизвестные типы/форматы томов отклоняются. Правила проекта защищены своим SHA-256 lock. Fallback может быть медленнее на больших каталогах; между проверкой пути и чтением остаётся ограниченный TOCTOU-риск, это не OS isolation.
+Корень проекта и все существующие компоненты его пути от корня тома проверяются на reparse point до определения типа volume; родительская junction блокируется. Для `knowledge/catalog.json`, записей `knowledge/records/*`, `.etalon.json`, `rules/policy-lock.json` и закреплённых файлов RULES на NTFS/ReFS/UDF каталог до 24 записей сначала проверяется через `fsutil hardlink list`; при большем числе записей сначала используется `GetFileInformationByHandle` по открытому handle. Если выбранный способ не может получить полный достоверный результат, CLI однократно пробует альтернативный способ; native-проверка принимает только link count 1, а `fsutil` — ровно один путь, совпадающий с проверяемым. Несколько links дают `KB_HARDLINK`; если оба способа недоступны или неоднозначны — `KB_LINK_ENUMERATION_UNAVAILABLE`. FAT/FAT32/exFAT не поддерживают hard links и допускаются без перечисления. Сетевые и неизвестные типы/форматы томов отклоняются. Правила проекта защищены своим SHA-256 lock. Fallback может быть медленнее на больших каталогах; между проверкой пути и чтением остаётся ограниченный TOCTOU-риск, это не OS isolation.
 Backup содержит канон и нужный inbox. Restore не активирует старые sessions/права.
 
 ## English quick reference
@@ -172,6 +181,14 @@ refuses an insufficient byte budget. Hash integrity does not establish truth or 
 Do not store credentials or personal data. Back up ignored inbox separately.
 
 
+See command syntax and examples with `Get-Help ./scripts/kb.ps1 -Full`. Use `check` for
+catalogue and policy integrity and `doctor` to inspect shared collection discovery and availability.
+Doctor reports compatibility as unverified. An empty search returns `records: []` and
+`totalMatches: 0`; a missing record ID in `get` returns `KB_NOT_FOUND`.
+Use `-Limit` to bound record selection (default 100, maximum 1000) and inspect `truncated`.
+Context rejects an incomplete record selection with `KB_CONTEXT_RECORD_LIMIT`.
+`search -Compact` returns metadata including `contentSha256`. Use `get -Id` for the body.
+
 ### English policy-package update and recovery
 
 The editable rules canon is in the shared collection; projects keep a byte-identical snapshot.
@@ -185,12 +202,22 @@ rather than silently migrated. Check validates every pinned file and local Markd
 The default context budget is 128 KiB (512–262144 bytes); an insufficient budget fails explicitly.
 Full `search` and `get` JSON output uses a separate `-MaxOutputBytes` budget (131072 default,
 512–2097152 range), counted as UTF-8 bytes including the final LF. Oversized output returns
-`KB_OUTPUT_LIMIT`, exit 1, and empty stdout without truncation; processing memory is not bounded.
+`KB_OUTPUT_LIMIT`, exit 1, and empty stdout without truncation.
+The command limits the total source bytes of retained record bodies to the applicable
+output budget. It still validates all records. Total memory also depends on the
+catalogue, metadata, pinned rules and serialization.
 PowerShell accepts command values case-insensitively, so uppercase `SEARCH` and `GET` use
 the same output limit.
+KB_FILE_MISSING means a required file is absent, for example a pinned policy file.
 KB_POLICY_CHANGED means bytes differ; KB_POLICY_LINK means an unpinned local link;
 KB_POLICY_LOCK means a malformed/unsupported package. Restore a reviewed package, do not bypass checks.
 Missing or null knowledge_base is not configured; a non-string location is invalid.
 The coverage map openly lists missing application-stack, translation-validation and security-watch capabilities.
 
 Capture schema 2 требует заявленные source, scope, author, runtime; автор не аутентифицирован. Старые конверты schema 1 не переписываются. Check проверяет записи и правила на ограниченные признаки секретов и отклоняет неучтённые Markdown-файлы верхнего уровня knowledge/records; это не проверка PII и не гарантия отсутствия всех секретов. Draft возвращается со своим статусом и не является проверенным знанием.
+
+## Сверка выбранной коллекции
+
+Для check, search, get и context передайте `-ExpectedCollectionId <UUID>`, полученный из доверенной конфигурации. При несовпадении CLI возвращает `KB_COLLECTION_ID_MISMATCH` с пустым stdout. При отсутствующем корне возвращается KB_ROOT_UNAVAILABLE. Перенос коллекции сохраняет её ID. Используйте параметр в каждом вызове чтения.
+
+Capture schema 2 requires declared source, scope, author and runtime. The author identity is unauthenticated and schema 1 proposals are preserved as written. Check rejects uncatalogued top-level Markdown records and scans records and rules for common secret patterns. The scan does not establish absence of secrets or personal data. Treat draft records as unreviewed.
