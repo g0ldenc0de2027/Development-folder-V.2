@@ -62,7 +62,7 @@ Read-only сверка live GitHub settings с versioned config (repository, rul
 - [check-squash-preflight.ps1](../scripts/github/check-squash-preflight.ps1) выполняет read-only проверку PR, переведённого в Ready. Передайте параметры -Number, -HeadSha, -BaseSha, -MergeResultSha и -RunId успешного CI.
 - [merge-reviewed-pr.ps1](../scripts/github/merge-reviewed-pr.ps1) без -Execute запускает тот же preflight. При -Execute передайте -AcceptedHeadSha, равный принятому владельцем -HeadSha. Порядок допуска владельца, squash и проверки результата описан в [GitHub workflow](github-workflow.md).
 - [task-worktree-audit.ps1](../scripts/task-worktree-audit.ps1) запускайте с -Mode Audit из зарегистрированного рабочего дерева. [Реестр карантина](../config/worktree-quarantine.json) содержит утверждённые исключения для проверяемых снимков. При блокировке сначала проверьте содержимое рабочего дерева и причину отказа.
-- [verify-bootstrap-push.ps1](../scripts/github/verify-bootstrap-push.ps1) вызывает pre-push при первичной публикации в пустой remote. Проверяемые параметры — -RemoteName, -RemoteUrl и -CommitSha.
+- [verify-bootstrap-push.ps1](../scripts/github/verify-bootstrap-push.ps1) вызывается хуком pre-push при первичной публикации в пустой remote. Проверяемые параметры — -RemoteName, -RemoteUrl и -CommitSha.
 - [git-empty.config](../config/git-empty.config) — пустой глобальный Git-конфиг для изолированных проверок. Пользовательские настройки Git в него не добавляйте.
 
 ## Обновления
