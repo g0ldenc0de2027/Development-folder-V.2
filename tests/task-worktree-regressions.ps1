@@ -98,6 +98,26 @@ function Case([string]$Name,[scriptblock]$Action) {
 }
 
 try {
+    Case 'native Git diagnostics preserve UTF-8 under console code page 866' {
+        $git = (Get-Command git -ErrorAction Stop).Source
+        $probe = 'Кириллица'
+        $missing = Join-Path $scratch $probe
+        $previousEncoding = [Console]::OutputEncoding
+        try {
+            [Console]::OutputEncoding = [Text.Encoding]::GetEncoding(866)
+            $output = Invoke-NativeProcess $git @('-c',"fixture.probe=$probe",'config','--get','fixture.probe')
+            if ($output.ExitCode -ne 0 -or $output.Output.TrimEnd() -cne $probe) {
+                throw 'Git stdout lost UTF-8 characters'
+            }
+            $failure = Invoke-NativeProcess $git @('-C',$missing,'status')
+            if ($failure.ExitCode -eq 0 -or -not $failure.Error.Contains($probe,[StringComparison]::Ordinal)) {
+                throw 'Git stderr lost UTF-8 characters'
+            }
+        } finally {
+            [Console]::OutputEncoding = $previousEncoding
+        }
+    }
+
     Invoke-Git $scratch @('init','--bare','--quiet',$admin) | Out-Null
     Invoke-Git $scratch @('init','--bare','--quiet',$remote) | Out-Null
     Invoke-Git $scratch @('init','--quiet',$seed) | Out-Null
@@ -607,7 +627,7 @@ try {
         Remove-Item -LiteralPath $mainHookScripts -Force
     }
 
-    if ($passed -ne 25) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 25, got ' + $passed) }
+    if ($passed -ne 26) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 26, got ' + $passed) }
     Write-Output ('TASK-WORKTREE-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {
