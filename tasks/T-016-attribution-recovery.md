@@ -25,6 +25,10 @@
 - `knowledge/records/agent-orchestration-research-2026-11-16.md`
 - `knowledge/catalog.json`
 
+## Чтение исследовательской записи
+
+Запись `agent-orchestration-research-2026-11-16` занимает 221 697 байт. Полное чтение проверено командой `scripts/kb.ps1 get -Id agent-orchestration-research-2026-11-16 -MaxOutputBytes 524288`. Без повышенного лимита возвращается `KB_OUTPUT_LIMIT`; включение полного текста через `context -Id ... -MaxBytes 262144` возвращает `KB_CONTEXT_LIMIT`.
+
 ## Recovery input manifest
 
 Формат: Canonical Bundle Manifest Format 1; raw SHA-256 файлов, ordinal UTF-8 path order, один LF между записями и без LF после последней строки.

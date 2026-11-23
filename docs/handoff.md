@@ -1,8 +1,18 @@
 # Handoff — Development Folder V2
 
+- Контракт точного чтения записи локальной БЗ и оставшаяся работа с параметрами описаны в [T-060](../tasks/T-060-kb-get-query.md).
 - Текущие ревизии, обсуждения и статусы проверяйте в [списке PR V2](https://github.com/g0ldenc0de2027/Development-folder-V.2/pulls).
 - Состояние проверок сверяйте в [GitHub Actions V2](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions) по точной ревизии.
 - Перед интеграцией применяйте [штатный GitHub workflow](github-workflow.md).
+
+- Исправления по аудиту V2 начаты с жизненного цикла временного каталога gate. Зона, приёмка и оставшиеся части замечания описаны в [T-058](../tasks/T-058-gate-temp-ownership.md).
+
+## Исторический Handoff — восстановление T-016, 2026-11-18
+
+- Owner-approved T-013 disposition completed: seven raw files are in archive Development-Folder-V2_T-013-source-snapshot-2026-11-18_91bb56d5.zip (archive SHA-256 734f27b8027e4a0aaa2f1aeca5868ba242249766fca26e975fcb718c60602d99; manifest SHA-256 91bb56d5de1822cfb64a9fad0270c83d41d5b00c110e6740d2804c9e96c2d4f3).
+- T-013 is clean at its original HEAD 88342060af7c6c18a163d3b6fa6727ab5c17fd7e; backup ref backup/2026-11-18-T013-source-base preserves that commit. Branch and published history were not rewritten.
+- This supersedes the prior no-reset disposition for the one explicitly approved action. Historical provenance remains UNKNOWN; T-016 remains the distinct recovery derivative.
+- The PR #15 hosted CI/review tuple in the historical text predates this status correction. Refresh both against the eventual PR head before merge.
 
 ## Исторический Handoff — T-014
 
@@ -66,9 +76,8 @@
 - T-003: локальная regression suite, полный quality gate и pre-push gate прошли на code-fix commit 5c3eaf0; hosted CI прошёл на его точной паре SHA. Каждая последующая PR-ревизия получает отдельный hosted gate. Независимый review последнего head остаётся открытым.
 - После T-003 продолжить отдельные задачи no-App merge controls, Git identity/push-size controls и P0 scope/worktree guard; прикладную реализацию не начинать до READY в спецификации.
 
-## Исторический Handoff — восстановление T-016, 2026-11-18
+## Просмотрщик проектов
 
-- Owner-approved T-013 disposition completed: seven raw files are in archive Development-Folder-V2_T-013-source-snapshot-2026-11-18_91bb56d5.zip (archive SHA-256 734f27b8027e4a0aaa2f1aeca5868ba242249766fca26e975fcb718c60602d99; manifest SHA-256 91bb56d5de1822cfb64a9fad0270c83d41d5b00c110e6740d2804c9e96c2d4f3).
-- T-013 is clean at its original HEAD 88342060af7c6c18a163d3b6fa6727ab5c17fd7e; backup ref backup/2026-11-18-T013-source-base preserves that commit. Branch and published history were not rewritten.
-- This supersedes the prior no-reset disposition for the one explicitly approved action. Historical provenance remains UNKNOWN; T-016 remains the distinct recovery derivative.
-- The PR #15 hosted CI/review tuple in the historical text predates this status correction. Refresh both against the eventual PR head before merge.
+- T-051 добавляет независимый локальный просмотр карточек в режиме чтения.
+- Запуск и реестр описаны в [руководстве](project-viewer.md).
+- Пользовательский пилот сравнивает скорость поиска с ручным просмотром.

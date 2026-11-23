@@ -154,6 +154,66 @@ try {
         Write-Text (Join-Path $fixture 'knowledge/records/alpha.md') 'Changed'
         $null=Run $arguments 1 'KB_CONTENT_CHANGED'
     }
+    Case 'Selective reads validate records outside the result' {
+        Write-Text (Join-Path $fixture 'knowledge/records/old.md') 'Changed'
+        foreach ($arguments in @(
+            @('search','-Compact','-Id','alpha','-Query','Привет','-Limit','1'),
+            @('get','-Id','alpha')
+        )) {
+            $result=Run-Captured $arguments
+            if ($result.exitCode -ne 1 -or $result.stdoutBytes.Length -ne 0 -or
+                $result.stderr.Trim() -cne 'KB_CONTENT_CHANGED') {
+                throw 'selective read skipped an excluded record'
+            }
+        }
+    }
+    Case 'Full search counts oversized matches beyond the retained limit' {
+        $large='Привет '+('я'*2500)
+        $record=$script:catalog.records[1]
+        Write-Text (Join-Path $fixture $record.path) $large
+        $record.contentSha256=Hash (Join-Path $fixture $record.path)
+        Save-Catalog
+
+        $limited=(Run @('search','-Query','Привет','-Limit','1','-MaxOutputBytes','4096')).result
+        if ($limited.totalMatches -ne 2 -or $limited.returned -ne 1 -or -not $limited.truncated -or
+            $limited.records[0].id -cne 'alpha' -or $limited.records[0].body -cne 'Привет. literal [x]. Record alpha') {
+            throw 'record beyond the limit affected the full search response'
+        }
+        $full=Run-Captured @('search','-Query','Привет','-Limit','2','-MaxOutputBytes','4096')
+        if ($full.exitCode -ne 1 -or $full.stdoutBytes.Length -ne 0 -or $full.stderr.Trim() -cne 'KB_OUTPUT_LIMIT') {
+            throw 'oversized full search emitted partial stdout'
+        }
+    }
+    Case 'Body budget preserves error precedence and validates remaining records' {
+        $large='Привет '+('я'*500)
+        $record=$script:catalog.records[0]
+        Write-Text (Join-Path $fixture $record.path) $large
+        $record.contentSha256=Hash (Join-Path $fixture $record.path)
+        Save-Catalog
+
+        $checks=@(
+            @{arguments=@('context','-Query','Привет','-Limit','1','-MaxBytes','512'); error='KB_CONTEXT_RECORD_LIMIT'},
+            @{arguments=@('context','-Id','alpha','-MaxBytes','512'); error='KB_CONTEXT_LIMIT'},
+            @{arguments=@('context','-Id','missing','-MaxBytes','512'); error='KB_NOT_FOUND'},
+            @{arguments=@('get','-Id','missing','-MaxOutputBytes','512'); error='KB_NOT_FOUND'},
+            @{arguments=@('get','-Id','alpha','-MaxOutputBytes','512'); error='KB_OUTPUT_LIMIT'}
+        )
+        foreach ($check in $checks) {
+            $result=Run-Captured $check.arguments
+            if ($result.exitCode -ne 1 -or $result.stdoutBytes.Length -ne 0 -or $result.stderr.Trim() -cne $check.error) {
+                throw "expected empty stdout and $($check.error)"
+            }
+        }
+
+        Write-Text (Join-Path $fixture 'knowledge/records/old.md') 'Changed'
+        foreach ($check in $checks) {
+            $result=Run-Captured $check.arguments
+            if ($result.exitCode -ne 1 -or $result.stdoutBytes.Length -ne 0 -or
+                $result.stderr.Trim() -cne 'KB_CONTENT_CHANGED') {
+                throw 'validation did not continue after the body budget was exceeded'
+            }
+        }
+    }
     Case 'LKB-011 selected collection ID is checked for every read command' {
         $id=$script:catalog.projectId
         $wrong=[guid]::NewGuid().ToString('D')
@@ -207,7 +267,58 @@ try {
             $null=Run @($command,'-ExpectedCollectionId',$script:catalog.projectId) 1 'KB_COLLECTION_ID_READ_ONLY'
         }
     }
-    Case 'LKB-004 exact ID' { if((Run @('get','-Id','alpha')).result.record.id -cne 'alpha'){throw 'id'} }
+    Case 'LKB-004 exact ID' {
+        if((Run @('get','-Id','alpha')).result.record.id -cne 'alpha'){throw 'id'}
+        $missingRoot=Join-Path $fixture 'missing-collection'
+        foreach($query in @('unmatched text','')){
+            $result=Run-Captured @('GET','-Id','alpha','-Query',$query) -Root $missingRoot
+            if($result.exitCode -ne 1 -or $result.stdoutBytes.Length -ne 0 -or
+                $result.stderr.Trim() -cne 'KB_QUERY_NOT_SUPPORTED_FOR_GET'){
+                throw 'get must reject an explicitly supplied Query before opening the collection'
+            }
+        }
+    }
+    Case 'CLI rejects options not used by the selected command' {
+        $missingRoot=Join-Path $fixture 'missing-collection'
+        $checks=@(
+            @('CHECK','-Id','alpha'),
+            @('check','-Query','text'),
+            @('search','-Query','Привет','-Title',''),
+            @('search','-Query','Привет','-MaxBytes','512'),
+            @('get','-Id','alpha','-Limit','1'),
+            @('context','-MaxOutputBytes','512'),
+            @('capture','-Id','alpha'),
+            @('doctor','-IncludeWithdrawn'),
+            @('doctor','-Limit','100')
+        )
+        foreach ($arguments in $checks) {
+            $result=Run-Captured $arguments -Root $missingRoot
+            if ($result.exitCode -ne 1 -or $result.stdoutBytes.Length -ne 0 -or
+                $result.stderr.Trim() -cne 'KB_OPTION_NOT_SUPPORTED') {
+                throw 'unsupported option must fail before opening the collection'
+            }
+        }
+        $special=Run-Captured @('CONTEXT','-IncludeWithdrawn') -Root $missingRoot
+        if ($special.exitCode -ne 1 -or $special.stdoutBytes.Length -ne 0 -or
+            $special.stderr.Trim() -cne 'KB_CONTEXT_WITHDRAWN') {
+            throw 'context must keep the existing withdrawn-option error'
+        }
+    }
+    Case 'CLI preserves documented option combinations' {
+        $context=(Run @('CONTEXT','-Id','alpha','-Query','Привет','-Limit','1','-MaxBytes','262144')).result
+        if ($context.recordCount -ne 1 -or $context.records[0].id -cne 'alpha') {
+            throw 'context options changed'
+        }
+        $search=(Run @('SEARCH','-Id','old','-Query','Привет','-Limit','1','-MaxOutputBytes','8192','-IncludeWithdrawn','-Compact')).result
+        if ($search.representation -cne 'compact' -or $search.returned -ne 1 -or
+            $search.records[0].status -cne 'withdrawn') {
+            throw 'search options changed'
+        }
+        $get=(Run @('GET','-Id','old','-MaxOutputBytes','8192','-IncludeWithdrawn')).result
+        if ($get.record.id -cne 'old' -or $get.record.status -cne 'withdrawn') {
+            throw 'get options changed'
+        }
+    }
     Case 'LKB-004 missing ID' { $null=Run @('get','-Id','missing') 1 'KB_NOT_FOUND' }
     Case 'LKB-004 withdrawn default refusal' { $null=Run @('get','-Id','old') 1 'KB_NOT_FOUND' }
     Case 'LKB-004 explicit historical read' { if((Run @('get','-Id','old','-IncludeWithdrawn')).result.record.status -ne 'withdrawn'){throw 'historical'} }
@@ -269,14 +380,23 @@ try {
         $result=Run-Captured @('check') $aliasRoot
         if($result.exitCode -ne 1 -or -not $result.stderr.Contains('KB_REPARSE_POINT') -or $result.stdoutBytes.Length -ne 0){throw 'reparse ancestor refusal'}
     }
-    Case 'LKB-003 hard-linked catalog is refused before output' {
-        $outside=Join-Path $scratch ('catalog-outside-'+[guid]::NewGuid().ToString('N')+'.json')
-        $catalogPath=Join-Path $fixture 'knowledge/catalog.json'
-        Copy-Item -LiteralPath $catalogPath -Destination $outside
-        Remove-Item -LiteralPath $catalogPath -Force
-        New-Item -ItemType HardLink -Path $catalogPath -Target $outside | Out-Null
-        $result=Run-Captured @('check')
-        if($result.exitCode -ne 1 -or -not $result.stderr.Contains('KB_HARDLINK') -or $result.stdoutBytes.Length -ne 0){throw 'hard-linked catalog refusal'}
+    Case 'LKB-003 hard-linked metadata and policy files are refused before output' {
+        foreach ($relative in @('knowledge/catalog.json','rules/policy-lock.json','rules/RULES.md')) {
+            $file = Join-Path $fixture $relative
+            $outside = Join-Path $scratch ('metadata-outside-' + [guid]::NewGuid().ToString('N'))
+            Copy-Item -LiteralPath $file -Destination $outside
+            Remove-Item -LiteralPath $file
+            try {
+                New-Item -ItemType HardLink -Path $file -Target $outside | Out-Null
+                $result = Run-Captured @('check')
+                if ($result.exitCode -ne 1 -or $result.stderr.Trim() -cne 'KB_HARDLINK' -or $result.stdoutBytes.Length -ne 0) {
+                    throw "Hard-linked file was not refused: $relative"
+                }
+            } finally {
+                if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file }
+                Copy-Item -LiteralPath $outside -Destination $file
+            }
+        }
     }
     Case 'LKB-003 hard-link alias to external file is refused before output' {
         $outside=Join-Path $scratch ('outside-'+[guid]::NewGuid().ToString('N')+'.md')
@@ -580,7 +700,7 @@ try {
     if(($locales -join ',') -cne 'ru,en,zh-Hans,hi,es,ar,fr,bn,pt-BR,de'){throw 'owner contract: locale set'}
     $script:passed++
     Write-Output 'PASS: LKB-001 owner rule and locale contract'
-    if ($passed -ne 68) { throw ("KB_REGRESSION_COUNT_MISMATCH: expected 68, got " + $passed) }
+    if ($passed -ne 73) { throw ("KB_REGRESSION_COUNT_MISMATCH: expected 73, got " + $passed) }
     Write-Output ('KB-REGRESSIONS: '+$passed+' passed, 0 failed')
     exit 0
 } catch {
