@@ -59,7 +59,7 @@ try {
     & git -C $fixture check-ignore -q -- 'knowledge/.vs/ProjectSettings.json'
     if ($LASTEXITCODE -ne 0) { throw 'VS cache is not ignored' }
     . (Join-Path $fixture 'scripts/ide-cache.ps1')
-    $excluded = @('knowledge/.vs','knowledge/temp','knowledge/.work','knowledge/.manus','knowledge/.worktrees')
+    $excluded = @('knowledge/.vs','knowledge/temp','knowledge/.work','knowledge/.manus','knowledge/.worktrees','knowledge/.git')
     foreach ($relative in $excluded) {
         $dir = Join-Path $fixture $relative
         [IO.Directory]::CreateDirectory($dir) | Out-Null

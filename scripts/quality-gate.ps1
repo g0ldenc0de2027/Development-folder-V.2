@@ -141,6 +141,7 @@ try {
     }
 
     . (Join-Path $repoRoot 'scripts/ide-cache.ps1')
+    Write-Output ("QUALITY-GATE: source traversal excludes directories named " + ($script:ProjectScanExcludedDirectoryNames -join ", "))
     $scriptFiles = @(Get-ProjectPowerShellFiles $repoRoot)
     if ($scriptFiles.Count -eq 0) {
         throw 'PowerShell syntax scan found no repository scripts'

@@ -45,6 +45,8 @@ namespace V2 {
     return [V2.ProjectedDirectory]::IsProjected($Path)
 }
 
+$script:ProjectScanExcludedDirectoryNames = @('.git','.worktrees','.work','.manus','temp','.vs')
+
 # Enumerate source files without descending into workspace caches.
 function Get-ProjectFiles([string]$Root) {
     $tracked = @(& git -C $Root ls-files -- ':(icase,glob)**/.vs/**')
@@ -56,7 +58,7 @@ function Get-ProjectFiles([string]$Root) {
         $dir = $directories.Pop()
         foreach ($item in Get-ChildItem -LiteralPath $dir -Force) {
             if ($item.PSIsContainer) {
-                if ($item.Name -iin @('.git','.worktrees','.work','.manus','temp','.vs')) { continue }
+                if ($item.Name -iin $script:ProjectScanExcludedDirectoryNames) { continue }
                 if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -and
                     -not (Test-ProjectedDirectory $item.FullName)) { continue }
                 $directories.Push($item.FullName)
