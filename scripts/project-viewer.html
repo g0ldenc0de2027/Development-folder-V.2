@@ -48,6 +48,8 @@ const node = (tag, text) => {
 };
 const controls = ['query', 'state', 'blocked', 'decision'];
 const missing = 'Не указано';
+const taskCount = new Intl.PluralRules('ru');
+const taskForms = {one: 'задача', few: 'задачи', many: 'задач', other: 'задач'};
 let projects = [];
 let selected;
 let viewGeneration = 0;
@@ -79,7 +81,7 @@ function render() {
     const button = node('button', item.name);
     button.addEventListener('click', () => showProject(item.id));
     const unavailable = item.sources.some(source => source.error);
-    entry.append(button, ' · ' + item.tasks.length + ' задач' + (unavailable ? ' · Есть ошибки чтения' : ''));
+    entry.append(button, ' · ' + item.tasks.length + ' ' + taskForms[taskCount.select(item.tasks.length)] + (unavailable ? ' · Есть ошибки чтения' : ''));
     return entry;
   }));
   if (!project) return;
@@ -107,7 +109,7 @@ function renderRows() {
     (!state && !blocked && !decision && idMatch(task)) ||
     task.versions.some(version => (idMatch(task) || version.title.toLocaleLowerCase('ru').includes(query)) &&
       (!state || version.status === state) && (!blocked || version.blocker) && (!decision || version.needsDecision)));
-  byId('count').textContent = matching.length + ' из ' + project.tasks.length + ' задач';
+  byId('count').textContent = 'Показано: ' + matching.length + ' из ' + project.tasks.length;
   byId('rows').replaceChildren(...matching.map(task => {
     const row = node('tr');
     const cell = node('td');
