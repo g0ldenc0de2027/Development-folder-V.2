@@ -336,23 +336,27 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $taskWorktree '.git') -PathType Leaf)) {
         throw 'Synthetic task fixture must use a linked-worktree .git file marker.'
     }
-    $bracketTempRoot = Join-Path $scratch 'parent[1]'
+    $bracketTempRoot = Join-Path ([IO.Path]::GetTempPath()) ('ptr[1]-' + [guid]::NewGuid().ToString('N'))
     [void][IO.Directory]::CreateDirectory($bracketTempRoot)
     $sentinel = Join-Path $bracketTempRoot 'keep.txt'
-    [IO.File]::WriteAllText($sentinel, 'keep')
     $savedGitDir = [Environment]::GetEnvironmentVariable('GIT_DIR', 'Process')
     try {
+        [IO.File]::WriteAllText($sentinel, 'keep')
         [Environment]::SetEnvironmentVariable('GIT_DIR', (Join-Path $scratch 'invalid-git-dir'), 'Process')
         $gateOutput = @(& $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'scripts/quality-gate.ps1') -TemporaryRoot $bracketTempRoot 2>&1)
         $gateExit = $LASTEXITCODE
+        $gateText = $gateOutput -join [Environment]::NewLine
+        if ($gateExit -ne 1 -or $gateText -notmatch 'QUALITY-GATE=FAIL: GIT_IDENTITY_' -or
+            $gateText -match 'QUALITY-GATE=FAIL: cleanup' -or [IO.File]::ReadAllText($sentinel) -cne 'keep' -or
+            @(Get-ChildItem -LiteralPath $bracketTempRoot -Force).Count -ne 1) {
+            throw "Quality gate must use a literal temporary path and clean only its own directory. Exit: $gateExit. Output: $gateText"
+        }
     } finally {
         [Environment]::SetEnvironmentVariable('GIT_DIR', $savedGitDir, 'Process')
-    }
-    $gateText = $gateOutput -join [Environment]::NewLine
-    if ($gateExit -ne 1 -or $gateText -notmatch 'QUALITY-GATE=FAIL: GIT_IDENTITY_' -or
-        $gateText -match 'QUALITY-GATE=FAIL: cleanup' -or [IO.File]::ReadAllText($sentinel) -cne 'keep' -or
-        @(Get-ChildItem -LiteralPath $bracketTempRoot -Force).Count -ne 1) {
-        throw 'Quality gate must use a literal temporary path and clean only its own directory.'
+        [IO.File]::Delete($sentinel)
+        if (@(Get-ChildItem -LiteralPath $bracketTempRoot -Force).Count -eq 0) {
+            [IO.Directory]::Delete($bracketTempRoot)
+        }
     }
     $passed++
     Write-Output 'PASS: quality gate uses a literal temporary path and cleans its own directory'
