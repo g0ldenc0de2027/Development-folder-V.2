@@ -44,9 +44,10 @@ function Invoke-GitText {
     }
 
     $process = [Diagnostics.Process]::Start($start)
+    $readCancellation = [Threading.CancellationTokenSource]::new()
     try {
-        $stdout = $process.StandardOutput.ReadToEndAsync()
-        $stderr = $process.StandardError.ReadToEndAsync()
+        $stdout = $process.StandardOutput.ReadToEndAsync($readCancellation.Token)
+        $stderr = $process.StandardError.ReadToEndAsync($readCancellation.Token)
         if (-not $process.WaitForExit(30000)) {
             if (-not $process.HasExited) { $process.Kill($true) }
             throw "WORKTREE_AUDIT_GIT_TIMEOUT:$Operation"
@@ -67,6 +68,8 @@ function Invoke-GitText {
             $reader.Dispose()
         }
     } finally {
+        $readCancellation.Cancel()
+        $readCancellation.Dispose()
         $process.Dispose()
     }
 }
