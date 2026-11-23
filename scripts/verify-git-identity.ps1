@@ -4,7 +4,8 @@ param(
     [string]$RemoteName,
     [string]$RemoteUrl,
     [string[]]$CommitRange = @(),
-    [switch]$HookContext
+    [switch]$HookContext,
+    [switch]$PassThruPublishedMainSha
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -15,8 +16,8 @@ try {
         Remove-Item -LiteralPath ('Env:' + [string]$name) -ErrorAction SilentlyContinue
     }
     $null = Assert-GitWorktreeIdentity -RepositoryRoot $RepositoryRoot
+    $publishedMain = ''
     if ($CommitRange.Count -gt 0) {
-        $publishedMain = ''
         if ($HookContext -and $RemoteName) {
             $config = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'config/github/repository.json') -Raw | ConvertFrom-Json
             $slug = [string]$config.repository
@@ -32,7 +33,12 @@ try {
         }
         $null = Assert-GitCommitIdentity -RepositoryRoot $RepositoryRoot -CommitRange $CommitRange -RemoteName $RemoteName -PublishedMainSha $publishedMain
     }
-    Write-Output 'PASS: worktree-scoped Git identity and requested commit metadata match repository policy'
+    if ($PassThruPublishedMainSha) {
+        if (-not $publishedMain) { throw 'GIT_IDENTITY_PUBLISHED_MAIN_UNAVAILABLE' }
+        Write-Output $publishedMain
+    } else {
+        Write-Output 'PASS: worktree-scoped Git identity and requested commit metadata match repository policy'
+    }
     exit 0
 } catch {
     $message = [string]$_.Exception.Message
