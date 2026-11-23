@@ -154,6 +154,7 @@ case "$PWSSHIM_MODE" in
         esac
         ;;
 esac
+case "$*" in *-PassThruPublishedMainSha*) printf '%s\r\n' "$PWSSHIM_PUBLISHED_MAIN" ;; esac
 exit 0
 '@
     & $sh -c 'chmod +x "$1"' sh $shim
@@ -472,6 +473,7 @@ try {
         Invoke-GitFixture -Directory $hookRepo -Arguments @('branch','-M','main') | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('remote','add','origin',$hookRemote) | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('push','--quiet','origin','main') | Out-Null
+        $publishedMain = Invoke-GitFixture -Directory $hookRepo -Arguments @('rev-parse','main')
         Invoke-GitFixture -Directory $hookRepo -Arguments @('switch','--quiet','-c','task/T-901-hook-a','main') | Out-Null
         WriteText (Join-Path $hookRepo 'hook-a.txt') 'first ref'
         Invoke-GitFixture -Directory $hookRepo -Arguments @('add','hook-a.txt') | Out-Null
@@ -491,6 +493,7 @@ try {
             PWSSHIM_LOG=$hookShim.LogPath
             PWSSHIM_STATE=$hookShim.StatePath
             PWSSHIM_MODE='pass'
+            PWSSHIM_PUBLISHED_MAIN=$publishedMain
             PWSSHIM_DIR=$hookShim.DirectoryPosix
             REAL_PRE_PUSH_HOOK=$hookShim.PrePushHookPosix
             REAL_PRE_COMMIT_HOOK=$hookShim.PreCommitHookPosix
@@ -508,12 +511,19 @@ try {
         if ($calls.Count -ne 5 -or
             [string]::Join(' ',$calls[0]) -notlike '*verify-git-hook-context.ps1*' -or
             [string]::Join(' ',$calls[1]) -notlike '*task-worktree-audit.ps1*-Mode Publish*' -or
-            [string]::Join(' ',$calls[2]) -notlike '*verify-task-scope.ps1*-TaskId T-902*') {
+            [string]::Join(' ',$calls[2]) -notlike '*verify-git-identity.ps1*-PassThruPublishedMainSha*' -or
+            [string]::Join(' ',$calls[3]) -notlike '*verify-task-scope.ps1*-TaskId T-902*') {
             throw 'PRE_PUSH_TASK_CHECK_SEQUENCE_INVALID'
         }
-        $verifyRange = Get-PwshParameterValue -Arguments $calls[3] -Name '-CommitRange'
+        $verifyRange = Get-PwshParameterValue -Arguments $calls[2] -Name '-CommitRange'
+        $scopeBase = Get-PwshParameterValue -Arguments $calls[3] -Name '-BaseRef'
+        $scopeHead = Get-PwshParameterValue -Arguments $calls[3] -Name '-ExpectedHeadSha'
+        $gateBase = Get-PwshParameterValue -Arguments $calls[4] -Name '-BaseRef'
         $gateRange = Get-PwshParameterValue -Arguments $calls[4] -Name '-PushRange'
-        if ($verifyRange -cne $hookShaB -or $gateRange -cne $verifyRange) { throw 'TASK_PUSH_RANGE_MISMATCH' }
+        if ($verifyRange -cne $hookShaB -or $scopeHead -cne $hookShaB -or $gateRange -cne $verifyRange -or
+            $scopeBase -cne $publishedMain -or $gateBase -cne $publishedMain) {
+            throw 'TASK_PUSH_REVISIONS_MISMATCH'
+        }
     }
     Case 'GIT-ID-032 pre-push rejects detached HEAD, invalid slug, deletion and non-fast-forward' {
         $ref = 'refs/heads/task/T-902-hook-b'
