@@ -1,8 +1,11 @@
 # Handoff — Development Folder V2
 
+- Контракт точного чтения записи локальной БЗ и оставшаяся работа с параметрами описаны в [T-060](../tasks/T-060-kb-get-query.md).
 - Текущие ревизии, обсуждения и статусы проверяйте в [списке PR V2](https://github.com/g0ldenc0de2027/Development-folder-V.2/pulls).
 - Состояние проверок сверяйте в [GitHub Actions V2](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions) по точной ревизии.
 - Перед интеграцией применяйте [штатный GitHub workflow](github-workflow.md).
+
+- Исправления по аудиту V2 начаты с жизненного цикла временного каталога gate. Зона, приёмка и оставшиеся части замечания описаны в [T-058](../tasks/T-058-gate-temp-ownership.md).
 
 ## Исторический Handoff — T-014
 

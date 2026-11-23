@@ -55,7 +55,7 @@ Read-only сверка live GitHub settings с versioned config (repository, rul
 
     pwsh -NoProfile -File scripts/quality-gate.ps1 -BaseRef origin/main
 
-Версии аудит-инструментов и SHA-256 находятся в config/security/tools.json. Gate проверяет hash перед запуском и удаляет только свой временный каталог. Перед push hook передает локальные и удаленные SHA обновляемых refs; Gitleaks проверяет их диапазоны и сканирует доступную локальную историю.
+Версии аудит-инструментов и SHA-256 находятся в config/security/tools.json. Gate проверяет hash перед запуском. Для `-TemporaryRoot` нужен существующий каталог вне Git-репозиториев, без reparse points на пути. Gate создаёт отдельный каталог запуска и подтверждает его удаление перед итоговым PASS. Перед push hook передает локальные и удаленные SHA обновляемых refs; Gitleaks проверяет их диапазоны и сканирует доступную локальную историю.
 
 ## Слияние проверенного PR и аудит worktree
 
