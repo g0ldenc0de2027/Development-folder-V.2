@@ -2,7 +2,7 @@
 
 Требования продукта — [ТЗ](../spec/ТЗ.md).
 Действующий статус и допуски к реализации — [состояние спецификации](../spec/СОСТОЯНИЕ.md).
-Ниже сохранены исторические допуски и справочные ссылки на отдельные черновики.
+Срезы T-004 и T-014 описаны ниже с исходными датами допуска. Актуальные допуски, включая T-031, T-032 и T-051, перечислены в связанном реестре. Ниже также приведены справочные ссылки на черновики.
 Open decisions: supported operating systems; stack-profile inventory; portfolio knowledge workflow and agent identity/ACL; approval of the proposed project progress/ETA draft; release and backup policy.
 
 ## Допуск T-004 от 2026-11-15

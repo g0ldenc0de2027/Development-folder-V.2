@@ -9,7 +9,18 @@ main — защищенная интеграционная ветка. Изме�
 
 До появления `main` PR создать некуда, поэтому для чистого bootstrap допускается ровно один initial root commit на `main` — это одноразовое исключение владельца.
 
-Перед push главный агент обязан подтвердить: fetch и push URL `origin` точно совпадают с `config/github/repository.json`; `git ls-remote origin` завершается успешно и не выводит refs; локальный root commit содержит только проверенный bootstrap; полный quality gate пройден. Push запускает pre-push gate с конкретным SHA.
+Владелец принимает содержимое единственного root commit. В чистом рабочем дереве на `main` настройте hooks через `scripts/github/configure-local.ps1`. Привяжите push к полному SHA проверенного коммита в этой команде PowerShell.
+
+```powershell
+$env:DF_APPROVED_BOOTSTRAP_SHA = '<проверенный полный SHA>'
+try {
+    git push origin refs/heads/main:refs/heads/main
+} finally {
+    Remove-Item Env:DF_APPROVED_BOOTSTRAP_SHA -ErrorAction SilentlyContinue
+}
+```
+
+Hook принимает только создание `refs/heads/main` из одноимённой локальной ветки с этим SHA. Он сверяет оба URL `origin` с `config/github/repository.json`, проверяет отсутствие родителя у коммита и убеждается, что `git ls-remote origin` проходит без единой строки. Локальный аудит рабочих деревьев, проверка авторства коммита и полный quality gate обязательны. Доступность пустого remote и неизменность локального состояния сверяются ещё раз после quality gate. Фактическое создание ref контролирует GitHub. Состояние остальных удалённых refs подтверждается на момент последнего чтения, поэтому bootstrap выполняйте одним процессом.
 
 Если активный ruleset отклоняет initial root push из-за требования PR, не отключать и не ослаблять ruleset, не добавлять bypass actor и не повторять push другими способами. Зафиксировать отказ и остановиться для решения владельца. После создания `main` любой следующий push в неё разрешён только через PR.
 
@@ -18,7 +29,7 @@ main — защищенная интеграционная ветка. Изме�
 2. Обновите origin/main и создайте отдельную ветку `task/T-NNN` либо `task/T-NNN-<lowercase-hyphenated-slug>` от подтвержденного origin/main. Для параллельных задач используйте отдельные git worktrees.
 3. До изменений зафиксируйте scope файлов и критерии задачи в карточке. Не расширяйте scope молча.
 4. Меняйте только свою зону. До commit просмотрите весь staged и unstaged diff, статус, секреты и тесты.
-5. Создайте commit в task branch. Локальный pre-push разрешает только текущую ветку `task/T-NNN` или `task/T-NNN-<lowercase-hyphenated-slug>` в одноимённую remote branch; scope guard связывает её с карточкой по ID. Tags, deletion и non-fast-forward блокируются. Hook передаёт входящие диапазоны одним аргументом, проверяет scope по карточке задачи и требует чистое дерево. Проверка scope предотвращает случайный смешанный diff; владелец подтверждает сам scope при review. Рабочая процедура требует отправлять только в проверенный `origin`.
+5. Создайте commit в task branch. Локальный pre-push разрешает только текущую ветку `task/T-NNN` или `task/T-NNN-<lowercase-hyphenated-slug>` в одноимённую remote branch; scope guard связывает её с карточкой по ID. Tags, deletion и non-fast-forward блокируются. Hook проверяет фактический SHA из Git относительно подтверждённого SHA основной ветки на GitHub, читает карточку из отправляемого коммита и требует чистое дерево. Если локально отсутствует объект подтверждённой базы, обновите данные через fetch и повторите проверку. Проверка scope предотвращает случайный смешанный diff; владелец подтверждает сам scope при review. Рабочая процедура требует отправлять только в проверенный `origin`.
 6. Откройте PR в main. Зафиксируйте head SHA и base SHA, отдельно — merge-result SHA, на котором прошел CI. Независимое review привязывается к текущему head SHA. Изменение head или base требует нового CI/review.
 7. Слияние выполняется только если quality-gate обязателен в live ruleset и зелен на текущем merge-result для неизменившихся head/base SHA, unresolved threads отсутствуют, scope принят и нужное review завершено.
 8. После merge удалите локальный worktree штатной командой Git только когда он чист и больше не нужен; сохраните короткий handoff.
