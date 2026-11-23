@@ -3,6 +3,9 @@
   "canApprovePullRequestReviews": false,
   "shaPinningRequired": true,
   "allowedActions": "selected",
+  "enabled": true,
+  "githubOwnedAllowed": false,
+  "verifiedCreatorsAllowed": false,
   "allowlist": ["actions/checkout@*"],
   "workflowPolicy": {
     "pathFilters": "forbidden",
