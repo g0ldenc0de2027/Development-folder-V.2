@@ -389,7 +389,14 @@ try {
         Invoke-GitFixture -Directory $worktree -Arguments @('add','good.txt') | Out-Null
         Invoke-GitFixture -Directory $worktree -Arguments @('commit','--quiet','-m','test: valid identity') | Out-Null
         $script:good = Invoke-GitFixture -Directory $worktree -Arguments @('rev-parse','HEAD')
-        $null = Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @($base+'..'+$script:good)
+        $range = $base + '..' + $script:good
+        $rangePath = Join-Path $worktree $range
+        WriteText $rangePath 'Synthetic file named like a revision range.'
+        try {
+            $null = Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @($range)
+        } finally {
+            Remove-Item -LiteralPath $rangePath -ErrorAction Stop
+        }
         $null = Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @($script:good) -RemoteName 'origin' -PublishedMainSha $base
         $null = Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @(($base+'..'+$script:good)+[Environment]::NewLine+($base+'..'+$script:good))
     }
