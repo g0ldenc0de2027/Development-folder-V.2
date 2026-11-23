@@ -3,7 +3,9 @@
 **Статус:** merged
 **Интеграция:** [PR #8](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/8), squash `af9210e7aa73b9ec3aa63160686f88af6990096e` в `main`.
 
-Записи ниже описывают исторические проверки и отдельные остаточные замечания аудита.
+Итоговые проверки PR #8: [CI перед слиянием](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44500691129) и [CI на squash-коммите](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44502136129).
+
+Записи ниже описывают исторические проверки и отдельные остаточные замечания аудита. Упоминания Draft, OPEN и PENDING относятся к соответствующим снимкам до слияния.
 
 ### Итог по замечаниям Antigravity P2-01–P2-03
 
@@ -117,7 +119,7 @@
 - Кандидатный код и regression source прошли локальный полный gate; pre-push повторил gate на commit и push range.
 - PR head `e8653345c5a62382be02bf8957e459a4def28e6a`; base `f577dc70e58d75ab5fd61d0c2e712c27b590713a`.
 - Hosted run [#44402452200](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44402452200): SUCCESS, `pull_request`; tested merge-result `66c80a08d0f4f8569efd0c6e944a9b0dc8ba3cc0` имеет ровно родителей `[base, head]`.
-- В run: KB 44/44, task-scope 7/7, quality gate PASS. Live PR #8 остаётся OPEN/Draft; native reviews отсутствуют. Независимый review `e8653345…` ещё требуется.
+- В run: KB 44/44, task-scope 7/7, quality gate PASS. На этом снимке PR #8 был OPEN/Draft; native reviews отсутствуют. Независимый review `e8653345…` ещё требуется.
 
 ## Связь с предыдущим аудитом Antigravity (снимок на 2026-11-19)
 
@@ -143,7 +145,7 @@
 
 - Read-only task-worktree-audit.ps1 -Mode Audit из T-015 завершился WORKTREE-AUDIT=BLOCKED: T-008 имеет 11 изменённых путей, T-015 — 9; остальные 15 зарегистрированных worktree, включая main, CLEAN.
 - Для T-015 строгая проверка commit/publish блокирует грязный соседний worktree. Безопасная последовательность: заново проверить и завершить T-008, добиться его чистого состояния, затем повторить полный audit и продолжить T-015.
-## Передача следующему агенту
+## Историческая передача до слияния
 
 Начинать с этой карточки и свежего состояния `origin/main`; не считать статус ветки доказательством merge. Перед работой прочитать `AGENTS.md`, `README.md`, `docs/handoff.md`, `rules/RULES.md`, `knowledge/README.md` и применимые модули. Проверить branch, HEAD, remotes, worktree и `git status`. Реализация находится в отдельном worktree `.worktrees/T-008`, branch `task/T-008`.
 
@@ -151,7 +153,7 @@
 
 Открытые PR при старте T-008: #5/T-005 (черновик требований прогресса), #6/T-006 (IDE cache), #7/T-007 (closeout T-004). Их worktrees — отдельные write-set; не изменять и не удалять их. При изменении base обновить ветку по утверждённому workflow и заново записать SHA evidence.
 
-## Проверки
+## Исторические проверки до слияния
 
 Последний проверенный кодовый head перед ledger-only обновлением: 337de0d48f8edfeb521167270306516ac3cdb476; base f577dc70e58d75ab5fd61d0c2e712c27b590713a:
 - Task-scope pre-push: PASS, 21 changed paths / 21 allowed paths; branch task/T-008, worktree clean.
@@ -159,7 +161,7 @@
 - Pre-push gate перед публикацией: PASS на commit 337de0d; проверил scope, полный quality gate и incoming range.
 - Hosted quality-gate: run [#43753125152](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/43753125152) SUCCESS (pull_request); checkout/test merge-result 184666c6328cd68da399746804217cf30b91bb0c, родители — точные base/head выше.
 - В hosted log подтверждено: bootstrap PowerShell 7.6.9, официальный архив PowerShell 7.6.10 скачан и SHA-256 проверен; CI runtime и quality gate работали под 7.6.10.
-- Live PR #8: OPEN, Draft; GitHub-native reviews/comments отсутствуют на текущем head. Независимое review текущего head PENDING; merge не разрешён до его получения и принятия.
+- На этом снимке PR #8 был OPEN/Draft; GitHub-native reviews/comments отсутствуют на текущем head. Независимое review текущего head PENDING; merge не разрешён до его получения и принятия.
 - Stack build/dependency audit: NOT COVERED; эталон не содержит выбранного прикладного стека.
 
 Результаты до 337de0d и hosted run #43753125152 — исторические и не доказывают проверки последующих ревизий.
@@ -171,13 +173,13 @@
 - `git diff --check`, PowerShell AST-проверка и сверка SHA-256 lesson с `knowledge/catalog.json` прошли. Source HEAD, refs, index и status остались неизменны после fixture suites; внешний временный каталог очищен.
 - Это только локальная проверка кандидатной рабочей копии. Для нового коммита hosted CI и независимое review ещё не получены; исторический run выше их не заменяет.
 
-## Итоговые SHA и приёмка
+## Историческая контрольная точка CI 43753125152
 
 - Base SHA PR #8: f577dc70e58d75ab5fd61d0c2e712c27b590713a.
 - Последний проверенный кодовый head перед обновлением этой карточки: 337de0d48f8edfeb521167270306516ac3cdb476.
 - Hosted CI merge-result: 184666c6328cd68da399746804217cf30b91bb0c; parents совпадают с base и head.
-- Hosted run: 43753125152, SUCCESS; прямой URL указан в разделе «Проверки».
-- Карточка обновлена после указанного code head и сама продвигает PR head; live PR #8 — источник текущего статуса CI/review. PR остаётся OPEN/Draft; independent review и merge SHA: PENDING.
+- Hosted run: 43753125152, SUCCESS; прямой URL указан в разделе «Исторические проверки до слияния».
+- Карточка обновлена после указанного code head и сама продвигает PR head; live PR #8 — источник текущего статуса CI/review. На момент снимка PR был OPEN/Draft, независимое ревью и merge SHA ожидались.
 ## Уточнение причины повторного падения quality gate (2026-11-19)
 
 Повторный полный gate воспроизвёл fatal: GIT_DIR too big. Длина проверяемого Windows пути составляла 196 символов .NET и 221 UTF-8 byte; Git upstream сравнивает strlen(GIT_DIR) с PATH_MAX - 40 в setup.c. Поэтому отдельные короткие запуски проходили, а полный gate с длинным внешним TempRoot падал.
