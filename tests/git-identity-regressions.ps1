@@ -458,9 +458,13 @@ try {
         }
     }
     Case 'GIT-ID-015 pre-push rejects multiple refs and passes the single task range' {
-        $script:hookRemote = Join-Path $scratch 'hook-remote.git'
+        # Учитываем путь временных объектов, который receive-pack добавляет внутри bare.
+        $remoteName = 'hook-remote.git'
+        $padding = [Math]::Max(1, 186 - $scratch.Length - $remoteName.Length - 2)
+        $script:hookRemote = Join-Path (Join-Path $scratch ('r' * $padding)) $remoteName
         $script:hookRepo = Join-Path $scratch 'hook-repo'
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--bare','--quiet',$hookRemote) | Out-Null
+        Invoke-GitFixture -Directory $hookRemote -Arguments @('config','--local','core.longpaths','true') | Out-Null
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--quiet',$hookRepo) | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('config','user.name','Hook Fixture') | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('config','user.email','hook@example.invalid') | Out-Null
