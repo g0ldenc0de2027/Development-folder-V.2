@@ -8,10 +8,11 @@
       "title": "ADR: локальная работа и переносимость",
       "status": "draft",
       "path": "knowledge/records/local-first.md",
-      "contentSha256": "04a71ebf2e9aa194b738c5d49ca8416c44dd4effbd172dced93722376ec75fb7",
+      "contentSha256": "dc653db9e19c40428c389154201def120ce1b95bd506e1a3cca4b0096cd2c8f1",
       "sources": [
         "owner:2026-11-15",
-        "author:Codex:gpt-6.1-sol"
+        "author:Codex:gpt-6.1-sol",
+        "owner:2026-11-16"
       ],
       "review": null
     },
@@ -125,6 +126,207 @@
       "sources": [
         "owner:2026-11-18",
         "author:Codex:GPT-6"
+      ],
+      "review": null
+    },
+    {
+      "id": "agent-workflow-research",
+      "kind": "research",
+      "title": "Исследование: второй мозг и мультиагентный контур — основы и навигация",
+      "status": "draft",
+      "path": "knowledge/records/agent-workflow-research.md",
+      "contentSha256": "fa8a9d70e2740c13615ce3e3e9f4cc532fe177203b2bbd55bab95f7e82e81ac0",
+      "sources": [
+        "task:T-009",
+        "owner:2026-11-15",
+        "author:OpenAI Codex GPT-6",
+        "bundle:initial-agent-workflow-a@2026-11-16;github:PurpleSchool/purpleflow@8a27a33d62d3b90d97917a6d4b88e2b89075f3af;github:gastownhall/beads@8cdfa796a8f571266f2687f8b80365cbe26a943d;github:langchain-ai/docs@8740a06595c90320c2377065af572425f0aee4d4;github:temporalio/documentation@882a9dececd9ddcf7d3e18d4934b191c7e82a161;github:microsoft/conductor@c161d69bb1461f4037addea1be838e40e4a5bbef;github:OpenHands/software-agent-sdk@5e49ddac5765f5dee428e3c9055028e829ccacfd;github:mem0ai/mem0@f1791daa86d469249c9b002f62644d58a1eb96a0",
+        "bundle:initial-agent-workflow-b@2026-11-16;github:microsoft/agent-framework@e2f52bc5a0c4b5e26901f63102fe509e51b48a92;github:google/lightflow@2940cc4b4ad702d20b16c1a76a5716b223a9bf98;github:osteele/agent-loom@c19bc63f2da3e7c563118949893ec98367c9465f;github:a2aproject/A2A@4d7cda4b1754ed410e41bf3be7ad9ebc62afe3d3;official:OpenAI Codex app-server/preview docs; accessed 2026-11-15;official:SQLite network filesystem and WAL docs; accessed 2026-11-16",
+        "github:Dicklesworthstone/mcp_agent_mail_rust/LICENSE@2fee578fc8ce92b06c88eb5dc3a4340032a5835b;IP_REVIEW:OpenAI-Anthropic-rider",
+        "github:okf-memory/okf-agent-memory@4cbbf831224ec76bc450522faac9249905fdc51a",
+        "github:openwop/openwop@fe3f892a08355ab89f91090052d535b05ee9d107",
+        "github:awslabs/cli-agent-orchestrator@4aa07ddf5fe5a5a183283910abc3c70c078f1152",
+        "github:letta-ai/letta-code@eadef1c6c3594d1bf81517efd4b68fce54644ad4",
+        "github:getzep/graphiti@869c1b279e01a2767a464581e1cb657ce0e39271",
+        "github:open-webui/open-webui@b0e6098e940942281d9c83f3529ea117287a3a22",
+        "github:Mintplex-Labs/anything-llm@4d09fa5f730698d39f1d783e47316744b260a700",
+        "advisory:GHSA-3f4c-xj8r-h4cr@2026-09-21",
+        "bundle:portable-agent-memory@2026-11-16;github:VictorTaelin/OptMem@1fb164cf39028047781f72ac3bb1e5a691c1dcb0;github:mnemoverse/mcp-memory-server@a465206bfd0562245c1db0bee96215e620bcf912;github:TencentCloud/TencentDB-Agent-Memory@42d4cde50c5a83182fced8c584f9ddb32a620615;github:rohitg00/agentmemory@cf9a7381917ea4db7bd574f85c397354a98f1e5f;github:jayzeng/agentmemory@a6c256bf3eb0ef63c6bab78f528136a882d45f10;github:JiaXtian/MemoryLedger@efac213747e5da27e70d77d08b7a31053900b6fe;github:agent-memory-lab/agent-memory@2e9abd7a6dcf87e72f072058cf376cbb1afcc675;github:ArkaAiAdmin/Agentic-Memory@3bc57e41318c3937cd8e101d6b21ac6888bde29e;github:arhuman/mnemos@6d52edc589336ff375221815a4915bfccd52c7a8",
+        "bundle:offline-sync@2026-11-16;github:syncthing/docs@f02059067d50cc30e29fc83f1c0e3636da29ed3b;github:automerge/automerge@09b19d5080a86548c72721a82747bebe272c6c31;github:automerge/automerge-repo-keyhive@0f5ae05732713d54af2124c66d4020ca16aebec8;github:apache/couchdb@5a15ed69b49c8dab30a4276ebd633dba77b9490c;github:neondatabase/electric@3f9809fb0bd894cb74470d434749673492ad7acf;github:powersync-ja/powersync-js@770a4f652361ec59a6a155bd002b67eed07c4728;github:powersync-ja/powersync-docs@8741345c70af31f40c4ed587728ef15998713647;github:pubkey/rxdb@177d00f160b00275ed77ab5b4a54c3e0e22288c2;github:apache/pouchdb@0ec5a68736e306814f491081eaf31692211af007;github:rocicorp/zero-docs@b8e0d5c15b4f5a9e571a36633af672cb2b313346;github:isaacrowntree/durable-sync@f1f69ad0bc6e9af91df8075f18825ca71b81ad83",
+        "bundle:agent-lore-and-memory@2026-11-16;github:osteele/agent-lore@ccc27ea1ca9b80c0e14679094df91df3f5da9945",
+        "bundle:agent-workflow-coordination-and-admission@2026-11-16;github:vouchdev/vouch@0530942a91bc53858038a53903e6963f5efe758e;github:vartiainen1/agent-memory@db1d6c75267e82ac134a7dcad541d07dd1b044e8;github:rka-project/rka-core@6aba3a35822352b6435663d772c1d8917a17aa71;github:np6126/mcp-llm-wiki@0c43df70841e3aa40a5e2740f4608f30bda3a9fb;github:DmarshalTU/coord@44fe390fac64ed4828d479896d7079da272c0152;github:ujwalpandey1/agent-handoff-kit@6224191d0f01bf3967bd4d8a3638a04c05cf3b65;github:Odrin/rhizome-mcp@c499716dc9f20a3e18afb255531ed55302e3c055;github:difflabai/agent-babel@29be20ab2fb6c2427c18f2e6203e8bf2e12775b4;github:LevDomasnih/coordinaut@2820e833970c7171e2d5279cd84edfefe1f73b91;github:skarL007/task-dashboard@3387945610698d37f10da8ba8cf21900731057a0;github:sblattj/agentic-coding-harness@3140f5ab3fe93bdaca4d08284a2330dc6a6326fb;github:pbroom/agent-comms@1777b01f268f487c0594682dd27d93cb5b94c23a;github:harun-yardimci/agentflow@1da83c3bff21b397b50eef1860cd8bb010afa70b",
+        "bundle:local-agent-control-planes@2026-11-16;github:OktoLabsAI/okto-nexus@8d77b50c00b417c86818d027aed7497fababac34;github:p-wegner/agentic-kanban@51870b54bf052ddc9e984bc83d7cdb89cf5db282;github:kdlbs/kandev@4f6774dce884e96035cac48c3ecba8e72299a46f;github:MustaphaSteph/agent-bus@55896bbc5f75d1826737d3376a99a36bf38589f2;github:tt-a1i/hive@3a4344709ff29f4201722123c3ec6e74e878d812;github:mco-org/mco@7ce642193a127f3fac9c68fb10c5d0198d4e837e;github:v2matosevic/agent-coord@d8e32cbe841b5a7a138cc33aba86124d73ceba2c;github:JochenYang/agent-comm-hub@9f9a716977509d32c1d9652fab57452202185ab2;github:kevinArgueta96/open-agent-bridge@c117ae93a8d3a86633fb2fd6d8f3365d44463ac8;github:Co-Messi/agent-peers-mcp@dc81db4dbe9b3ddb97d3ba64fd24d5b743ef868b;github:joaquinbejar/ai-crew-sync@096611947e936565992335f38cd14cfe009b90fe;github:HakAl/agent-comms@b002a653aa66af4eec145693961baf41dd48fa63;github:shekarsiri/moo-tasks@55d5ab1e080e7f0af511b8cb908c20721460768a",
+        "github:arko-sanyal/loci-coordination-bus@a4870aa798f78722fdb508f10bf98a15ec89eb9e",
+        "github:Lyellr88/marm-memory@a8534dd2a3692947ba3089f810ff335f3f765f53",
+        "github:Augani/agent-orchestrator@8d9b897c49500e8e1b54ec8028352544db95618d",
+        "github:Odd-C/memk@04ca4189005de048e161457e241ecbef342ac48a",
+        "bundle:second-brain-coordination-recovery@2026-11-16;github:aliihsaad/the-vault@6ec2485b83bb2062bc052b780b01701a4c711b8c;github:a2578348864a-sys/Agent-Memory-OS@06ee0e599b4629ee9fc33b2325cea5e0153c1556;github:praxia-dev/praxia@689925604a95ba959962cf65ad15a86166ded6ec;github:Vexillon-ai/MIRA@f5b2db1f1f9453429cea45b045bec857716bfcc9;github:kalinbogatzevski/captain-memo@f04261f697a378fa4df5bc515fe811ccbb488cd7",
+        "bundle:openhands-execution-boundary@2026-11-16;github:OpenHands/software-agent-sdk@5e49ddac5765f5dee428e3c9055028e829ccacfd;locator:openhands-workspace/openhands/workspace/docker/workspace.py"
+      ],
+      "review": null
+    },
+    {
+      "id": "progress-and-eta-research",
+      "kind": "research",
+      "title": "Исследование: проверяемый прогресс и прогноз завершения проекта",
+      "status": "draft",
+      "path": "knowledge/records/progress-and-eta-research.md",
+      "contentSha256": "47fe6bae3a46ba1d6c01cd39edc26d2b434bbd5280a2906fd1b5dae6495d4f8a",
+      "sources": [
+        "task:T-009",
+        "author:OpenAI Codex GPT-6",
+        "derived:agent-workflow-research@v1.19.0#section-25",
+        "bundle:progress-and-eta@2026-11-16;github:kiloloop/agent-estimate@885797978ba3be3295c1bd024fa1c0a17794cae9/tree=16afb9cdec51c8f0b7102ebac1432776dcd415c9/repo_id=1160254873;github:sepam/planaco@c64db80693f90e7034c50089f8e23ad9d0424568/tree=8792799588b9dde7a2791170c91fa2f1d9479b4b/repo_id=242873575",
+        "github:loganpendragonmultiverse/scopetrace@46c9a28765827aec1e7d030f83663dcfe6ede35b/tree=4254854d46e01909c6a96a5f461bc28e05ffc59a/repo_id=1313350206",
+        "github:ConnorBritain/agent-time@67fb4b3931b4e6c47a53402f24287c1743a25de2/tree=43e6d58bd6152dae73ea7ca84356ade4780b8bc6/repo_id=1294117486",
+        "github:maxi-max-dev/agent-eta@5767fbe61082b896612e601d8c403dc42a34b13f/tree=e25dcb7bd582bb078b5077a993e97008db3638a8/repo_id=1410273332"
+      ],
+      "review": null
+    },
+    {
+      "id": "agent-coordination-research",
+      "kind": "research",
+      "title": "Исследование: память агентов и операционная координация",
+      "status": "draft",
+      "path": "knowledge/records/agent-coordination-research.md",
+      "contentSha256": "6bd0421cbb65bc423edba67b51e93f418049e5b55e29ed1b483c71de69cd0684",
+      "sources": [
+        "task:T-009",
+        "author:OpenAI Codex GPT-6",
+        "bundle:agent-coordination-and-memory@2026-11-16;github:open-multi-agent/open-multi-agent@a1744e3b12692a52c21da27c6e3d1e0552a74e5e/tree=bf1fc100bad31291bfeb4037b013358b6bf9002b/repo_id=1197656406;github:BudEcosystem/taskgraph@679ae68d92afb6a7b8503762f656dd89b0d6483e/tree=f9f2d4d3daae9ecf2b46cd0dd125e5694ce515c8/repo_id=1173242603;github:xD4O/exocortex@e762971405073ec8489f0777a423e941e6e6e8c9/tree=412c40dc90d94f8f0a33ef87bdbeb187438df805/repo_id=1221935722",
+        "bundle:second-brain-coordination-recovery@2026-11-16;github:aliihsaad/the-vault@6ec2485b83bb2062bc052b780b01701a4c711b8c;github:a2578348864a-sys/Agent-Memory-OS@06ee0e599b4629ee9fc33b2325cea5e0153c1556;github:praxia-dev/praxia@689925604a95ba959962cf65ad15a86166ded6ec;github:Vexillon-ai/MIRA@f5b2db1f1f9453429cea45b045bec857716bfcc9;github:kalinbogatzevski/captain-memo@f04261f697a378fa4df5bc515fe811ccbb488cd7",
+        "bundle:portable-memory-and-provenance@2026-11-16;github:stancsz/second-brain@9d7b8c465562944dc062d6f388753fccf8ae3704;github:hyungchulc/memory-forest@a9f2ec1588d0865ddc49c4c2db5b64b8d3dca442;github:yibeichan/schist@a4b4bba7176f6386c95e519d266b38e893835f2c",
+        "bundle:local-agent-board-and-runtime@2026-11-16;github:asasemahmed/openboard@5d0ab6dbb19f0371d5e2a9498a9e418afc586eeb;github:MrBildo/collattice@665341ff557f0084c6178c5ad53f92cdc20ecae7;github:pbroom/agent-comms@1777b01f268f487c0594682dd27d93cb5b94c23a;github:useatrium/atrium@599870ce92c079375ba8d08bd4c2ced9af0c86c5",
+        "bundle:durable-workflow-and-task-ux@2026-11-16;github:openwop/openwop@3936a204d46cb314004faabc8ce8c9a7dfa8bcf8;github:Neko-Catpital-Labs/Invoker@54877e0d891a28b22c1a2351d3c56db5e5749bc8;github:XAGI-Lab/melra@ab59ffa134decd9613a378c7bd8a0e8d495c7e89;github:zepinto/agentic-kanban@abf401e22eb81c130c4505d0fce5b5c855191fa5",
+        "bundle:workflow-control-plane-and-portable-agent-memory@2026-11-16;github:taimen-ai/control-plane@c1c1ad195906cd3dadb8357677f1509019987dd1;github:xianlinyi/agent-memory@cede2457c3482096f81f680d2ebfc55b01d43608",
+        "bundle:targeted-backup-and-restore@2026-11-16;github:restic/restic@55abaa6de8cc82d563b916e2c46b31ce10ef8a2f;github:kopia/kopia@b6272a4ead04131cb09e3cfeb041f60410e97b05;issue-reported-advisory:GHSA-9rpx-2vhm-38v3",
+        "bundle:credential-brokering-and-authorization@2026-11-16;github:opensandbox-group/OpenSandbox@4ca105e813240d663cfa9a0c9ccb50b70624246a;github:agentcordon/agentcordon@85048420592b4b269373154f6a60754b75fd49c0;github:octo-sts/app@2354277b95554f40b34950cd130a64050ff12da1;tag:octo-sts/app@v0.5.3#0f177fde54f9318e33f0bba6abaea9463a7c3afd;github:modelcontextprotocol/modelcontextprotocol@ac00313ff7f5e9f47b0e0d1ebdf9c0ad6411380b;advisory:GHSA-h3qp-hwvr-9xcq"
+      ],
+      "review": null
+    },
+    {
+      "id": "credential-brokering-research",
+      "kind": "research",
+      "title": "Исследование: безопасный доступ AI-агентов к credentials",
+      "status": "draft",
+      "path": "knowledge/records/credential-brokering-research.md",
+      "contentSha256": "b5b4a08634273ab342a23db207b5e3ad2e332684238346907cdd18be402e62af",
+      "sources": [
+        "task:T-009",
+        "author:OpenAI Codex GPT-6",
+        "bundle:credential-brokering-and-authorization@2026-11-16;github:opensandbox-group/OpenSandbox@4ca105e813240d663cfa9a0c9ccb50b70624246a;github:agentcordon/agentcordon@85048420592b4b269373154f6a60754b75fd49c0;github:octo-sts/app@2354277b95554f40b34950cd130a64050ff12da1;tag:octo-sts/app@v0.5.3#0f177fde54f9318e33f0bba6abaea9463a7c3afd;github:modelcontextprotocol/modelcontextprotocol@ac00313ff7f5e9f47b0e0d1ebdf9c0ad6411380b;advisory:GHSA-h3qp-hwvr-9xcq"
+      ],
+      "review": null
+    },
+    {
+      "id": "kb-system-architecture-research",
+      "kind": "research",
+      "title": "Исследование: архитектура проектной и общей БЗ, поиск и мультимодальный ввод",
+      "status": "draft",
+      "path": "knowledge/records/kb-system-architecture-research.md",
+      "contentSha256": "3e5f4eb7fc98cc31e9a412302860a499fcbe288dec945671ca4b32f78d285e9c",
+      "sources": [
+        "task:T-009",
+        "owner:2026-11-16",
+        "project-head:f577dc70e58d75ab5fd61d0c2e712c27b590713a",
+        "shared-kb-head:283ec02c47b7a1228ebaf878f75d400dd734e406",
+        "author:OpenAI-Codex:gpt-6.1-sol"
+      ],
+      "review": null
+    },
+    {
+      "id": "agent-workflow-coordination-r1",
+      "kind": "research",
+      "title": "Исследование: ранние GitHub-проходы по агентскому workflow",
+      "status": "draft",
+      "path": "knowledge/records/agent-workflow-coordination-r1.md",
+      "contentSha256": "56cfa5f89689cf3e2d451ad3066289871fe42572360170be628f79b7176d8141",
+      "sources": [
+        "task:T-009",
+        "owner:2026-11-15",
+        "author:OpenAI-Codex:GPT-6",
+        "derived-from:agent-workflow-research@03a509d87fd8d41addca3f7a8a00833710e3d47df01f0a44a27732ad7856cac9",
+        "source-pins:embedded-in-extracted-sections"
+      ],
+      "review": null
+    },
+    {
+      "id": "agent-memory-sync-synthesis",
+      "kind": "research",
+      "title": "Исследование: память, синхронизация и local-first архитектура",
+      "status": "draft",
+      "path": "knowledge/records/agent-memory-sync-synthesis.md",
+      "contentSha256": "d1fc8ed09573666ea651b51449f0f7f2af7a0df34d7d0134aaa39ea9c2309f16",
+      "sources": [
+        "task:T-009",
+        "owner:2026-11-15",
+        "author:OpenAI-Codex:GPT-6",
+        "derived-from:agent-workflow-research@03a509d87fd8d41addca3f7a8a00833710e3d47df01f0a44a27732ad7856cac9",
+        "source-pins:embedded-in-extracted-sections"
+      ],
+      "review": null
+    },
+    {
+      "id": "agent-workflow-source-ip",
+      "kind": "research",
+      "title": "Исследование: закреплённые источники, лицензии и shortlist",
+      "status": "draft",
+      "path": "knowledge/records/agent-workflow-source-ip.md",
+      "contentSha256": "8cdba9d11389047595935e3cf3357eb30e48bb3ae1e94dff3a79f3868c9fc541",
+      "sources": [
+        "task:T-009",
+        "owner:2026-11-15",
+        "author:OpenAI-Codex:GPT-6",
+        "derived-from:agent-workflow-research@03a509d87fd8d41addca3f7a8a00833710e3d47df01f0a44a27732ad7856cac9",
+        "source-pins:embedded-in-extracted-sections"
+      ],
+      "review": null
+    },
+    {
+      "id": "agent-admission-coordination",
+      "kind": "research",
+      "title": "Исследование: admission, доски и координация агентов",
+      "status": "draft",
+      "path": "knowledge/records/agent-admission-coordination.md",
+      "contentSha256": "ce5ae6a1555828096c2889f84fd47ae85640be684bd88036c13e317343c3df54",
+      "sources": [
+        "task:T-009",
+        "owner:2026-11-15",
+        "author:OpenAI-Codex:GPT-6",
+        "derived-from:agent-workflow-research@03a509d87fd8d41addca3f7a8a00833710e3d47df01f0a44a27732ad7856cac9",
+        "source-pins:embedded-in-extracted-sections"
+      ],
+      "review": null
+    },
+    {
+      "id": "agent-source-review-runtime",
+      "kind": "research",
+      "title": "Исследование: source review, доставка задач и runtime boundaries",
+      "status": "draft",
+      "path": "knowledge/records/agent-source-review-runtime.md",
+      "contentSha256": "1602dd4e96c10761409feb4fd90f9e387b59f905496b7adb8a5b3e80f031aac0",
+      "sources": [
+        "task:T-009",
+        "owner:2026-11-15",
+        "author:OpenAI-Codex:GPT-6",
+        "derived-from:agent-workflow-research@03a509d87fd8d41addca3f7a8a00833710e3d47df01f0a44a27732ad7856cac9",
+        "source-pins:embedded-in-extracted-sections"
+      ],
+      "review": null
+    },
+    {
+      "id": "agent-memory-bridge-execution",
+      "kind": "research",
+      "title": "Исследование: память, межагентная связь и выполнение",
+      "status": "draft",
+      "path": "knowledge/records/agent-memory-bridge-execution.md",
+      "contentSha256": "f8eddd4a23512475148f3ea3234a58c65f49b6d1eb5d38b6df82ee1352b61d06",
+      "sources": [
+        "task:T-009",
+        "owner:2026-11-15",
+        "author:OpenAI-Codex:GPT-6",
+        "derived-from:agent-workflow-research@03a509d87fd8d41addca3f7a8a00833710e3d47df01f0a44a27732ad7856cac9",
+        "source-pins:embedded-in-extracted-sections"
       ],
       "review": null
     }
