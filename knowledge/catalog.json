@@ -60,10 +60,12 @@
       "title": "Урок: не зависеть от кодовой страницы консоли при чтении Git-путей",
       "status": "draft",
       "path": "knowledge/records/git-unicode-paths.md",
-      "contentSha256": "ede377fd4f9b67ac8840931e2ae3529a88e81545f4c7fd7fca025b361545e808",
+      "contentSha256": "0351c6d7d9eb2ae866d56c9a731b3de807905d7087857cab709803aa307a690d",
       "sources": [
         "author:Codex:GPT-6",
-        "test:tests/task-scope-regressions.ps1:2026-11-19"
+        "test:tests/task-scope-regressions.ps1:2026-11-19",
+        "git:7da6c0f4f4367ec9465eafd16acf249dc9a0e277",
+        "https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44901331572"
       ],
       "review": null
     },
