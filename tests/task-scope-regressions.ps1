@@ -336,6 +336,31 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $taskWorktree '.git') -PathType Leaf)) {
         throw 'Synthetic task fixture must use a linked-worktree .git file marker.'
     }
+    $bracketTempRoot = Join-Path ([IO.Path]::GetTempPath()) ('ptr[1]-' + [guid]::NewGuid().ToString('N'))
+    [void][IO.Directory]::CreateDirectory($bracketTempRoot)
+    $sentinel = Join-Path $bracketTempRoot 'keep.txt'
+    $savedGitDir = [Environment]::GetEnvironmentVariable('GIT_DIR', 'Process')
+    try {
+        [IO.File]::WriteAllText($sentinel, 'keep')
+        [Environment]::SetEnvironmentVariable('GIT_DIR', (Join-Path $scratch 'invalid-git-dir'), 'Process')
+        $gateOutput = @(& $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'scripts/quality-gate.ps1') -TemporaryRoot $bracketTempRoot 2>&1)
+        $gateExit = $LASTEXITCODE
+        $gateText = $gateOutput -join [Environment]::NewLine
+        if ($gateExit -ne 1 -or $gateText -notmatch 'QUALITY-GATE=FAIL: GIT_IDENTITY_' -or
+            $gateText -match 'QUALITY-GATE=FAIL: cleanup' -or [IO.File]::ReadAllText($sentinel) -cne 'keep' -or
+            @(Get-ChildItem -LiteralPath $bracketTempRoot -Force).Count -ne 1) {
+            throw "Quality gate must use a literal temporary path and clean only its own directory. Exit: $gateExit. Output: $gateText"
+        }
+    } finally {
+        [Environment]::SetEnvironmentVariable('GIT_DIR', $savedGitDir, 'Process')
+        [IO.File]::Delete($sentinel)
+        if (@(Get-ChildItem -LiteralPath $bracketTempRoot -Force).Count -eq 0) {
+            [IO.Directory]::Delete($bracketTempRoot)
+        }
+    }
+    $passed++
+    Write-Output 'PASS: quality gate uses a literal temporary path and cleans its own directory'
+
     $linkedTempRoot = Join-Path $taskWorktree ('temp/T-GATE-LINKED-REJECT-' + [guid]::NewGuid().ToString('N'))
     $gatePath = Join-Path $repoRoot 'scripts/quality-gate.ps1'
     $gateOutput = @(& $pwsh -NoLogo -NoProfile -File $gatePath -BaseRef origin/main -TemporaryRoot $linkedTempRoot 2>&1)
@@ -376,6 +401,24 @@ try {
     Write-Output 'PASS: task-scope and quality gates refuse long UTF-8 Git paths before writes'
     Write-Output 'PASS: quality gate refuses a TempRoot inside a linked worktree before writes'
 
+    $junctionTarget = Join-Path $scratch 'target'
+    $junction = Join-Path $scratch 'link'
+    $null = New-Item -ItemType Directory -Path $junctionTarget
+    $null = New-Item -ItemType Junction -Path $junction -Target $junctionTarget
+    try {
+        $gateOutput = @(& $pwsh -NoLogo -NoProfile -File $gatePath -TemporaryRoot (Join-Path $junction 'missing') 2>&1)
+        $gateExit = $LASTEXITCODE
+        if ($gateExit -eq 0 -or
+            ($gateOutput -join [Environment]::NewLine) -notlike '*temporary path must be a directory without reparse points*' -or
+            @(Get-ChildItem -LiteralPath $junctionTarget -Force).Count -ne 0) {
+            throw 'Quality gate must reject a junction ancestor before writing to its target.'
+        }
+        $passed++
+        Write-Output 'PASS: quality gate refuses a junction ancestor before writes'
+    } finally {
+        [IO.Directory]::Delete($junction)
+    }
+
     $null = Invoke-Git $taskWorktree @('branch', '-m', 'task/T-008-scope-fixture')
     Assert-Scope 0 'TASK-SCOPE=PASS' 'TASK-SCOPE=PASS (2 changed paths; 3 allowed paths)'
     $expectedHead = ((Invoke-Git $taskWorktree @('rev-parse','HEAD')) -join '').Trim()
@@ -405,7 +448,7 @@ try {
     $passed++
     Write-Output 'PASS: scope rejects a committed out-of-scope path'
 
-    if ($passed -ne 8) { throw ('Expected 8 task-scope cases; found ' + $passed) }
+    if ($passed -ne 10) { throw ('Expected 10 task-scope cases; found ' + $passed) }
     Write-Output ("TASK-SCOPE-REGRESSIONS: {0} passed, 0 failed" -f $passed)
 } finally {
     try {
