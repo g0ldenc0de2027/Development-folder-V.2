@@ -500,6 +500,77 @@ foreach ($toolName in @('actionlint', 'gitleaks')) {
     }
 }
 
+function Test-PinnedDownloadDeadline {
+    $gateAst = [Management.Automation.Language.Parser]::ParseInput($gateScript, [ref]$null, [ref]$null)
+    $downloadFunction = $gateAst.Find({
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-PinnedExecutable'
+    }, $true)
+    if (-not $downloadFunction) { throw 'Pinned download function is missing' }
+    . ([scriptblock]::Create($downloadFunction.Extent.Text))
+
+    $parent = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath([IO.Path]::GetTempPath()))
+    $temporaryRoot = [IO.Directory]::CreateTempSubdirectory('gate-download-test-').FullName
+    $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+    $server = $null
+    $responded = [Threading.ManualResetEventSlim]::new()
+    try {
+        $listener.Start()
+        $url = "http://127.0.0.1:$($listener.LocalEndpoint.Port)/test.zip"
+        $server = Start-ThreadJob -ArgumentList $listener, $responded -ScriptBlock {
+            param($SocketListener, $Responded)
+            $client = $SocketListener.AcceptTcpClient()
+            try {
+                $stream = $client.GetStream()
+                $stream.ReadTimeout = 3000
+                $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::ASCII, $false, 1024, $true)
+                try {
+                    do { $line = $reader.ReadLine() } while ($line)
+                } finally {
+                    $reader.Dispose()
+                }
+                $partial = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 200 OK`r`nContent-Length: 20`r`nConnection: close`r`n`r`nx")
+                $stream.Write($partial, 0, $partial.Length)
+                $Responded.Set()
+                $null = $stream.ReadByte()
+            } catch [IO.IOException] {
+                if (-not $Responded.IsSet) { throw }
+            } finally {
+                $client.Dispose()
+            }
+        }
+
+        $cancelled = $false
+        try {
+            $null = Get-PinnedExecutable -Name 'deadline' -Tool @{
+                url = $url
+                sha256 = ('0' * 64)
+                executable = 'unused.exe'
+            } -DownloadBudget ([TimeSpan]::FromSeconds(2))
+        } catch [TimeoutException] {
+            if ($_.Exception.Message -cne 'deadline download exceeded its total deadline') { throw }
+            $cancelled = $true
+        }
+        if (-not $responded.IsSet -or -not $cancelled) {
+            throw 'Download did not exercise the deadline while reading a partial HTTP body'
+        }
+        if (Test-Path -LiteralPath (Join-Path $temporaryRoot 'deadline/download.zip')) {
+            throw 'Partial pinned archive was left behind after cancellation'
+        }
+        Write-Output 'PASS: pinned download deadline cancels body reads and removes partial archive'
+    } finally {
+        $listener.Stop()
+        if ($null -ne $server) { Remove-Job -Job $server -Force }
+        $responded.Dispose()
+        if ([IO.Path]::GetDirectoryName($temporaryRoot) -cne $parent -or
+            [IO.Path]::GetFileName($temporaryRoot) -notlike 'gate-download-test-*') {
+            throw 'Invalid download regression fixture path'
+        }
+        [IO.Directory]::Delete($temporaryRoot, $true)
+    }
+}
+Test-PinnedDownloadDeadline
+
 $textExtensions = @('.md', '.json', '.yml', '.yaml', '.ps1')
 $specialTextNames = @('.gitignore', '.gitattributes', '.editorconfig', 'pre-push')
 $textFiles = @(
