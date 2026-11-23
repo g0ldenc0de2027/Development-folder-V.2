@@ -23,10 +23,10 @@ $fetchExit = $LASTEXITCODE
 $pushUrls = @(& git -C $repoRoot remote get-url --push --all origin 2>$null)
 $pushExit = $LASTEXITCODE
 if ($fetchExit -ne 0 -or $pushExit -ne 0 -or $fetchUrls.Count -ne 1 -or $pushUrls.Count -ne 1 -or
-    $fetchUrls[0].TrimEnd('/') -ne $expectedRemoteUrl -or $pushUrls[0].TrimEnd('/') -ne $expectedRemoteUrl) {
+    $fetchUrls[0] -cne $expectedRemoteUrl -or $pushUrls[0] -cne $expectedRemoteUrl) {
     throw 'origin fetch and push URLs must both match config/github/repository.json exactly'
 }
-$profileJson = @(& gh api user 2>$null)
+$profileJson = @(& gh api --hostname github.com user 2>$null)
 $ghExit = $LASTEXITCODE
 if ($ghExit -ne 0 -or $profileJson.Count -eq 0) { throw 'GITHUB_AUTH_REQUIRED_FOR_GIT_IDENTITY_SETUP' }
 try { $profile = ($profileJson -join "`n") | ConvertFrom-Json -ErrorAction Stop }
