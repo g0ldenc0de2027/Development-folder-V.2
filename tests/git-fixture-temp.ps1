@@ -45,7 +45,7 @@ function New-GitFixtureTempDirectory([string]$Path) {
     $root = [IO.Path]::GetDirectoryName($Path)
     Assert-GitFixtureTempRoot $root
     $name = [IO.Path]::GetFileName($Path)
-    New-Item -ItemType Directory -Path $root -Name $name -ErrorAction Stop | Out-Null
+    New-Item -ItemType Directory -Path ([WildcardPattern]::Escape($root)) -Name $name -ErrorAction Stop | Out-Null
     try {
         [IO.File]::WriteAllText((Join-Path $Path '.fixture-owner'),$name)
     } catch {
