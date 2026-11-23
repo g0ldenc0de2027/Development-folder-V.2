@@ -455,7 +455,7 @@ function Assert-GitCommitIdentity {
             if ($PublishedMainSha -notmatch ('^'+$shaPattern+'$')) { throw 'GIT_IDENTITY_PUBLISHED_MAIN_INVALID' }
             $revArgs += @('--not',$PublishedMainSha)
         }
-        $listed = Invoke-GitIdentityCommand -RepositoryRoot $root -Arguments $revArgs
+        $listed = Invoke-GitIdentityCommand -RepositoryRoot $root -Arguments ($revArgs + @('--'))
         $commits = @($listed -split "`n" | Where-Object { $_ -match '^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$' })
         foreach ($sha in $commits) {
             $format = '%H%x1f%an%x1f%ae%x1f%cn%x1f%ce'
