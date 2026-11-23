@@ -12,8 +12,28 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $temporaryBaseRoot = [System.IO.Path]::GetFullPath($TemporaryRoot)
-$temporaryRoot = Join-Path $temporaryBaseRoot ('gate-' + [guid]::NewGuid().ToString('N'))
+$runId = [guid]::NewGuid().ToString('N')
+$temporaryRoot = Join-Path $temporaryBaseRoot ('gate-' + $runId)
+$ownershipMarker = Join-Path $temporaryRoot '.gate-owner'
+$temporaryRootCreated = $false
+$gateExit = 0
 $taskScopeGitDirByteBudget = 200
+
+function Assert-DirectoryChainWithoutReparsePoints([string]$Path) {
+    $directory = [IO.DirectoryInfo]::new($Path)
+    while ($null -ne $directory) {
+        try {
+            $item = Get-Item -LiteralPath $directory.FullName -Force -ErrorAction Stop
+            if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw "QUALITY-GATE: temporary path must be a directory without reparse points: $($directory.FullName)"
+            }
+        }
+        catch [System.Management.Automation.ItemNotFoundException] {
+            # A missing leaf is allowed during preflight. Its ancestors still need checking.
+        }
+        $directory = $directory.Parent
+    }
+}
 
 function Assert-TemporaryRootOutsideRepository {
     $separators = [char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
@@ -24,6 +44,7 @@ function Assert-TemporaryRootOutsideRepository {
         throw 'QUALITY-GATE: temporary root must be outside the source repository and every Git repository'
     }
 
+    Assert-DirectoryChainWithoutReparsePoints $temporaryBaseRoot
     $probe = $candidate
     while (-not [IO.Directory]::Exists($probe)) {
         $parent = Split-Path -Parent $probe
@@ -104,9 +125,21 @@ function Get-PinnedExecutable {
         throw "$Name has an invalid SHA-256 pin"
     }
     $toolRoot = Join-Path $temporaryRoot $Name
-    New-Item -ItemType Directory -Path $toolRoot -Force | Out-Null
+    [void][IO.Directory]::CreateDirectory($toolRoot)
     $archive = Join-Path $toolRoot 'download.zip'
-    Invoke-WebRequest -Uri $Tool.url -OutFile $archive
+    $retryableStatus = @(408, 429, 500, 502, 503, 504)
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Invoke-WebRequest -Uri $Tool.url -OutFile $archive -ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60 -ErrorAction Stop
+            break
+        } catch [Microsoft.PowerShell.Commands.HttpResponseException] {
+            $status = [int]$_.Exception.Response.StatusCode
+            if ($attempt -eq 3 -or $status -notin $retryableStatus) { throw }
+            if ([IO.File]::Exists($archive)) { [IO.File]::Delete($archive) }
+            Write-Warning "$Name download returned HTTP $status (attempt $attempt/3); retrying"
+            Start-Sleep -Seconds $attempt
+        }
+    }
     $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actualHash -ne $Tool.sha256.ToLowerInvariant()) {
         throw "$Name archive SHA-256 did not match the pinned value"
@@ -123,7 +156,16 @@ try {
     Assert-TemporaryRootOutsideRepository
     & (Join-Path $PSScriptRoot 'verify-runtime.ps1')
     $null = Get-Command git -ErrorAction Stop
-    New-Item -ItemType Directory -Path $temporaryRoot -Force | Out-Null
+    if (-not [IO.Directory]::Exists($temporaryBaseRoot)) {
+        throw "QUALITY-GATE: TemporaryRoot must be an existing directory: $temporaryBaseRoot"
+    }
+    Assert-DirectoryChainWithoutReparsePoints $temporaryBaseRoot
+    if (Test-Path -LiteralPath $temporaryRoot) {
+        throw 'Temporary run directory already exists.'
+    }
+    [void][IO.Directory]::CreateDirectory($temporaryRoot)
+    $temporaryRootCreated = $true
+    [IO.File]::WriteAllText($ownershipMarker, $runId)
     Set-Location -LiteralPath $repoRoot
     Import-Module (Join-Path $PSScriptRoot 'lib/GitIdentity.psm1') -Force
     $null = Assert-GitWorktreeEnvironment -RepositoryRoot $repoRoot -HookContext
@@ -195,6 +237,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Task-scope regressions failed' }
 
     $manifest = Get-Content -LiteralPath (Join-Path $repoRoot 'config/security/tools.json') -Raw | ConvertFrom-Json
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-viewer-regressions.ps1') -TempRoot $temporaryRoot
+    if ($LASTEXITCODE -ne 0) { throw "project-viewer-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
     $actionlint = Get-PinnedExecutable -Tool $manifest.tools.actionlint -Name 'actionlint'
     $gitleaks = Get-PinnedExecutable -Tool $manifest.tools.gitleaks -Name 'gitleaks'
 
@@ -291,16 +336,33 @@ try {
     Invoke-NativeChecked -Executable (Get-Command git).Source -Arguments @('--no-pager','diff', '--cached', '--check') -Label 'staged diff check'
 
     Write-Output 'NOT COVERED: no application stack is selected in the template; stack build and dependency audit do not apply to this baseline.'
-    Write-Output 'QUALITY-GATE=PASS'
-    exit 0
 }
 catch {
     [Console]::Error.WriteLine('QUALITY-GATE=FAIL: ' + $_.Exception.Message)
-    exit 1
+    $gateExit = 1
 }
 finally {
-    Set-Location -LiteralPath $repoRoot
-    if (Test-Path -LiteralPath $temporaryRoot) {
-        Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
+    if ($temporaryRootCreated) {
+        try {
+            Set-Location -LiteralPath $repoRoot
+            Assert-DirectoryChainWithoutReparsePoints $temporaryRoot
+            $marker = Get-Item -LiteralPath $ownershipMarker -Force -ErrorAction Stop
+            if ($marker.PSIsContainer -or ($marker.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+                $marker.Length -ne $runId.Length -or [IO.File]::ReadAllText($ownershipMarker) -cne $runId) {
+                throw 'Temporary directory ownership could not be verified.'
+            }
+            Remove-Item -LiteralPath $temporaryRoot -Recurse -Force -ErrorAction Stop
+            if (Test-Path -LiteralPath $temporaryRoot -ErrorAction Stop) {
+                throw 'Temporary directory still exists after cleanup.'
+            }
+        }
+        catch {
+            [Console]::Error.WriteLine("QUALITY-GATE=FAIL: cleanup of '$temporaryRoot': $($_.Exception.Message)")
+            $gateExit = 1
+        }
     }
 }
+if ($gateExit -eq 0) {
+    Write-Output 'QUALITY-GATE=PASS'
+}
+exit $gateExit
