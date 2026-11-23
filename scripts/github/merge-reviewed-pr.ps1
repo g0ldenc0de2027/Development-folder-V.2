@@ -30,7 +30,13 @@ function Read-MergeEvidenceJson {
     $response = & gh @Arguments 2>$null
     if ($LASTEXITCODE -ne 0) { throw 'GitHub evidence request failed.' }
     try {
-        $result = ($response -join [char]10) | ConvertFrom-Json -AsHashtable
+        $json = $response -join [char]10
+        $options = [System.Text.Json.JsonDocumentOptions]::new()
+        $options.AllowDuplicateProperties = $false
+        # Validate nested properties before converting to a dictionary.
+        $document = [System.Text.Json.JsonDocument]::Parse($json, $options)
+        $document.Dispose()
+        $result = $json | ConvertFrom-Json -AsHashtable
     } catch {
         throw 'GitHub evidence response was not valid JSON.'
     }
