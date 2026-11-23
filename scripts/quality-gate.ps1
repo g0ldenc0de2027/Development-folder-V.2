@@ -125,7 +125,7 @@ function Get-PinnedExecutable {
         throw "$Name has an invalid SHA-256 pin"
     }
     $toolRoot = Join-Path $temporaryRoot $Name
-    New-Item -ItemType Directory -Path $toolRoot -Force | Out-Null
+    [void][IO.Directory]::CreateDirectory($toolRoot)
     $archive = Join-Path $toolRoot 'download.zip'
     Invoke-WebRequest -Uri $Tool.url -OutFile $archive
     $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -148,7 +148,10 @@ try {
         throw "QUALITY-GATE: TemporaryRoot must be an existing directory: $temporaryBaseRoot"
     }
     Assert-DirectoryChainWithoutReparsePoints $temporaryBaseRoot
-    New-Item -ItemType Directory -Path $temporaryBaseRoot -Name ('gate-' + $runId) | Out-Null
+    if (Test-Path -LiteralPath $temporaryRoot) {
+        throw 'Temporary run directory already exists.'
+    }
+    [void][IO.Directory]::CreateDirectory($temporaryRoot)
     $temporaryRootCreated = $true
     [IO.File]::WriteAllText($ownershipMarker, $runId)
     Set-Location -LiteralPath $repoRoot
