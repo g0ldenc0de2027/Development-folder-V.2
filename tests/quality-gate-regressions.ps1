@@ -128,7 +128,7 @@ if ($foundationRoadmap -match '(?m)^\s*-\s*\[\s\]') {
 }
 $settingsVerifier = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/github/verify-settings.ps1') -Raw
 if (
-    $settingsVerifier -notmatch "gh api user --jq .login" -or
+    $settingsVerifier -notmatch 'gh api --hostname github\.com user --jq \.login' -or
     $settingsVerifier -notmatch 'dependencyGraphVerification' -or
     $settingsVerifier -notmatch 'dependency-graph/sbom' -or
     $settingsVerifier -notmatch 'sbom\.spdxVersion' -or

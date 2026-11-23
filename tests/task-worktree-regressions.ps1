@@ -525,7 +525,7 @@ try {
         [IO.File]::WriteAllText($ghProfile,$ghProfileJson + [Environment]::NewLine,$utf8)
         $ghLines = @(
             '@echo off',
-            'if /I "%~1"=="api" if /I "%~2"=="user" (',
+            'if /I "%~1"=="api" if /I "%~2"=="--hostname" if /I "%~3"=="github.com" if /I "%~4"=="user" (',
             '  type "%~dp0user.json"',
             '  exit /b 0',
             ')',
@@ -541,12 +541,30 @@ try {
             $env:Path = $ghBin + ';' + $env:Path
             $resolvedGh = (Get-Command gh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
             if (-not [string]::Equals($resolvedGh,$ghShim,[StringComparison]::OrdinalIgnoreCase)) { throw 'SYNTHETIC_GH_SHIM_NOT_SELECTED' }
-            $syntheticProfile = @(& $ghShim api user)
+            $syntheticProfile = @(& $ghShim api --hostname github.com user)
             $syntheticProfileExit = $LASTEXITCODE
             if ($syntheticProfileExit -ne 0 -or $syntheticProfile.Count -ne 1) { throw 'SYNTHETIC_GH_PROFILE_RESPONSE_INVALID' }
             try { $syntheticProfileObject = ConvertFrom-Json -InputObject ([string]$syntheticProfile[0]) -ErrorAction Stop } catch { throw 'SYNTHETIC_GH_PROFILE_JSON_INVALID' }
             if ([string]$syntheticProfileObject.login -cne $policyLogin -or [string]$syntheticProfileObject.id -cne [string]$policy.commitIdentity.userId) { throw 'SYNTHETIC_GH_PROFILE_POLICY_MISMATCH' }
             Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue
+
+            $setupPwsh = (Get-Command pwsh -ErrorAction Stop).Source
+            $setupPath = Join-Path $testTree 'scripts/github/configure-local.ps1'
+            foreach ($scenario in @(
+                @{ Options = @(); Url = ($originUrl + '/') }
+                @{ Options = @('--push'); Url = $originUrl.Replace('github.com','GITHUB.com') }
+            )) {
+                $setOrigin = @('remote','set-url') + $scenario.Options + @('origin')
+                Invoke-Git $admin ($setOrigin + @($scenario.Url)) | Out-Null
+                try {
+                    $setupResult = Invoke-NativeProcess $setupPwsh @('-NoLogo','-NoProfile','-File',$setupPath,'-IdentityOnly') -HookProcess
+                    if ($setupResult.ExitCode -eq 0 -or $setupResult.Error -notlike '*origin fetch and push URLs must both match*') {
+                        throw ('NONCANONICAL_ORIGIN_WAS_NOT_REJECTED:' + $setupResult.Output + $setupResult.Error)
+                    }
+                } finally {
+                    Invoke-Git $admin ($setOrigin + @($originUrl)) | Out-Null
+                }
+            }
 
             Write-Text (Join-Path $testTree 'README.md') ('real commit -a content' + [Environment]::NewLine)
             $autoStage = Invoke-NativeProcess $git @('-C',$testTree,'commit','-a','-m','test: real commit-a hook') -HookProcess
