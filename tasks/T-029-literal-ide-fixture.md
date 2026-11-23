@@ -3,6 +3,7 @@
 Статус: merged. Источник: независимое ревью PR #27, сценарий с квадратными скобками в TempRoot.
 
 Интеграция: [PR #28](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/28), squash `60df54b137793e24bb4094d6f084657aa3474357`.
+CI после слияния: [run #44584013730](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44584013730), success на указанном squash-коммите.
 
 ## Зона файлов
 

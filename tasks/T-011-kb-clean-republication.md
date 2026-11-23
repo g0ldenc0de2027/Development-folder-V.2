@@ -3,6 +3,7 @@
 - **Статус:** merged; повторная публикация исправленного среза без переписывания опубликованной истории T-010/PR #9
 
 Интеграция: [PR #10](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/10), squash `c9074968b44aea573e941a540199c3e7ad030d4e`.
+CI после слияния: [run #44568822315](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44568822315), success на указанном squash-коммите.
 - **Версия задачи:** v1.0.0 · 2026-11-16
 - **База:** `f577dc70e58d75ab5fd61d0c2e712c27b590713a` (`origin/main` на момент создания)
 - **Ветка/worktree:** `task/T-011-kb-clean-republication` / `.worktrees/T-011`

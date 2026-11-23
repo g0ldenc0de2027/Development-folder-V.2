@@ -3,6 +3,7 @@
 Статус: merged. Источник: воспроизведение после PR #6.
 
 Интеграция: [PR #27](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/27), squash `ab80160fc626fb863555c2a4c369e77355a4d0bc`.
+CI после слияния: [run #44579477185](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44579477185), success на указанном squash-коммите.
 
 ## Зона файлов
 

@@ -3,6 +3,7 @@
 Статус: merged. Источник: ретроспективное ревью PR #6.
 
 Интеграция: [PR #23](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/23), squash `69e97a9c8eed66198d4c59f981b06f2a2d64afe7`.
+CI после слияния: [run #44549731506](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44549731506), success на указанном squash-коммите.
 
 ## Зона файлов
 
