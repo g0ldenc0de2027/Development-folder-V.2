@@ -85,7 +85,17 @@ try {
     $actions = Get-GitHubJson "repos/$slug/actions/permissions"
     $workflowPermissions = Get-GitHubJson "repos/$slug/actions/permissions/workflow"
     $selectedActions = Get-GitHubJson "repos/$slug/actions/permissions/selected-actions"
-    Assert-Value 'Actions selected allowlist mode' $actions.allowed_actions 'selected'
+    Assert-Value 'Actions selected allowlist mode' $actions.allowed_actions $actionConfig.allowedActions
+    foreach ($permission in @(
+        @{ Name = 'Actions enabled'; Actual = $actions.enabled; Expected = $actionConfig.enabled }
+        @{ Name = 'Actions GitHub-owned category'; Actual = $selectedActions.github_owned_allowed; Expected = $actionConfig.githubOwnedAllowed }
+        @{ Name = 'Actions verified publisher category'; Actual = $selectedActions.verified_allowed; Expected = $actionConfig.verifiedCreatorsAllowed }
+    )) {
+        if ($permission.Actual -isnot [bool] -or $permission.Expected -isnot [bool]) {
+            throw "$($permission.Name) must be expressed as a boolean in GitHub and in the manifest"
+        }
+        Assert-Value $permission.Name $permission.Actual $permission.Expected
+    }
     Assert-Value 'Actions require full SHA pinning' $actions.sha_pinning_required $actionConfig.shaPinningRequired
     Assert-Value 'Actions default token permission' $workflowPermissions.default_workflow_permissions $actionConfig.defaultWorkflowTokenPermission
     Assert-Value 'Actions cannot approve PRs' $workflowPermissions.can_approve_pull_request_reviews $actionConfig.canApprovePullRequestReviews
