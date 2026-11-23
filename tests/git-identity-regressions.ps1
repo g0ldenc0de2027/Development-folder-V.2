@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $root = [IO.Path]::GetFullPath($TempRoot)
 [IO.Directory]::CreateDirectory($root) | Out-Null
-$scratch = Join-Path $root ('Проверка-идентичности-Git-' + [guid]::NewGuid().ToString('N'))
+$scratch = Join-Path $root ('ид-' + [guid]::NewGuid().ToString('N'))
 $seed = Join-Path $scratch 'seed'
 $worktree = Join-Path $scratch 'worktree'
 $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/lib/GitIdentity.psm1'
@@ -714,6 +714,7 @@ try {
         $newWorktree = Join-Path $scratch 'bare-worktree-next'
         $preconfiguredWorktree = Join-Path $scratch 'bare-worktree-preconfigured'
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--bare','--quiet',$bareAdmin) | Out-Null
+        Invoke-GitFixture -Directory $bareAdmin -Arguments @('config','--local','core.longpaths','true') | Out-Null
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--quiet',$bareSeed) | Out-Null
         Invoke-GitFixture -Directory $bareSeed -Arguments @('config','user.name','Bare Fixture') | Out-Null
         WriteText (Join-Path $bareSeed 'config/github/repository.json') (@{commitIdentity=@{login='bare-owner';userId='654321'}} | ConvertTo-Json -Depth 4)
