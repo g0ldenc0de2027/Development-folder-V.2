@@ -368,6 +368,12 @@ foreach ($variable in $revisionExpressions.Keys) {
 if ($actionsPolicy.defaultWorkflowTokenPermission -ne 'read' -or $actionsPolicy.shaPinningRequired -ne $true) {
     throw 'Actions policy manifest weakens token permissions or SHA pinning'
 }
+if ($actionsPolicy.allowedActions -cne 'selected' -or
+    $actionsPolicy.enabled -isnot [bool] -or -not $actionsPolicy.enabled -or
+    $actionsPolicy.githubOwnedAllowed -isnot [bool] -or $actionsPolicy.githubOwnedAllowed -or
+    $actionsPolicy.verifiedCreatorsAllowed -isnot [bool] -or $actionsPolicy.verifiedCreatorsAllowed) {
+    throw 'Actions policy must enforce an enabled, explicit allowlist without broad category grants'
+}
 $prePush = Get-Content -LiteralPath (Join-Path $repoRoot '.githooks/pre-push') -Raw
 if ($prePush -notmatch '(?m)^#!/bin/sh' -or $prePush -notmatch 'exec pwsh .*scripts/quality-gate\.ps1') {
     throw 'Pre-push hook must use a Git for Windows shell wrapper and invoke the full quality gate'
