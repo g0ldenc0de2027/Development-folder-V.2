@@ -459,7 +459,7 @@ function Assert-GitCommitIdentity {
         $commits = @($listed -split "`n" | Where-Object { $_ -match '^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$' })
         foreach ($sha in $commits) {
             $format = '%H%x1f%an%x1f%ae%x1f%cn%x1f%ce'
-            $record = Invoke-GitIdentityCommand -RepositoryRoot $root -Arguments @('show','-s',('--format='+$format),$sha)
+            $record = Invoke-GitIdentityCommand -RepositoryRoot $root -Arguments @('show','-s',('--format='+$format),$sha,'--')
             $fields = $record -split [char]31
             if ($fields.Count -ne 5) { throw ('GIT_IDENTITY_COMMIT_METADATA_INVALID:'+$sha.Substring(0,12)) }
             if ($fields[1] -cne $policy.Login) { throw ('GIT_IDENTITY_COMMIT_AUTHOR_NAME_MISMATCH:'+$sha.Substring(0,12)) }
