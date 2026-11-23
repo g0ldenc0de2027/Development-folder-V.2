@@ -236,7 +236,7 @@
       "title": "Исследование: ранние GitHub-проходы по агентскому workflow",
       "status": "draft",
       "path": "knowledge/records/agent-workflow-coordination-r1.md",
-      "contentSha256": "1becbfdc172d9b6d9155f98dd8ce00e5ce759e22b7014078bab86deed62d8d54",
+      "contentSha256": "56cfa5f89689cf3e2d451ad3066289871fe42572360170be628f79b7176d8141",
       "sources": [
         "task:T-009",
         "owner:2026-11-15",
@@ -252,7 +252,7 @@
       "title": "Исследование: память, синхронизация и local-first архитектура",
       "status": "draft",
       "path": "knowledge/records/agent-memory-sync-synthesis.md",
-      "contentSha256": "0afb45514019ac839a82b3c5581296d639e9b9abf3dab5faddec1071943b0483",
+      "contentSha256": "d1fc8ed09573666ea651b51449f0f7f2af7a0df34d7d0134aaa39ea9c2309f16",
       "sources": [
         "task:T-009",
         "owner:2026-11-15",
@@ -268,7 +268,7 @@
       "title": "Исследование: закреплённые источники, лицензии и shortlist",
       "status": "draft",
       "path": "knowledge/records/agent-workflow-source-ip.md",
-      "contentSha256": "d7cc70685332e83c2e43879e6c976b506544fa7c761703647dcf068424ba9559",
+      "contentSha256": "8cdba9d11389047595935e3cf3357eb30e48bb3ae1e94dff3a79f3868c9fc541",
       "sources": [
         "task:T-009",
         "owner:2026-11-15",
@@ -284,7 +284,7 @@
       "title": "Исследование: admission, доски и координация агентов",
       "status": "draft",
       "path": "knowledge/records/agent-admission-coordination.md",
-      "contentSha256": "318a1cc45100121aaaba93a539fa87767891d5ee0bd804c811d8378a09946d6c",
+      "contentSha256": "ce5ae6a1555828096c2889f84fd47ae85640be684bd88036c13e317343c3df54",
       "sources": [
         "task:T-009",
         "owner:2026-11-15",
@@ -300,7 +300,7 @@
       "title": "Исследование: source review, доставка задач и runtime boundaries",
       "status": "draft",
       "path": "knowledge/records/agent-source-review-runtime.md",
-      "contentSha256": "7ba808eedd14aea1e511dc8b53115bdd32e167c3068d5c97334670c5e6e62339",
+      "contentSha256": "1602dd4e96c10761409feb4fd90f9e387b59f905496b7adb8a5b3e80f031aac0",
       "sources": [
         "task:T-009",
         "owner:2026-11-15",
@@ -316,7 +316,7 @@
       "title": "Исследование: память, межагентная связь и выполнение",
       "status": "draft",
       "path": "knowledge/records/agent-memory-bridge-execution.md",
-      "contentSha256": "b28b451b92c50847c9d41c7620dc465893bcbef9846b644d479b870cba3a6132",
+      "contentSha256": "f8eddd4a23512475148f3ea3234a58c65f49b6d1eb5d38b6df82ee1352b61d06",
       "sources": [
         "task:T-009",
         "owner:2026-11-15",

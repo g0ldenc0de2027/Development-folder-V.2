@@ -6,7 +6,7 @@
 - **Версия:** v1.0.0
 - **Диапазон:** §§16–18
 - **Статус:** draft; исследовательский материал, не утверждённая архитектура
-- **Происхождение:** $derivedSource; конкретные ссылки и pinned refs сохранены в тексте разделов
+- **Происхождение:** agent-workflow-research@03a509d87fd8d41addca3f7a8a00833710e3d47df01f0a44a27732ad7856cac9; конкретные ссылки и pinned refs сохранены в тексте разделов
 
 ---
 ## 16. Targeted GitHub pass: knowledge admission and agent coordination (2026-11-16)
