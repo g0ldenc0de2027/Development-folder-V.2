@@ -58,20 +58,39 @@ if ($checkPolicy['context'] -cne 'quality-gate' -or $checkPolicy['state'] -cne '
     throw 'Invalid required quality-gate manifest'
 }
 
-$rules = Read-GitHubJson @('api','--hostname','github.com',"repos/$slug/rules/branches/main")
-$required = @($rules | Where-Object {
-    if ($_ -isnot [System.Collections.IDictionary] -or $_['type'] -cne 'required_status_checks') { return $false }
-    $parameters = $_['parameters']
-    if ($parameters -isnot [System.Collections.IDictionary] -or
-        $parameters['strict_required_status_checks_policy'] -isnot [bool] -or
-        !$parameters['strict_required_status_checks_policy']) { return $false }
-    $parameters['required_status_checks'] | Where-Object {
-        if ($_ -isnot [System.Collections.IDictionary]) { return $false }
-        $sourceId = $_['integration_id']
-        $_['context'] -ceq 'quality-gate' -and ($sourceId -is [int] -or $sourceId -is [long]) -and $sourceId -eq $integrationId
+function Assert-RequiredCheckSource {
+    param([object[]]$Pages, [string]$Context, [long]$IntegrationId)
+
+    $strictCheckFound = $false
+    foreach ($page in $Pages) {
+        if ($page -isnot [array]) { throw 'GitHub returned incomplete branch rules' }
+        foreach ($rule in $page) {
+            if ($rule -isnot [System.Collections.IDictionary] -or $rule['type'] -cne 'required_status_checks') { continue }
+            $parameters = $rule['parameters']
+            if ($parameters -isnot [System.Collections.IDictionary] -or $parameters['required_status_checks'] -isnot [array]) {
+                throw 'GitHub returned incomplete required status checks'
+            }
+            foreach ($check in $parameters['required_status_checks']) {
+                if ($check -isnot [System.Collections.IDictionary]) { throw 'GitHub returned an invalid required status check' }
+                if ($check['context'] -cne $Context) { continue }
+                $sourceId = $check['integration_id']
+                if (($sourceId -isnot [int] -and $sourceId -isnot [long]) -or $sourceId -ne $IntegrationId) {
+                    throw 'Required quality-gate has a conflicting or invalid source'
+                }
+                if ($parameters['strict_required_status_checks_policy'] -is [bool] -and $parameters['strict_required_status_checks_policy']) {
+                    $strictCheckFound = $true
+                }
+            }
+        }
     }
-})
-if ($required.Count -eq 0) { throw 'Strict GitHub Actions quality-gate is not required' }
+    if (-not $strictCheckFound) { throw 'Strict GitHub Actions quality-gate is not required' }
+}
+
+$ruleResponse = & gh api --hostname github.com --paginate --slurp "repos/$slug/rules/branches/main" 2>$null
+if ($LASTEXITCODE -ne 0) { throw 'GitHub branch rules read failed' }
+$rulePages = ($ruleResponse -join [char]10) | ConvertFrom-Json -AsHashtable -NoEnumerate
+if ($rulePages -isnot [array]) { throw 'GitHub returned incomplete branch rules' }
+Assert-RequiredCheckSource -Pages $rulePages -Context $checkPolicy['context'] -IntegrationId $integrationId
 
 $query = 'query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}}}}}'
 $owner, $name = $slug.Split('/')
