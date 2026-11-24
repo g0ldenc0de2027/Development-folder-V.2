@@ -46,7 +46,7 @@ CI_HEAD_SHA: $old
 "@
     [IO.File]::WriteAllText($a, $sample)
     [IO.File]::WriteAllText($b, $sample)
-    [IO.File]::WriteAllText($c, ('# T-001 — Другой проект' + [char]10 + '**Статус:** merged · **Исполнитель и координатор:** Kimi.'))
+    [IO.File]::WriteAllText($c, ('# T-001 — Другой проект' + [char]10 + '- **Статус:** merged · **Исполнитель и координатор:** Kimi.'))
     [void](New-Item -ItemType Junction -Path $junction -Target (Join-Path $root 'other'))
     $registry = Join-Path $root 'projects.json'
     @{
@@ -79,13 +79,13 @@ CI_HEAD_SHA: $old
     if (!$url) { throw ($process.StandardError.ReadToEnd()) }
     $origin = "http://127.0.0.1:$port"
     $first = Invoke-RestMethod ($url + 'summary') -TimeoutSec 10
-    Assert-That ($first.Count -eq (2 + [int][bool]$V2Root) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
+    Assert-That ($first.Count -eq (2 + [int][bool]$V2Root)) 'PTR-001 independent projects'
     if ($V2Root) {
         $expected = @(Get-ChildItem -LiteralPath (Join-Path $V2Root 'tasks') -File -Filter 'T-*.md' |
             Where-Object Name -CMatch '^T-[0-9]{3,}(?:-[^.]+)?\.md$').Count
         Assert-That ($expected -gt 0 -and $first[2].tasks.Count -eq $expected -and !$first[2].sources[0].error) 'PTR-001 real V2 checkout'
     }
-    Assert-That ($first[1].tasks[0].versions[0].assignee -ceq 'Kimi') 'PTR-002 inline Markdown assignee'
+    Assert-That ($first[1].tasks[0].versions[0].assignee -ceq 'Kimi' -and $first[1].tasks[0].versions[0].status -ceq 'merged') 'PTR-002 Markdown list status and inline assignee'
     Assert-That ($first[1].tasks[0].versions[0].sources[0].path -ceq (Get-Item -LiteralPath $c).FullName) 'PTR-003 native source path'
     $version = $first[0].tasks[0].versions[0]
     Assert-That ($version.blocker -eq 'CI' -and $version.needsDecision -and $version.assignee -eq 'Codex' -and $version.status -eq 'in_progress') 'PTR-002 explicit fields'

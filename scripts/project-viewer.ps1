@@ -10,7 +10,8 @@ $ErrorActionPreference = 'Stop'
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 
 function Read-Field([string]$Card, [string]$Label) {
-    $match = [regex]::Match($Card, '(?im)^[ \t]*(?:\*\*)?' + [regex]::Escape($Label) +
+    $marker = if ($Label -eq 'Статус') { '(?:-[ \t]+)?' } else { '' }
+    $match = [regex]::Match($Card, '(?im)^[ \t]*' + $marker + '(?:\*\*)?' + [regex]::Escape($Label) +
         '[ \t]*:(?:\*\*)?[ \t]*(?<value>[^\r\n]*)')
     $match.Groups['value'].Value.Trim().Trim('*')
 }
