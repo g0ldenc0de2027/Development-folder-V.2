@@ -44,10 +44,17 @@ function Invoke-GitText {
     }
 
     $process = [Diagnostics.Process]::Start($start)
+    $readCancellation = [Threading.CancellationTokenSource]::new()
     try {
-        $stdout = $process.StandardOutput.ReadToEndAsync()
-        $stderr = $process.StandardError.ReadToEndAsync()
-        $process.WaitForExit()
+        $stdout = $process.StandardOutput.ReadToEndAsync($readCancellation.Token)
+        $stderr = $process.StandardError.ReadToEndAsync($readCancellation.Token)
+        if (-not $process.WaitForExit(30000)) {
+            if (-not $process.HasExited) { $process.Kill($true) }
+            throw "WORKTREE_AUDIT_GIT_TIMEOUT:$Operation"
+        }
+        if (-not [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdout,$stderr),1000)) {
+            throw "WORKTREE_AUDIT_GIT_OUTPUT_TIMEOUT:$Operation"
+        }
         $output = $stdout.GetAwaiter().GetResult()
         $diagnostic = $stderr.GetAwaiter().GetResult().TrimEnd()
         if ($process.ExitCode -ne 0) {
@@ -61,6 +68,8 @@ function Invoke-GitText {
             $reader.Dispose()
         }
     } finally {
+        $readCancellation.Cancel()
+        $readCancellation.Dispose()
         $process.Dispose()
     }
 }
@@ -317,7 +326,13 @@ try {
                 continue
             }
         }
-        if ($relativeWorktree -match '^\.worktrees/T-(?<id>\d{3,})$' -and $record.Branch -notmatch ('^task/T-' + $Matches.id + '(?:-|$)')) {
+        $taskBranch = [regex]::Match([string]$record.Branch, '^task/(?<id>T-[0-9]{3})(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$')
+        $taskPath = [regex]::Match($relativeWorktree, '^\.worktrees/(?<id>T-[0-9]{3})$', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if (
+            ($record.Branch -clike 'task/*' -and -not $taskBranch.Success) -or
+            ($taskBranch.Success -and (-not $taskPath.Success -or $taskPath.Groups['id'].Value -ine $taskBranch.Groups['id'].Value)) -or
+            ($taskPath.Success -and -not $taskBranch.Success)
+        ) {
             Write-Output ('BLOCKED: task branch/worktree ID mismatch: ' + $relativeWorktree)
             $failed = $true
             continue
@@ -325,11 +340,18 @@ try {
 
         $statusIndexFile = $null
         if ($isCurrent -and $Mode -ceq 'Commit') { $statusIndexFile = $commitIndexFile }
-        $statusLines = @(Invoke-GitText -Directory $treePath -Arguments @('-c','core.quotepath=false','status','--porcelain=v1','--untracked-files=all','--ignore-submodules=none') -Operation 'status' -IndexFile $statusIndexFile)
-        $ignoredLines = @(Invoke-GitText -Directory $treePath -Arguments @('-c','core.quotepath=false','status','--porcelain=v1','--ignored=matching','--untracked-files=all','--ignore-submodules=none') -Operation 'ignored-status' -IndexFile $statusIndexFile)
-        $visualStudioArtifacts = @($ignoredLines | Where-Object {
-            $_.StartsWith('!! ',[StringComparison]::Ordinal) -and $_.Substring(3).Trim('"') -match '(?i)(?:^|[\\/])\.vs(?:[\\/]|["]|$)'
+        $allStatusLines = @(Invoke-GitText -Directory $treePath -Arguments @('-c','core.quotepath=false','status','--porcelain=v1','--ignored=matching','--untracked-files=all','--ignore-submodules=none') -Operation 'status' -IndexFile $statusIndexFile)
+        $statusLines = @($allStatusLines | Where-Object { -not $_.StartsWith('!! ',[StringComparison]::Ordinal) })
+        $ignoredPaths = @(foreach ($line in $allStatusLines) {
+            if ($line.StartsWith('!! ',[StringComparison]::Ordinal)) { $line.Substring(3).Trim('"') }
         })
+        $visualStudioArtifacts = @($ignoredPaths -match '(?i)(?:^|/)\.vs(?:/|$)')
+        if ($visualStudioArtifacts.Count -eq 0 -and $ignoredPaths -match '/$') {
+            # Porcelain status collapses ignored directories. Query matching artifacts only when needed.
+            $visualStudioArtifacts = @(Invoke-GitText -Directory $treePath -Arguments @(
+                'ls-files','--others','--ignored','--exclude-standard','--',':(icase,glob)**/.vs',':(icase,glob)**/.vs/**'
+            ) -Operation 'nested-ignored-vs' -IndexFile $statusIndexFile)
+        }
         if ($visualStudioArtifacts.Count -gt 0) {
             Write-Output ('BLOCKED: ignored Visual Studio artifact detected in ' + $relativeWorktree)
             $failed = $true

@@ -1,10 +1,8 @@
 # Specification state
 
-Canonical source: spec/ТЗ.md
-Version: 0.1.0-draft
-Status: DRAFT / NOT READY
-Implementation admission: only bounded slices T-004 and T-014; all other product features remain blocked
-Infrastructure bootstrap: allowed and underway
+Требования продукта — [ТЗ](../spec/ТЗ.md).
+Действующий статус и допуски к реализации — [состояние спецификации](../spec/СОСТОЯНИЕ.md).
+Срезы T-004 и T-014 описаны ниже с исходными датами допуска. Актуальные допуски, включая T-031, T-032 и T-051, перечислены в связанном реестре. Ниже также приведены справочные ссылки на черновики.
 Open decisions: supported operating systems; stack-profile inventory; portfolio knowledge workflow and agent identity/ACL; approval of the proposed project progress/ETA draft; release and backup policy.
 
 ## Допуск T-004 от 2026-11-15
