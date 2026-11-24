@@ -169,17 +169,47 @@ async function openCard(project, task) {
   }
 }
 
+function isValidSnapshot(snapshot) {
+  const ids = new Set();
+  const optionalText = value => value == null || typeof value === 'string';
+  const versionValid = version => version && typeof version.hash === 'string' &&
+    typeof version.title === 'string' && ['status', 'assignee', 'blocker', 'nextAction'].every(key => optionalText(version[key])) &&
+    typeof version.needsDecision === 'boolean' &&
+    Array.isArray(version.links) && version.links.every(link => typeof link === 'string') &&
+    Array.isArray(version.sources) && version.sources.every(source =>
+      source && typeof source.path === 'string' && typeof source.stale === 'boolean');
+  return Array.isArray(snapshot) && snapshot.every(project => {
+    if (!project || typeof project.id !== 'string' || !project.id.length ||
+        typeof project.name !== 'string' || !Array.isArray(project.sources) || !Array.isArray(project.tasks)) return false;
+    const id = project.id.toLowerCase();
+    if (ids.has(id)) return false;
+    ids.add(id);
+    return project.sources.every(source => source && typeof source.path === 'string' &&
+      optionalText(source.error) && optionalText(source.updated)) &&
+      project.tasks.every(task => task && typeof task.id === 'string' &&
+        Array.isArray(task.unreadable) && task.unreadable.every(path => typeof path === 'string') &&
+        Array.isArray(task.versions) && task.versions.every(versionValid));
+  });
+}
+
+let hasSnapshot = false;
+
 async function load(refresh) {
   const button = byId('refresh');
   button.disabled = true;
   byId('notice').textContent = 'Чтение источников…';
   try {
-    projects = await request(refresh ? 'refresh' : 'summary', refresh ? 'POST' : 'GET');
+    const next = await request(refresh ? 'refresh' : 'summary', refresh ? 'POST' : 'GET');
+    if (!isValidSnapshot(next)) throw new Error('INVALID_SNAPSHOT');
+    projects = next;
+    hasSnapshot = true;
     render();
     byId('notice').textContent = projects.some(project => project.sources.some(source => source.error))
       ? 'Часть источников прочитать не удалось.' : '';
   } catch {
-    byId('notice').textContent = 'Обновление не удалось. Показаны данные последней загрузки.';
+    byId('notice').textContent = hasSnapshot
+      ? 'Обновление не удалось. Показаны данные последней загрузки.'
+      : 'Не удалось загрузить проекты. Повторите попытку.';
   } finally {
     button.disabled = false;
   }
