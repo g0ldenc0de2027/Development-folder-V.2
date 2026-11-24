@@ -49,7 +49,14 @@ function New-GitFixtureTempDirectory([string]$Path) {
     try {
         [IO.File]::WriteAllText((Join-Path $Path '.fixture-owner'),$name)
     } catch {
-        throw "Could not mark the new Git fixture directory for cleanup: $Path. $($_.Exception.Message)"
+        $markFailure = $_
+        try {
+            Assert-GitFixtureTempRoot $Path
+            [IO.Directory]::Delete($Path, $false)
+        } catch {
+            throw "Could not mark the new Git fixture directory: $Path. $($markFailure.Exception.Message) Cleanup failed: $($_.Exception.Message)"
+        }
+        throw "Could not mark the new Git fixture directory: $Path. $($markFailure.Exception.Message)"
     }
 }
 
