@@ -1,6 +1,9 @@
 # T-047 — Сократить стоимость проверки компонентов пути локальной БЗ
 
-Статус: in_progress. Оптимизация действующего LKB-003 по замерам K-09.
+Статус: merged. Оптимизация действующего LKB-003 по замерам K-09.
+
+Интеграция: [PR #46](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/46), squash `799958e3652a8d0a8fa9693d40c7224b27886db4`.
+CI после слияния: [run #44747026717](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44747026717), success на указанном squash-коммите.
 
 ## Зона файлов
 
