@@ -119,7 +119,8 @@ function Invoke-NativeChecked {
 function Get-PinnedExecutable {
     param(
         [Parameter(Mandatory)]$Tool,
-        [Parameter(Mandatory)][string]$Name
+        [Parameter(Mandatory)][string]$Name,
+        [TimeSpan]$DownloadBudget = [TimeSpan]::FromSeconds(180)
     )
     if ($Tool.sha256 -notmatch '^[0-9a-fA-F]{64}$') {
         throw "$Name has an invalid SHA-256 pin"
@@ -128,17 +129,61 @@ function Get-PinnedExecutable {
     [void][IO.Directory]::CreateDirectory($toolRoot)
     $archive = Join-Path $toolRoot 'download.zip'
     $retryableStatus = @(408, 429, 500, 502, 503, 504)
-    for ($attempt = 1; $attempt -le 3; $attempt++) {
-        try {
-            Invoke-WebRequest -Uri $Tool.url -OutFile $archive -ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60 -ErrorAction Stop
-            break
-        } catch [Microsoft.PowerShell.Commands.HttpResponseException] {
-            $status = [int]$_.Exception.Response.StatusCode
-            if ($attempt -eq 3 -or $status -notin $retryableStatus) { throw }
-            if ([IO.File]::Exists($archive)) { [IO.File]::Delete($archive) }
-            Write-Warning "$Name download returned HTTP $status (attempt $attempt/3); retrying"
-            Start-Sleep -Seconds $attempt
+    $handler = [Net.Http.SocketsHttpHandler]::new()
+    $handler.ConnectTimeout = [TimeSpan]::FromSeconds(30)
+    $handler.MaxAutomaticRedirections = 5
+    $handler.MaxResponseDrainSize = 0
+    $client = [Net.Http.HttpClient]::new($handler)
+    $client.Timeout = [Threading.Timeout]::InfiniteTimeSpan
+    $deadline = [Threading.CancellationTokenSource]::new($DownloadBudget)
+    $operationTimeout = [TimeSpan]::FromSeconds(60)
+    $completed = $false
+    try {
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            $operation = [Threading.CancellationTokenSource]::CreateLinkedTokenSource($deadline.Token)
+            $response = $null
+            try {
+                $operation.CancelAfter($operationTimeout)
+                $response = $client.GetAsync($Tool.url, [Net.Http.HttpCompletionOption]::ResponseHeadersRead, $operation.Token).GetAwaiter().GetResult()
+                $status = [int]$response.StatusCode
+                if ($attempt -lt 3 -and $status -in $retryableStatus) {
+                    Write-Warning "$Name download returned HTTP $status (attempt $attempt/3); retrying"
+                } else {
+                    $null = $response.EnsureSuccessStatusCode()
+                    $inputStream = $response.Content.ReadAsStream($deadline.Token)
+                    $outputStream = [IO.FileStream]::new($archive, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None, 65536, $true)
+                    try {
+                        $buffer = [byte[]]::new(65536)
+                        do {
+                            $operation.CancelAfter($operationTimeout)
+                            $count = $inputStream.ReadAsync($buffer, 0, $buffer.Length, $operation.Token).GetAwaiter().GetResult()
+                            if ($count -gt 0) {
+                                $null = $outputStream.WriteAsync($buffer, 0, $count, $deadline.Token).GetAwaiter().GetResult()
+                            }
+                        } while ($count -gt 0)
+                        $null = $outputStream.FlushAsync($deadline.Token).GetAwaiter().GetResult()
+                    } finally {
+                        $outputStream.Dispose()
+                    }
+                    $deadline.Token.ThrowIfCancellationRequested()
+                    $completed = $true
+                    break
+                }
+            } finally {
+                if ($null -ne $response) { $response.Dispose() }
+                $operation.Dispose()
+            }
+            $null = [Threading.Tasks.Task]::Delay([TimeSpan]::FromSeconds($attempt), $deadline.Token).GetAwaiter().GetResult()
         }
+    } catch {
+        if ($deadline.IsCancellationRequested) {
+            throw [TimeoutException]::new("$Name download exceeded its total deadline", $_.Exception)
+        }
+        throw
+    } finally {
+        $deadline.Dispose()
+        $client.Dispose()
+        if (-not $completed) { [IO.File]::Delete($archive) }
     }
     $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actualHash -ne $Tool.sha256.ToLowerInvariant()) {
