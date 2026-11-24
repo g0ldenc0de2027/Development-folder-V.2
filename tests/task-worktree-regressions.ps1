@@ -6,9 +6,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $root = [IO.Path]::GetFullPath($TempRoot)
-[IO.Directory]::CreateDirectory($root) | Out-Null
+. (Join-Path $PSScriptRoot 'git-fixture-temp.ps1')
+$fixtureOwned = $false
 $scratch = Join-Path $root ('Проверка-worktree-Git-' + [guid]::NewGuid().ToString('N'))
-[IO.Directory]::CreateDirectory($scratch) | Out-Null
 $admin = Join-Path $scratch 'admin'
 $seed = Join-Path $scratch 'seed'
 $remote = Join-Path $scratch 'remote.git'
@@ -21,7 +21,6 @@ $configPath = Join-Path $scratch 'quarantine.json'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $utf8 = [Text.UTF8Encoding]::new($false)
 $fixtureEmptyConfig = Join-Path $scratch 'fixture-empty.config'
-[IO.File]::WriteAllText($fixtureEmptyConfig,"# Isolated regression fixture config.`n",$utf8)
 $passed = 0
 
 function Invoke-Git {
@@ -96,6 +95,39 @@ function Case([string]$Name,[scriptblock]$Action) {
 }
 
 try {
+    New-GitFixtureTempDirectory $scratch
+    $fixtureOwned = $true
+    [IO.File]::WriteAllText($fixtureEmptyConfig,"# Isolated regression fixture config.`n",$utf8)
+    $configlessBare = Join-Path $scratch 'configless.git'
+    Invoke-Git $scratch @('init','--bare','--quiet',$configlessBare) | Out-Null
+    Remove-Item -LiteralPath (Join-Path $configlessBare 'config')
+    $configlessRejected = $false
+    try { Assert-GitFixtureTempRoot $configlessBare }
+    catch {
+        if ($_.Exception.Message -notlike '*Git fixture TempRoot must be outside every Git repository*') { throw }
+        $configlessRejected = $true
+    }
+    if (-not $configlessRejected) { throw 'Git recognized a bare repository without config but fixture admission accepted it' }
+    Write-Output 'PASS: direct fixture rejects a bare repository without config'
+
+    Case 'fixture directory treats brackets literally and refuses reuse' {
+        $literalRoot = Join-Path $scratch 'parent[1]'
+        $fixture = Join-Path $literalRoot 'child'
+        [IO.Directory]::CreateDirectory($literalRoot) | Out-Null
+        New-GitFixtureTempDirectory $fixture
+        $marker = Join-Path $fixture '.fixture-owner'
+        if ([IO.File]::ReadAllText($marker) -cne 'child') { throw 'Literal fixture marker missing' }
+        $refused = $false
+        try { New-GitFixtureTempDirectory $fixture }
+        catch {
+            if ($_.FullyQualifiedErrorId -notlike 'DirectoryExist,*') { throw }
+            $refused = $true
+        }
+        if (-not $refused) { throw 'Existing fixture directory was reused' }
+        Remove-GitFixtureTempDirectory $fixture
+        if ([IO.Directory]::Exists($fixture)) { throw 'Literal fixture directory still exists' }
+    }
+
     Invoke-Git $scratch @('init','--bare','--quiet',$admin) | Out-Null
     Invoke-Git $scratch @('init','--bare','--quiet',$remote) | Out-Null
     Invoke-Git $scratch @('init','--quiet',$seed) | Out-Null
@@ -623,12 +655,9 @@ try {
         Remove-Item -LiteralPath $mainHookScripts -Force
     }
 
-    if ($passed -ne 25) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 25, got ' + $passed) }
+    if ($passed -ne 26) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 26, got ' + $passed) }
     Write-Output ('TASK-WORKTREE-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {
-    $fullRoot = [IO.Path]::GetFullPath($root).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
-    $fullScratch = [IO.Path]::GetFullPath($scratch)
-    if (-not $fullScratch.StartsWith($fullRoot,[StringComparison]::OrdinalIgnoreCase)) { throw 'TASK_WORKTREE_FIXTURE_CLEANUP_PATH_INVALID' }
-    if (Test-Path -LiteralPath $fullScratch) { Remove-Item -LiteralPath $fullScratch -Recurse -Force }
+    if ($fixtureOwned) { Remove-GitFixtureTempDirectory $scratch }
 }
