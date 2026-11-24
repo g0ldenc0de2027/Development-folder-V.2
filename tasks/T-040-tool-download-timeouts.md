@@ -1,6 +1,6 @@
 # T-040 — Ограничить ожидание загрузки инструментов quality gate
 
-Статус: in_progress. Аудиты Kimi M-2 и ZCode V2Z-010.
+Статус: merged (PR #39, squash 31a0a8465a27d7437445ff08eb06021ebb645452). Аудиты Kimi M-2 и ZCode V2Z-010.
 
 ## Зона файлов
 

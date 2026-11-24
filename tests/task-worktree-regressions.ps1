@@ -6,9 +6,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $root = [IO.Path]::GetFullPath($TempRoot)
-[IO.Directory]::CreateDirectory($root) | Out-Null
+. (Join-Path $PSScriptRoot 'git-fixture-temp.ps1')
+$fixtureOwned = $false
 $scratch = Join-Path $root ('Проверка-worktree-Git-' + [guid]::NewGuid().ToString('N'))
-[IO.Directory]::CreateDirectory($scratch) | Out-Null
 $admin = Join-Path $scratch 'admin'
 $seed = Join-Path $scratch 'seed'
 $remote = Join-Path $scratch 'remote.git'
@@ -21,7 +21,6 @@ $configPath = Join-Path $scratch 'quarantine.json'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $utf8 = [Text.UTF8Encoding]::new($false)
 $fixtureEmptyConfig = Join-Path $scratch 'fixture-empty.config'
-[IO.File]::WriteAllText($fixtureEmptyConfig,"# Isolated regression fixture config.`n",$utf8)
 $passed = 0
 
 function Invoke-Git {
@@ -45,6 +44,8 @@ function Invoke-NativeProcess([string]$Executable,[string[]]$Arguments,[switch]$
     if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) { $start.WorkingDirectory = $WorkingDirectory }
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
+    $start.StandardOutputEncoding = [Text.Encoding]::UTF8
+    $start.StandardErrorEncoding = $start.StandardOutputEncoding
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     if (-not $PreserveGitContext) {
         foreach ($name in @($start.Environment.Keys | Where-Object { ([string]$_).StartsWith('GIT_',[StringComparison]::OrdinalIgnoreCase) })) {
@@ -96,6 +97,59 @@ function Case([string]$Name,[scriptblock]$Action) {
 }
 
 try {
+    New-GitFixtureTempDirectory $scratch
+    $fixtureOwned = $true
+    [IO.File]::WriteAllText($fixtureEmptyConfig,"# Isolated regression fixture config.`n",$utf8)
+    $configlessBare = Join-Path $scratch 'configless.git'
+    Invoke-Git $scratch @('init','--bare','--quiet',$configlessBare) | Out-Null
+    Remove-Item -LiteralPath (Join-Path $configlessBare 'config')
+    $configlessRejected = $false
+    try { Assert-GitFixtureTempRoot $configlessBare }
+    catch {
+        if ($_.Exception.Message -notlike '*Git fixture TempRoot must be outside every Git repository*') { throw }
+        $configlessRejected = $true
+    }
+    if (-not $configlessRejected) { throw 'Git recognized a bare repository without config but fixture admission accepted it' }
+    Write-Output 'PASS: direct fixture rejects a bare repository without config'
+
+    Case 'fixture directory treats brackets literally and refuses reuse' {
+        $literalRoot = Join-Path $scratch 'parent[1]'
+        $fixture = Join-Path $literalRoot 'child'
+        [IO.Directory]::CreateDirectory($literalRoot) | Out-Null
+        New-GitFixtureTempDirectory $fixture
+        $marker = Join-Path $fixture '.fixture-owner'
+        if ([IO.File]::ReadAllText($marker) -cne 'child') { throw 'Literal fixture marker missing' }
+        $refused = $false
+        try { New-GitFixtureTempDirectory $fixture }
+        catch {
+            if ($_.FullyQualifiedErrorId -notlike 'DirectoryExist,*') { throw }
+            $refused = $true
+        }
+        if (-not $refused) { throw 'Existing fixture directory was reused' }
+        Remove-GitFixtureTempDirectory $fixture
+        if ([IO.Directory]::Exists($fixture)) { throw 'Literal fixture directory still exists' }
+    }
+
+    Case 'native Git diagnostics preserve UTF-8 under console code page 866' {
+        $git = (Get-Command git -ErrorAction Stop).Source
+        $probe = 'Кириллица'
+        $missing = Join-Path $scratch $probe
+        $previousEncoding = [Console]::OutputEncoding
+        try {
+            [Console]::OutputEncoding = [Text.Encoding]::GetEncoding(866)
+            $output = Invoke-NativeProcess $git @('-c',"fixture.probe=$probe",'config','--get','fixture.probe')
+            if ($output.ExitCode -ne 0 -or $output.Output.TrimEnd() -cne $probe) {
+                throw 'Git stdout lost UTF-8 characters'
+            }
+            $failure = Invoke-NativeProcess $git @('-C',$missing,'status')
+            if ($failure.ExitCode -eq 0 -or -not $failure.Error.Contains($probe,[StringComparison]::Ordinal)) {
+                throw 'Git stderr lost UTF-8 characters'
+            }
+        } finally {
+            [Console]::OutputEncoding = $previousEncoding
+        }
+    }
+
     Invoke-Git $scratch @('init','--bare','--quiet',$admin) | Out-Null
     Invoke-Git $scratch @('init','--bare','--quiet',$remote) | Out-Null
     Invoke-Git $scratch @('init','--quiet',$seed) | Out-Null
@@ -264,6 +318,23 @@ try {
         }
         finally { Invoke-Git $mainTree @('branch','-m','task/T-018-worktree-guard') | Out-Null }
     }
+    Case 'task branches require matching paths but external diagnostic worktrees remain supported' {
+        $diagnostic = Join-Path $scratch 'diagnostic'
+        Invoke-Git $admin @('worktree','add','--quiet','--detach',$diagnostic,'main') | Out-Null
+        $taskBranchCreated = $false
+        try {
+            Invoke-Git $diagnostic @('config','--worktree','core.bare','false') | Out-Null
+            $null = Assert-AuditExit 0 'EXTERNAL_DIAGNOSTIC_WORKTREE'
+            Invoke-Git $diagnostic @('switch','--quiet','-c','task/T-020-external') | Out-Null
+            $taskBranchCreated = $true
+            $result = Assert-AuditExit 1 'EXTERNAL_TASK_WORKTREE'
+            if ($result.Output -notmatch 'task branch/worktree ID mismatch') { throw 'EXTERNAL_TASK_WORKTREE_REASON_MISSING' }
+        }
+        finally {
+            Invoke-Git $admin @('worktree','remove',$diagnostic) | Out-Null
+            if ($taskBranchCreated) { Invoke-Git $admin @('branch','-d','task/T-020-external') | Out-Null }
+        }
+    }
     Case 'fixture Git commands ignore inherited hook context' {
         $gitDir = Invoke-Git $mainTree @('rev-parse','--absolute-git-dir')
         $commonDir = Invoke-Git $mainTree @('rev-parse','--git-common-dir')
@@ -311,6 +382,23 @@ try {
         $result = Assert-AuditExit 1 'IGNORED_VS_AUDIT'
         if ($result.Output -notmatch 'ignored Visual Studio artifact') { throw 'IGNORED_VS_REASON_MISSING' }
         Remove-Item -LiteralPath (Join-Path $mainTree '.vs') -Recurse -Force
+    }
+    Case 'nested ignored Visual Studio artifacts block without rejecting ordinary ignored files' {
+        $exclude = Join-Path $admin 'info/exclude'
+        $originalExclude = [IO.File]::ReadAllBytes($exclude)
+        $cache = Join-Path $mainTree '.ignored-fixture'
+        try {
+            Write-Text $exclude ('.ignored-fixture/' + [Environment]::NewLine)
+            Write-Text (Join-Path $cache 'nested/normal.txt') 'synthetic ignored data'
+            $null = Assert-AuditExit 0 'IGNORED_PARENT_WITHOUT_VS'
+            Write-Text (Join-Path $cache 'nested/.VS/ProjectSettings.json') '{}'
+            $result = Assert-AuditExit 1 'NESTED_IGNORED_VS'
+            if ($result.Output -notmatch 'ignored Visual Studio artifact') { throw 'NESTED_IGNORED_VS_REASON_MISSING' }
+        }
+        finally {
+            [IO.File]::WriteAllBytes($exclude,$originalExclude)
+            if (Test-Path -LiteralPath $cache -PathType Container) { Remove-Item -LiteralPath $cache -Recurse -Force }
+        }
     }
     Case 'exact quarantine snapshot is detected as read-only' {
         $head = Invoke-Git $quarantineTree @('rev-parse','HEAD')
@@ -642,12 +730,9 @@ try {
         Remove-Item -LiteralPath $mainHookScripts -Force
     }
 
-    if ($passed -ne 25) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 25, got ' + $passed) }
+    if ($passed -ne 29) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 29, got ' + $passed) }
     Write-Output ('TASK-WORKTREE-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {
-    $fullRoot = [IO.Path]::GetFullPath($root).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
-    $fullScratch = [IO.Path]::GetFullPath($scratch)
-    if (-not $fullScratch.StartsWith($fullRoot,[StringComparison]::OrdinalIgnoreCase)) { throw 'TASK_WORKTREE_FIXTURE_CLEANUP_PATH_INVALID' }
-    if (Test-Path -LiteralPath $fullScratch) { Remove-Item -LiteralPath $fullScratch -Recurse -Force }
+    if ($fixtureOwned) { Remove-GitFixtureTempDirectory $scratch }
 }
