@@ -205,15 +205,33 @@ function Invoke-GitIdentityProcess {
         }
         $stdout = $process.StandardOutput.ReadToEndAsync($readCancellation.Token)
         $stderr = $process.StandardError.ReadToEndAsync($readCancellation.Token)
+        $reads = [Threading.Tasks.Task[]]@($stdout,$stderr)
         $failure = if (-not $process.WaitForExit($ProcessTimeoutMilliseconds)) {
             'GIT_IDENTITY_PROCESS_TIMEOUT'
-        } elseif (-not [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdout,$stderr),$OutputTimeoutMilliseconds)) {
-            'GIT_IDENTITY_PROCESS_OUTPUT_TIMEOUT'
+        } else {
+            try {
+                if (-not [Threading.Tasks.Task]::WaitAll($reads,$OutputTimeoutMilliseconds)) {
+                    'GIT_IDENTITY_PROCESS_OUTPUT_TIMEOUT'
+                }
+            } catch {
+                'GIT_IDENTITY_PROCESS_OUTPUT_FAILED'
+            }
         }
         if ($failure) {
             # Git can exit while a descendant still holds a redirected stream.
             try { $process.Kill($true) }
             catch { Write-Verbose 'Could not stop the Git process tree' }
+            if (-not $process.WaitForExit(1000)) {
+                Write-Verbose 'Git process exit was not confirmed after cancellation'
+            }
+            $readCancellation.Cancel()
+            try {
+                if (-not [Threading.Tasks.Task]::WaitAll($reads,1000)) {
+                    Write-Verbose 'Git output streams did not settle after stopping the process tree'
+                }
+            } catch {
+                Write-Verbose 'Git output streams ended with a read failure'
+            }
             throw $failure
         }
         return [pscustomobject]@{
@@ -222,9 +240,11 @@ function Invoke-GitIdentityProcess {
             StdErr = $stderr.GetAwaiter().GetResult()
         }
     } finally {
-        $readCancellation.Cancel()
-        $readCancellation.Dispose()
-        $process.Dispose()
+        try { $readCancellation.Cancel() }
+        finally {
+            $readCancellation.Dispose()
+            $process.Dispose()
+        }
     }
 }
 
