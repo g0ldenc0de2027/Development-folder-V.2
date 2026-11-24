@@ -1,6 +1,6 @@
 # T-015 — Изоляция и проверка Git-атрибуции
 
-- **Статус:** merged
+**Статус:** merged
 
 Интеграция: [PR #11](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/11), squash `6dd65d96ca2aa0bcfb38ec06599ac54734076876`.
 CI после слияния: [run #44487771204](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44487771204), success на указанном squash-коммите.
