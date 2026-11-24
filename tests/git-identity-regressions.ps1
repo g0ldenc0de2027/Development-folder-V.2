@@ -5,7 +5,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $root = [IO.Path]::GetFullPath($TempRoot)
-[IO.Directory]::CreateDirectory($root) | Out-Null
+. (Join-Path $PSScriptRoot 'git-fixture-temp.ps1')
+$fixtureOwned = $false
 $scratch = Join-Path $root ('Проверка-идентичности-Git-' + [guid]::NewGuid().ToString('N'))
 $seed = Join-Path $scratch 'seed'
 $worktree = Join-Path $scratch 'worktree'
@@ -220,7 +221,8 @@ function Get-PwshParameterValue([string[]]$Arguments,[string]$Name) {
 }
 
 try {
-    [IO.Directory]::CreateDirectory($scratch) | Out-Null
+    New-GitFixtureTempDirectory $scratch
+    $fixtureOwned = $true
     $globalConfig = Join-Path $scratch 'global.gitconfig'
     $xdg = Join-Path $scratch 'xdg'
     [IO.Directory]::CreateDirectory($xdg) | Out-Null
@@ -905,8 +907,5 @@ finally {
         if ($null -eq $savedEnv[$name]) { Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue }
         else { [Environment]::SetEnvironmentVariable($name,$savedEnv[$name],'Process') }
     }
-    $fullRoot = [IO.Path]::GetFullPath($root).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
-    $fullScratch = [IO.Path]::GetFullPath($scratch)
-    if (-not $fullScratch.StartsWith($fullRoot,[StringComparison]::OrdinalIgnoreCase)) { throw 'GIT_IDENTITY_FIXTURE_CLEANUP_PATH_INVALID' }
-    if (Test-Path -LiteralPath $fullScratch) { Remove-Item -LiteralPath $fullScratch -Recurse -Force }
+    if ($fixtureOwned) { Remove-GitFixtureTempDirectory $scratch }
 }
