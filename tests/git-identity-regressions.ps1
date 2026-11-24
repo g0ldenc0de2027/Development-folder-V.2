@@ -901,7 +901,25 @@ try {
             if ((Invoke-GitFixture -Directory $secondLinked -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw ('LINKED_WORKTREE_CORE_BARE_INVALID:' + $scenario) }
         }
     }
-    if ($passed -ne 32) { throw ('GIT_IDENTITY_REGRESSION_COUNT_MISMATCH: expected 32, got ' + $passed) }
+    Case 'GIT-ID-033 bounds a Git process that has not exited' {
+        $module = Get-Module GitIdentity
+        ExpectFailure {
+            & $module {
+                param($directory)
+                Invoke-GitIdentityProcess -Arguments @('-C',$directory,'-c','alias.timeoutfixture=!sleep 12','timeoutfixture') -ProcessTimeoutMilliseconds 2000
+            } $worktree
+        } 'GIT_IDENTITY_PROCESS_TIMEOUT'
+    }
+    Case 'GIT-ID-034 bounds output held open after Git exits' {
+        $module = Get-Module GitIdentity
+        ExpectFailure {
+            & $module {
+                param($directory)
+                Invoke-GitIdentityProcess -Arguments @('-C',$directory,'-c','alias.timeoutfixture=!sleep 12 &','timeoutfixture') -ProcessTimeoutMilliseconds 5000 -OutputTimeoutMilliseconds 500
+            } $worktree
+        } 'GIT_IDENTITY_PROCESS_OUTPUT_TIMEOUT'
+    }
+    if ($passed -ne 34) { throw ('GIT_IDENTITY_REGRESSION_COUNT_MISMATCH: expected 34, got ' + $passed) }
     Write-Output ('GIT-IDENTITY-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {

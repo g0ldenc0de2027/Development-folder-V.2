@@ -171,7 +171,11 @@ function Assert-GitWorktreeEnvironment {
 }
 
 function Invoke-GitIdentityProcess {
-    param([Parameter(Mandatory)][string[]]$Arguments)
+    param(
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [ValidateRange(1, 60000)][int]$ProcessTimeoutMilliseconds = 30000,
+        [ValidateRange(1, 60000)][int]$OutputTimeoutMilliseconds = 5000
+    )
     $git = (Get-Command git -ErrorAction Stop).Source
     $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
     $emptyConfig = Join-Path $repoRoot 'config/git-empty.config'
@@ -191,12 +195,37 @@ function Invoke-GitIdentityProcess {
     $start.Environment['GIT_CONFIG_NOSYSTEM'] = '1'
     $start.Environment['GIT_CONFIG_GLOBAL'] = $emptyConfig
     $process = [Diagnostics.Process]::new()
-    $process.StartInfo = $start
-    $null = $process.Start()
-    $stdout = $process.StandardOutput.ReadToEndAsync()
-    $stderr = $process.StandardError.ReadToEndAsync()
-    $process.WaitForExit()
-    return [pscustomobject]@{ ExitCode=$process.ExitCode; StdOut=$stdout.Result; StdErr=$stderr.Result }
+    $readCancellation = [Threading.CancellationTokenSource]::new()
+    try {
+        $process.StartInfo = $start
+        try {
+            if (-not $process.Start()) { throw 'Git was not started' }
+        } catch {
+            throw 'GIT_IDENTITY_PROCESS_START_FAILED'
+        }
+        $stdout = $process.StandardOutput.ReadToEndAsync($readCancellation.Token)
+        $stderr = $process.StandardError.ReadToEndAsync($readCancellation.Token)
+        $failure = if (-not $process.WaitForExit($ProcessTimeoutMilliseconds)) {
+            'GIT_IDENTITY_PROCESS_TIMEOUT'
+        } elseif (-not [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdout,$stderr),$OutputTimeoutMilliseconds)) {
+            'GIT_IDENTITY_PROCESS_OUTPUT_TIMEOUT'
+        }
+        if ($failure) {
+            # Git can exit while a descendant still holds a redirected stream.
+            try { $process.Kill($true) }
+            catch { Write-Verbose 'Could not stop the Git process tree' }
+            throw $failure
+        }
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            StdOut = $stdout.GetAwaiter().GetResult()
+            StdErr = $stderr.GetAwaiter().GetResult()
+        }
+    } finally {
+        $readCancellation.Cancel()
+        $readCancellation.Dispose()
+        $process.Dispose()
+    }
 }
 
 function Invoke-GitIdentityCommand {
