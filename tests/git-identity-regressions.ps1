@@ -7,7 +7,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 $root = [IO.Path]::GetFullPath($TempRoot)
 . (Join-Path $PSScriptRoot 'git-fixture-temp.ps1')
 $fixtureOwned = $false
-$scratch = Join-Path $root ('Проверка-идентичности-Git-' + [guid]::NewGuid().ToString('N'))
+$scratch = Join-Path $root ('ид-' + [guid]::NewGuid().ToString('N'))
 $seed = Join-Path $scratch 'seed'
 $worktree = Join-Path $scratch 'worktree'
 $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/lib/GitIdentity.psm1'
@@ -467,9 +467,13 @@ try {
         }
     }
     Case 'GIT-ID-015 pre-push rejects multiple refs and passes the single task range' {
-        $script:hookRemote = Join-Path $scratch 'hook-remote.git'
+        # Учитываем путь временных объектов, который receive-pack добавляет внутри bare.
+        $remoteName = 'hook-remote.git'
+        $padding = [Math]::Max(1, 186 - $scratch.Length - $remoteName.Length - 2)
+        $script:hookRemote = Join-Path (Join-Path $scratch ('r' * $padding)) $remoteName
         $script:hookRepo = Join-Path $scratch 'hook-repo'
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--bare','--quiet',$hookRemote) | Out-Null
+        Invoke-GitFixture -Directory $hookRemote -Arguments @('config','--local','core.longpaths','true') | Out-Null
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--quiet',$hookRepo) | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('config','user.name','Hook Fixture') | Out-Null
         Invoke-GitFixture -Directory $hookRepo -Arguments @('config','user.email','hook@example.invalid') | Out-Null
@@ -712,6 +716,7 @@ try {
         $newWorktree = Join-Path $scratch 'bare-worktree-next'
         $preconfiguredWorktree = Join-Path $scratch 'bare-worktree-preconfigured'
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--bare','--quiet',$bareAdmin) | Out-Null
+        Invoke-GitFixture -Directory $bareAdmin -Arguments @('config','--local','core.longpaths','true') | Out-Null
         Invoke-GitFixture -Directory $scratch -Arguments @('init','--quiet',$bareSeed) | Out-Null
         Invoke-GitFixture -Directory $bareSeed -Arguments @('config','user.name','Bare Fixture') | Out-Null
         WriteText (Join-Path $bareSeed 'config/github/repository.json') (@{commitIdentity=@{login='bare-owner';userId='654321'}} | ConvertTo-Json -Depth 4)
