@@ -38,8 +38,11 @@ Read-only сверка live GitHub settings с versioned config (repository, rul
 Проверка точного диапазона PR:
 
     pwsh -NoProfile -File scripts/quality-gate.ps1 -BaseRef origin/main
+Если `-BaseRef` не передан, но задан `$env:PR_BASE_BRANCH`, скрипт использует `origin/<PR_BASE_BRANCH>`.
 
-Версии аудит-инструментов и SHA-256 находятся в config/security/tools.json. Gate проверяет hash перед запуском. Для `-TemporaryRoot` нужен существующий каталог вне Git-репозиториев, без reparse points на пути. Gate создаёт отдельный каталог запуска и подтверждает его удаление перед итоговым PASS. Перед push hook передает локальные и удаленные SHA обновляемых refs; Gitleaks проверяет их диапазоны и сканирует доступную локальную историю.
+Версии аудит-инструментов и SHA-256 находятся в config/security/tools.json. Gate проверяет hash перед запуском. Для `-TemporaryRoot` нужен существующий каталог вне Git-репозиториев, без reparse points на пути. Перед push hook передаёт `-RemoteName`, `-RemoteUrl` и `-PushRange`; сравнение `-RemoteName`/`-RemoteUrl` с ожидаемым origin выполняется только если задан `-RemoteName`. `-PushRange` принимает один SHA (40 или 64 hex) либо диапазон `base..head`. Gitleaks всегда сканирует рабочее дерево и доступную историю, а переданные push-диапазоны проверяет дополнительно.
+
+Финальный результат `scripts/quality-gate.ps1` печатается в stdout только при нулевом внутреннем коде `$gateExit` и после успешного завершения блока очистки: это точная строка `QUALITY-GATE=PASS`, после чего сценарий завершается с кодом выхода 0. Если исключение возникает в основном теле проверок, перехватчик пишет в stderr `QUALITY-GATE=FAIL: <сообщение>`, устанавливает `$gateExit = 1`, и маркер успеха не выводится. Ошибки очистки временного каталога (проверка владельца и reparse points, удаление, отсутствие остатка каталога) дают отдельный stderr-маркер `QUALITY-GATE=FAIL: cleanup of '<TemporaryRoot>': <сообщение>` и тоже код 1, даже когда сами проверки прошли. Отказы, произошедшие до входа в основной блок (parameter binding, разбор скрипта, инициализация путей), не имеют собственного маркера quality gate и диагностируются стандартными сообщениями PowerShell. Для автоматической проверки используйте пару: stdout-строка `QUALITY-GATE=PASS` плюс exit code 0; любое `QUALITY-GATE=FAIL:` в stderr или ненулевой код означают отказ.
 
 ## Обновления
 Обновление toolchain требует старой версии, официального источника, проверки совместимости, rollback plan и post-update gate. Не меняйте dependency manifests будущего проекта как часть обновления среды.
