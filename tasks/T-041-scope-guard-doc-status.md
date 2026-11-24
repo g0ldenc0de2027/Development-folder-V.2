@@ -1,6 +1,6 @@
 # T-041 — Актуализировать статус scope/worktree guard
 
-Статус: in_progress. Аудиты ZCode V2Z-002, Kimi H-2 и L-6.
+Статус: merged (PR #40, squash 7ca4e7d0af8264e05498f26e30d07a1f10cc8b99). Аудиты ZCode V2Z-002, Kimi H-2 и L-6.
 
 ## Зона файлов
 
