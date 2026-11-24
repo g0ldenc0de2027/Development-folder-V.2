@@ -128,7 +128,7 @@ if ($foundationRoadmap -match '(?m)^\s*-\s*\[\s\]') {
 }
 $settingsVerifier = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/github/verify-settings.ps1') -Raw
 if (
-    $settingsVerifier -notmatch "gh api user --jq .login" -or
+    $settingsVerifier -notmatch 'gh api --hostname github\.com user --jq \.login' -or
     $settingsVerifier -notmatch 'dependencyGraphVerification' -or
     $settingsVerifier -notmatch 'dependency-graph/sbom' -or
     $settingsVerifier -notmatch 'sbom\.spdxVersion' -or
@@ -307,6 +307,20 @@ if (
     throw 'Quality gate must refuse a TEMP inside a bare Git repository before creating artifacts'
 }
 
+foreach ($fixtureSuite in @('git-identity-regressions.ps1','task-worktree-regressions.ps1')) {
+    $fixturePath = Join-Path $repoRoot ('tests/' + $fixtureSuite)
+    foreach ($unsafeRoot in @($repoRoot,$gitCommonDirectory)) {
+        $before = @([IO.Directory]::EnumerateFileSystemEntries($unsafeRoot) | Sort-Object -CaseSensitive)
+        $fixtureOutput = @(& $scopeRegressionPwsh -NoLogo -NoProfile -File $fixturePath -TempRoot $unsafeRoot 2>&1)
+        $fixtureExit = $LASTEXITCODE
+        $after = @([IO.Directory]::EnumerateFileSystemEntries($unsafeRoot) | Sort-Object -CaseSensitive)
+        if ($fixtureExit -eq 0 -or ($before -join [char]10) -cne ($after -join [char]10) -or
+            ($fixtureOutput -join [Environment]::NewLine) -notlike '*Git fixture TempRoot must be outside every Git repository*') {
+            throw "Direct Git fixture did not reject a repository TempRoot: $fixtureSuite"
+        }
+    }
+}
+
 if ($qualityGate -notmatch '\[string\[\]\]\$PushRange' -or -not $qualityGate.Contains('--log-opts=')) {
     throw 'Quality gate must scan exact incoming push history ranges'
 }
@@ -367,6 +381,12 @@ foreach ($variable in $revisionExpressions.Keys) {
 
 if ($actionsPolicy.defaultWorkflowTokenPermission -ne 'read' -or $actionsPolicy.shaPinningRequired -ne $true) {
     throw 'Actions policy manifest weakens token permissions or SHA pinning'
+}
+if ($actionsPolicy.allowedActions -cne 'selected' -or
+    $actionsPolicy.enabled -isnot [bool] -or -not $actionsPolicy.enabled -or
+    $actionsPolicy.githubOwnedAllowed -isnot [bool] -or $actionsPolicy.githubOwnedAllowed -or
+    $actionsPolicy.verifiedCreatorsAllowed -isnot [bool] -or $actionsPolicy.verifiedCreatorsAllowed) {
+    throw 'Actions policy must enforce an enabled, explicit allowlist without broad category grants'
 }
 $prePush = Get-Content -LiteralPath (Join-Path $repoRoot '.githooks/pre-push') -Raw
 if ($prePush -notmatch '(?m)^#!/bin/sh' -or $prePush -notmatch 'exec pwsh .*scripts/quality-gate\.ps1') {

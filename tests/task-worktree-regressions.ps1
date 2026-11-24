@@ -6,9 +6,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $root = [IO.Path]::GetFullPath($TempRoot)
-[IO.Directory]::CreateDirectory($root) | Out-Null
+. (Join-Path $PSScriptRoot 'git-fixture-temp.ps1')
+$fixtureOwned = $false
 $scratch = Join-Path $root ('Проверка-worktree-Git-' + [guid]::NewGuid().ToString('N'))
-[IO.Directory]::CreateDirectory($scratch) | Out-Null
 $admin = Join-Path $scratch 'admin'
 $seed = Join-Path $scratch 'seed'
 $remote = Join-Path $scratch 'remote.git'
@@ -21,7 +21,6 @@ $configPath = Join-Path $scratch 'quarantine.json'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $utf8 = [Text.UTF8Encoding]::new($false)
 $fixtureEmptyConfig = Join-Path $scratch 'fixture-empty.config'
-[IO.File]::WriteAllText($fixtureEmptyConfig,"# Isolated regression fixture config.`n",$utf8)
 $passed = 0
 
 function Invoke-Git {
@@ -96,6 +95,39 @@ function Case([string]$Name,[scriptblock]$Action) {
 }
 
 try {
+    New-GitFixtureTempDirectory $scratch
+    $fixtureOwned = $true
+    [IO.File]::WriteAllText($fixtureEmptyConfig,"# Isolated regression fixture config.`n",$utf8)
+    $configlessBare = Join-Path $scratch 'configless.git'
+    Invoke-Git $scratch @('init','--bare','--quiet',$configlessBare) | Out-Null
+    Remove-Item -LiteralPath (Join-Path $configlessBare 'config')
+    $configlessRejected = $false
+    try { Assert-GitFixtureTempRoot $configlessBare }
+    catch {
+        if ($_.Exception.Message -notlike '*Git fixture TempRoot must be outside every Git repository*') { throw }
+        $configlessRejected = $true
+    }
+    if (-not $configlessRejected) { throw 'Git recognized a bare repository without config but fixture admission accepted it' }
+    Write-Output 'PASS: direct fixture rejects a bare repository without config'
+
+    Case 'fixture directory treats brackets literally and refuses reuse' {
+        $literalRoot = Join-Path $scratch 'parent[1]'
+        $fixture = Join-Path $literalRoot 'child'
+        [IO.Directory]::CreateDirectory($literalRoot) | Out-Null
+        New-GitFixtureTempDirectory $fixture
+        $marker = Join-Path $fixture '.fixture-owner'
+        if ([IO.File]::ReadAllText($marker) -cne 'child') { throw 'Literal fixture marker missing' }
+        $refused = $false
+        try { New-GitFixtureTempDirectory $fixture }
+        catch {
+            if ($_.FullyQualifiedErrorId -notlike 'DirectoryExist,*') { throw }
+            $refused = $true
+        }
+        if (-not $refused) { throw 'Existing fixture directory was reused' }
+        Remove-GitFixtureTempDirectory $fixture
+        if ([IO.Directory]::Exists($fixture)) { throw 'Literal fixture directory still exists' }
+    }
+
     Invoke-Git $scratch @('init','--bare','--quiet',$admin) | Out-Null
     Invoke-Git $scratch @('init','--bare','--quiet',$remote) | Out-Null
     Invoke-Git $scratch @('init','--quiet',$seed) | Out-Null
@@ -527,7 +559,7 @@ try {
         [IO.File]::WriteAllText($ghProfile,$ghProfileJson + [Environment]::NewLine,$utf8)
         $ghLines = @(
             '@echo off',
-            'if /I "%~1"=="api" if /I "%~2"=="user" (',
+            'if /I "%~1"=="api" if /I "%~2"=="--hostname" if /I "%~3"=="github.com" if /I "%~4"=="user" (',
             '  type "%~dp0user.json"',
             '  exit /b 0',
             ')',
@@ -543,12 +575,30 @@ try {
             $env:Path = $ghBin + ';' + $env:Path
             $resolvedGh = (Get-Command gh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
             if (-not [string]::Equals($resolvedGh,$ghShim,[StringComparison]::OrdinalIgnoreCase)) { throw 'SYNTHETIC_GH_SHIM_NOT_SELECTED' }
-            $syntheticProfile = @(& $ghShim api user)
+            $syntheticProfile = @(& $ghShim api --hostname github.com user)
             $syntheticProfileExit = $LASTEXITCODE
             if ($syntheticProfileExit -ne 0 -or $syntheticProfile.Count -ne 1) { throw 'SYNTHETIC_GH_PROFILE_RESPONSE_INVALID' }
             try { $syntheticProfileObject = ConvertFrom-Json -InputObject ([string]$syntheticProfile[0]) -ErrorAction Stop } catch { throw 'SYNTHETIC_GH_PROFILE_JSON_INVALID' }
             if ([string]$syntheticProfileObject.login -cne $policyLogin -or [string]$syntheticProfileObject.id -cne [string]$policy.commitIdentity.userId) { throw 'SYNTHETIC_GH_PROFILE_POLICY_MISMATCH' }
             Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue
+
+            $setupPwsh = (Get-Command pwsh -ErrorAction Stop).Source
+            $setupPath = Join-Path $testTree 'scripts/github/configure-local.ps1'
+            foreach ($scenario in @(
+                @{ Options = @(); Url = ($originUrl + '/') }
+                @{ Options = @('--push'); Url = $originUrl.Replace('github.com','GITHUB.com') }
+            )) {
+                $setOrigin = @('remote','set-url') + $scenario.Options + @('origin')
+                Invoke-Git $admin ($setOrigin + @($scenario.Url)) | Out-Null
+                try {
+                    $setupResult = Invoke-NativeProcess $setupPwsh @('-NoLogo','-NoProfile','-File',$setupPath,'-IdentityOnly') -HookProcess
+                    if ($setupResult.ExitCode -eq 0 -or $setupResult.Error -notlike '*origin fetch and push URLs must both match*') {
+                        throw ('NONCANONICAL_ORIGIN_WAS_NOT_REJECTED:' + $setupResult.Output + $setupResult.Error)
+                    }
+                } finally {
+                    Invoke-Git $admin ($setOrigin + @($originUrl)) | Out-Null
+                }
+            }
 
             Write-Text (Join-Path $testTree 'README.md') ('real commit -a content' + [Environment]::NewLine)
             $autoStage = Invoke-NativeProcess $git @('-C',$testTree,'commit','-a','-m','test: real commit-a hook') -HookProcess
@@ -639,12 +689,9 @@ try {
         Remove-Item -LiteralPath $mainHookScripts -Force
     }
 
-    if ($passed -ne 27) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 27, got ' + $passed) }
+    if ($passed -ne 28) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 28, got ' + $passed) }
     Write-Output ('TASK-WORKTREE-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {
-    $fullRoot = [IO.Path]::GetFullPath($root).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
-    $fullScratch = [IO.Path]::GetFullPath($scratch)
-    if (-not $fullScratch.StartsWith($fullRoot,[StringComparison]::OrdinalIgnoreCase)) { throw 'TASK_WORKTREE_FIXTURE_CLEANUP_PATH_INVALID' }
-    if (Test-Path -LiteralPath $fullScratch) { Remove-Item -LiteralPath $fullScratch -Recurse -Force }
+    if ($fixtureOwned) { Remove-GitFixtureTempDirectory $scratch }
 }
