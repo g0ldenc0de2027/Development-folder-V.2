@@ -1,6 +1,9 @@
 # T-015 — Изоляция и проверка Git-атрибуции
 
-- **Статус:** in_progress
+**Статус:** merged
+
+Интеграция: [PR #11](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/11), squash `6dd65d96ca2aa0bcfb38ec06599ac54734076876`.
+CI после слияния: [run #44487771204](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44487771204), success на указанном squash-коммите.
 - **Основание:** владелец поручил устранить повторяемые ошибки Git attribution и добавить безопасную автокоррекцию.
 - **База:** `f577dc70e58d75ab5fd61d0c2e712c27b590713a` — live `origin/main` при создании worktree.
 - **Ветка/worktree:** `task/T-015-git-attribution` / `.worktrees/T-015`.

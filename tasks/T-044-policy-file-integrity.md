@@ -1,6 +1,6 @@
 # T-044 — Проверять жёсткие ссылки в пакете правил
 
-Статус: in_progress. Аудит Antigravity F-05.
+Статус: merged (PR #43, squash 2d7c146a764b1ee5fecb80e21307a7c7862bc392). Аудит Antigravity F-05.
 
 ## Зона файлов
 

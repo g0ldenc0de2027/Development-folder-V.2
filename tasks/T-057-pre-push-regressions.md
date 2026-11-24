@@ -1,6 +1,6 @@
 # T-057 — Поведенческие регрессии политики pre-push
 
-Статус: in_progress.
+Статус: merged (PR #56, squash e49c806ae986902a23e289f9cc8ef007eec5c6da).
 
 ## Зона файлов
 

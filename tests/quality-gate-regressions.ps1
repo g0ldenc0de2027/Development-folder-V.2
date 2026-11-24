@@ -307,6 +307,20 @@ if (
     throw 'Quality gate must refuse a TEMP inside a bare Git repository before creating artifacts'
 }
 
+foreach ($fixtureSuite in @('git-identity-regressions.ps1','task-worktree-regressions.ps1')) {
+    $fixturePath = Join-Path $repoRoot ('tests/' + $fixtureSuite)
+    foreach ($unsafeRoot in @($repoRoot,$gitCommonDirectory)) {
+        $before = @([IO.Directory]::EnumerateFileSystemEntries($unsafeRoot) | Sort-Object -CaseSensitive)
+        $fixtureOutput = @(& $scopeRegressionPwsh -NoLogo -NoProfile -File $fixturePath -TempRoot $unsafeRoot 2>&1)
+        $fixtureExit = $LASTEXITCODE
+        $after = @([IO.Directory]::EnumerateFileSystemEntries($unsafeRoot) | Sort-Object -CaseSensitive)
+        if ($fixtureExit -eq 0 -or ($before -join [char]10) -cne ($after -join [char]10) -or
+            ($fixtureOutput -join [Environment]::NewLine) -notlike '*Git fixture TempRoot must be outside every Git repository*') {
+            throw "Direct Git fixture did not reject a repository TempRoot: $fixtureSuite"
+        }
+    }
+}
+
 if ($qualityGate -notmatch '\[string\[\]\]\$PushRange' -or -not $qualityGate.Contains('--log-opts=')) {
     throw 'Quality gate must scan exact incoming push history ranges'
 }
