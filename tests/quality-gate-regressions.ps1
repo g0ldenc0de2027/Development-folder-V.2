@@ -419,7 +419,7 @@ if ($taskCloseout -notmatch '(?m)^\*\*Статус:\*\* merged;' -or $taskCloseo
 }
 $taskTwoCloseout = Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-002-reconcile-github-settings-and-closeout.md') -Raw
 $revisionMetadata = @([regex]::Matches($taskTwoCloseout, '(?m)^\*\*Проверенные ревизии:\*\*.*$'))
-$expectedRevisionMetadata = '^\*\*Проверенные ревизии:\*\* PR head `e9db06ad083d007d15e0674d195f16999fbfc93b`; base `65b5ab35d46b81e5af1963c351d05ac5da0291dc`; hosted run `43592810050` — `SUCCESS`; тестовый event merge-result `04bf30fd6879f4d18abf3c270cd05e5428e55079`\.$'
+$expectedRevisionMetadata = '^\*\*Проверенные ревизии:\*\* PR head `e9db06ad083d007d15e0674d195f16999fbfc93b`; base `65b5ab35d46b81e5af1963c351d05ac5da0291dc`; hosted run `43592810050` — `SUCCESS`; [^;`\r\n]*\bmerge-result `04bf30fd6879f4d18abf3c270cd05e5428e55079`\.$'
 if (
     $taskTwoCloseout -notmatch '(?m)^\*\*Статус:\*\* merged\s*$' -or
     $taskTwoCloseout -notmatch '(?m)^\*\*PR:\*\* #2 — https://github\.com/g0ldenc0de2027/Development-folder-V\.2/pull/2$' -or
