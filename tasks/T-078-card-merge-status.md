@@ -1,4 +1,4 @@
-# T-078 — Сверить статусы 24 карточек со слияниями
+# T-078 — Сверить статусы 23 карточек со слияниями
 
 Статус: in_progress. Источник: аудит F20, остаток вне зоны T-039.
 
@@ -16,7 +16,6 @@
 - `tasks/T-049-kb-policy-path.md`
 - `tasks/T-051-project-viewer.md`
 - `tasks/T-052-kb-regression-count.md`
-- `tasks/T-053-handoff-gate.md`
 - `tasks/T-055-preflight-check-source.md`
 - `tasks/T-057-pre-push-regressions.md`
 - `tasks/T-058-gate-temp-ownership.md`
@@ -33,3 +32,5 @@
 ## Приёмка
 
 Каждый статус подтверждён слитым PR и точным squash-коммитом в main. Изменены только текущие статусы карточек. Исторические записи и ТЗ сохранены.
+
+Карточка T-053 закрыта отдельно в PR #58 и сохранена из main.
