@@ -44,6 +44,8 @@ function Invoke-NativeProcess([string]$Executable,[string[]]$Arguments,[switch]$
     if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) { $start.WorkingDirectory = $WorkingDirectory }
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
+    $start.StandardOutputEncoding = [Text.Encoding]::UTF8
+    $start.StandardErrorEncoding = $start.StandardOutputEncoding
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     if (-not $PreserveGitContext) {
         foreach ($name in @($start.Environment.Keys | Where-Object { ([string]$_).StartsWith('GIT_',[StringComparison]::OrdinalIgnoreCase) })) {
@@ -126,6 +128,26 @@ try {
         if (-not $refused) { throw 'Existing fixture directory was reused' }
         Remove-GitFixtureTempDirectory $fixture
         if ([IO.Directory]::Exists($fixture)) { throw 'Literal fixture directory still exists' }
+    }
+
+    Case 'native Git diagnostics preserve UTF-8 under console code page 866' {
+        $git = (Get-Command git -ErrorAction Stop).Source
+        $probe = 'Кириллица'
+        $missing = Join-Path $scratch $probe
+        $previousEncoding = [Console]::OutputEncoding
+        try {
+            [Console]::OutputEncoding = [Text.Encoding]::GetEncoding(866)
+            $output = Invoke-NativeProcess $git @('-c',"fixture.probe=$probe",'config','--get','fixture.probe')
+            if ($output.ExitCode -ne 0 -or $output.Output.TrimEnd() -cne $probe) {
+                throw 'Git stdout lost UTF-8 characters'
+            }
+            $failure = Invoke-NativeProcess $git @('-C',$missing,'status')
+            if ($failure.ExitCode -eq 0 -or -not $failure.Error.Contains($probe,[StringComparison]::Ordinal)) {
+                throw 'Git stderr lost UTF-8 characters'
+            }
+        } finally {
+            [Console]::OutputEncoding = $previousEncoding
+        }
     }
 
     Invoke-Git $scratch @('init','--bare','--quiet',$admin) | Out-Null
@@ -689,7 +711,7 @@ try {
         Remove-Item -LiteralPath $mainHookScripts -Force
     }
 
-    if ($passed -ne 28) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 28, got ' + $passed) }
+    if ($passed -ne 29) { throw ('TASK_WORKTREE_REGRESSION_COUNT_MISMATCH: expected 29, got ' + $passed) }
     Write-Output ('TASK-WORKTREE-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {
