@@ -1,6 +1,9 @@
 # T-048 — Единый отказ для некорректного окончания пути БЗ
 
-Статус: in_progress. Неблокирующие замечания ревью T-047, действующее требование LKB-003.
+Статус: merged. Неблокирующие замечания ревью T-047, действующее требование LKB-003.
+
+Интеграция: [PR #47](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/47), squash `7fa2442cbac61639cc93af7b0c9f06f1899ecf63`.
+CI после слияния: [run #44756799418](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions/runs/44756799418), success на указанном squash-коммите.
 
 ## Зона файлов
 
