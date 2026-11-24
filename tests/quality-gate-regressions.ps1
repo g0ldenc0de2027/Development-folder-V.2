@@ -460,15 +460,12 @@ if (
     throw 'No-App owner-root-of-trust decision and non-enforced gate residual risk must be explicit in workflow'
 }
 if (
-    $roadmap -notmatch 'Code-fix verification tuple: head 5c3eaf06dd5ee9a518659db015e4ffbc54b8a982, base c98a1922dee2dedeaed6eeb528d72098beb3a128' -or
-    $roadmap -notmatch 'hosted run 43622066954 SUCCESS' -or
-    $roadmap -notmatch 'event/test merge-result 5fb052c8094ceb3f530b306d8ba164416411d63f' -or
-    $roadmap -notmatch 'GitHub Actions validates every later PR revision separately' -or
+    $roadmap -notmatch '(?m)^- \[x\] T-003 merged\.[^\r\n]*\]\(\.\./tasks/T-003-closeout-and-email-privacy-plan\.md\)' -or
+    $roadmap -match '(?i)T-003\s+remains\s+open\b' -or
     $roadmap -notmatch 'No per-file blob or aggregate push-size gate exists yet' -or
-    $roadmap -match 'existing per-file staged-blob limit' -or
-    $roadmap -notmatch 'fresh independent review on the latest PR head remains required'
+    $roadmap -match 'existing per-file staged-blob limit'
 ) {
-    throw 'Roadmap must retain code-fix provenance without claiming stale live PR status'
+    throw 'Roadmap must link merged T-003 and accurately describe the push-size gate'
 }
 $taskThree = Get-Content -LiteralPath (Join-Path $repoRoot 'tasks/T-003-closeout-and-email-privacy-plan.md') -Raw
 if (
