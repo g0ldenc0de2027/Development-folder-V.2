@@ -1,6 +1,6 @@
 # T-055 — Сверять источник обязательного check по манифесту
 
-Статус: in_progress. Источник: аудит ZCode V2Z-007, дублирование integration ID.
+Статус: merged (PR #54, squash b6c28cf1c00be0fa0b1d1a7c0c351618ff3fc711). Источник: аудит ZCode V2Z-007, дублирование integration ID.
 
 ## Зона файлов
 
