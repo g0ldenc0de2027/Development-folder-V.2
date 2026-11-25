@@ -149,6 +149,24 @@ CI_HEAD_SHA: $old
     $changed = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
     Assert-That ($changed[0].tasks[0].assignments[0].comparison -eq 'conflict' -and
         $changed[0].tasks[0].action.blocked -and $changed[0].tasks[0].action.text -eq 'Проверить результат') 'T-101 conflict blocks dependent owner instruction'
+    $queueTasks = Join-Path $root 'queue/tasks'
+    $originalTasks = Join-Path $root 'original-queue-tasks'
+    Move-Item -LiteralPath $queueTasks -Destination $originalTasks
+    try {
+        [void][IO.Directory]::CreateDirectory($queueTasks)
+        $empty = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
+        Assert-That ($empty[0].unlinkedAssignments -is [array] -and $empty[0].unlinkedAssignments.Count -eq 0) 'T-101 empty unlinked assignments remain an array'
+        Assert-That ($empty[0].tasks[0].action.blocked -and $empty[0].tasks[0].assignments[0].state -eq 'unknown' -and
+            $empty[0].tasks[1].action.text -ceq 'Восстановить доступ к источнику') 'T-101 empty queue keeps missing bindings and blocks dependent instructions'
+        [IO.File]::WriteAllText((Join-Path $queueTasks 'SINGLE.md'), '# Single assignment')
+        $single = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
+        Assert-That ($single[0].unlinkedAssignments -is [array] -and $single[0].unlinkedAssignments.Count -eq 1 -and
+            $single[0].unlinkedAssignments[0].id -ceq 'SINGLE') 'T-101 singleton unlinked assignment remains an array'
+    } finally {
+        Move-Item -LiteralPath $queueTasks -Destination (Join-Path $root 'cardinality-queue-tasks')
+        Move-Item -LiteralPath $originalTasks -Destination $queueTasks
+    }
+    $null = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
     Move-Item -LiteralPath (Join-Path $root 'queue') -Destination (Join-Path $root 'offline')
     $offline = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
     Assert-That ($offline[0].queue.stale -and $offline[0].queue.updated -and

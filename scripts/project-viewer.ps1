@@ -193,7 +193,7 @@ function Get-TrackerAction($Task, $Project, $Assignments) {
         if ($conflicts.Count) { return @{ text = 'Сверить версии отчёта'; assignments = @($conflicts.id) } }
     }
     if ($Project.bindings.ContainsKey($Task.id) -and ($queue.stale  -or
-        @($Assignments | Where-Object { $_.state -eq 'unknown' -or $_.accepted.state -eq 'readable' -and $_.report.state -eq 'unavailable' }).Count)) {
+        @($Assignments | Where-Object { $_.state -eq 'unknown' -or ($_.accepted.state -eq 'readable' -and $_.report.state -eq 'unavailable') }).Count)) {
         return @{ text = 'Восстановить доступ к источнику'; assignments = $Project.bindings[$Task.id] }
     }
     if (@($versions | Where-Object blocker).Count) { return @{ text = 'Устранить блокер' } }
@@ -237,7 +237,7 @@ function Get-Summary {
             name = $project.name
             sources = @($project.sources | ForEach-Object { @{ path = $_.path; error = $_.error; updated = $_.updated } })
             queue = if ($queue) { @{ id = $queue.id; stale = $queue.stale; updated = $queue.updated } } else { $null }
-            unlinkedAssignments = if ($queue) { @($queue.items.Values | Where-Object { !$boundAssignments.Contains($_.id) } | Sort-Object id | ForEach-Object { Get-AssignmentView $_ }) } else { @() }
+            unlinkedAssignments = @(if ($queue) { $queue.items.Values | Where-Object { !$boundAssignments.Contains($_.id) } | Sort-Object id | ForEach-Object { Get-AssignmentView $_ } })
             tasks = @($tasks.Values | Sort-Object { $_.id.Length }, id | ForEach-Object {
                 $task = $_
                 $assignments = @(foreach ($assignmentId in $project.bindings[$task.id]) {
