@@ -4,9 +4,9 @@
 
 ## Зона файлов
 
-- docs/local-knowledge.md
-- spec/local-knowledge.md
-- tasks/T-088-kb-compact-help.md
+- `docs/local-knowledge.md`
+- `spec/local-knowledge.md`
+- `tasks/T-088-kb-compact-help.md`
 
 ## Приёмка
 
