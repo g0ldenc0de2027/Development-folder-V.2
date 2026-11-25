@@ -901,14 +901,36 @@ try {
             if ((Invoke-GitFixture -Directory $secondLinked -Arguments @('config','--worktree','--get','core.bare')) -cne 'false') { throw ('LINKED_WORKTREE_CORE_BARE_INVALID:' + $scenario) }
         }
     }
-    Case 'GIT-ID-033 bounds a Git process that has not exited' {
+    Case 'GIT-ID-033 bounds a Git process and stops its attached child' {
         $module = Get-Module GitIdentity
-        ExpectFailure {
-            & $module {
-                param($directory)
-                Invoke-GitIdentityProcess -Arguments @('-C',$directory,'-c','alias.timeoutfixture=!sleep 12','timeoutfixture') -ProcessTimeoutMilliseconds 2000
-            } $worktree
-        } 'GIT_IDENTITY_PROCESS_TIMEOUT'
+        $pidPath = Join-Path $scratch 'timeout-child.txt'
+        $childScript = @"
+[IO.File]::WriteAllText('$($pidPath.Replace("'","''"))', "`$PID,`$([Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().Ticks)")
+Start-Sleep -Seconds 20
+"@
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($childScript))
+        $shell = (Join-Path $PSHOME 'pwsh.exe').Replace('\','/')
+        try {
+            ExpectFailure {
+                & $module {
+                    param($directory,$alias)
+                    Invoke-GitIdentityProcess -Arguments @('-C',$directory,'-c',$alias,'timeoutfixture') -ProcessTimeoutMilliseconds 5000
+                } $worktree ('alias.timeoutfixture=!"' + $shell + '" -NoLogo -NoProfile -EncodedCommand ' + $encoded)
+            } 'GIT_IDENTITY_PROCESS_TIMEOUT'
+        } finally {
+            if (-not (Test-Path -LiteralPath $pidPath -PathType Leaf)) { throw 'GIT_TIMEOUT_CHILD_START_NOT_CONFIRMED' }
+            $childId,$started = [IO.File]::ReadAllText($pidPath).Split(',')
+            $child = Get-Process -Id ([int]$childId) -ErrorAction SilentlyContinue
+            if ($child) {
+                try {
+                    if (!$child.HasExited -and $child.StartTime.ToUniversalTime().Ticks -eq [long]$started) {
+                        $child.Kill()
+                        $null = $child.WaitForExit(1000)
+                        throw 'GIT_TIMEOUT_CHILD_STILL_RUNNING'
+                    }
+                } finally { $child.Dispose() }
+            }
+        }
     }
     Case 'GIT-ID-034 bounds output held open after Git exits' {
         $module = Get-Module GitIdentity
@@ -919,7 +941,34 @@ try {
             } $worktree
         } 'GIT_IDENTITY_PROCESS_OUTPUT_TIMEOUT'
     }
-    if ($passed -ne 34) { throw ('GIT_IDENTITY_REGRESSION_COUNT_MISMATCH: expected 34, got ' + $passed) }
+    Case 'GIT-ID-035 hook context keeps process failures distinct from policy refusals' {
+        $hookFixture = Join-Path $scratch 'hook-context'
+        $fixtureLib = Join-Path $hookFixture 'lib'
+        $null = [IO.Directory]::CreateDirectory($fixtureLib)
+        $hookScript = Join-Path $hookFixture 'verify-git-hook-context.ps1'
+        [IO.File]::Copy((Join-Path $repoRoot 'scripts/verify-git-hook-context.ps1'),$hookScript)
+        WriteText (Join-Path $fixtureLib 'GitIdentity.psm1') @"
+function Assert-GitWorktreeEnvironment {
+    param([string]`$RepositoryRoot,[switch]`$HookContext)
+    throw `$env:T084_FIXTURE_FAILURE
+}
+"@
+        $pwsh = Join-Path $PSHOME 'pwsh.exe'
+        $processFailures = @(
+            'GIT_IDENTITY_PROCESS_START_FAILED'
+            'GIT_IDENTITY_PROCESS_TIMEOUT'
+            'GIT_IDENTITY_PROCESS_OUTPUT_TIMEOUT'
+            'GIT_IDENTITY_PROCESS_OUTPUT_FAILED'
+        )
+        foreach ($code in ($processFailures + 'GIT_IDENTITY_HOOK_GIT_DIR_MISMATCH')) {
+            $expectedExit = if ($code -in $processFailures) { 1 } else { 23 }
+            $result = Invoke-GitProcess -Executable $pwsh -Arguments @('-NoLogo','-NoProfile','-File',$hookScript,'-RepositoryRoot',$worktree) -Environment @{T084_FIXTURE_FAILURE=$code}
+            if ($result.ExitCode -ne $expectedExit -or $result.StdErr.Trim() -cne $code -or $result.StdOut) {
+                throw ('GIT_HOOK_CONTEXT_EXIT_MAPPING_MISMATCH:' + $code)
+            }
+        }
+    }
+    if ($passed -ne 35) { throw ('GIT_IDENTITY_REGRESSION_COUNT_MISMATCH: expected 35, got ' + $passed) }
     Write-Output ('GIT-IDENTITY-REGRESSIONS: ' + $passed + ' passed, 0 failed')
 }
 finally {
