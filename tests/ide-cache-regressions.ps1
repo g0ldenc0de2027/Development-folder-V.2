@@ -4,7 +4,7 @@ param([string]$TempRoot = [IO.Path]::GetTempPath())
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $PSNativeCommandUseErrorActionPreference=$false
-$source=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$source=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 # Git hooks export repository-specific environment variables; never let fixture Git
 # commands address the real worktree or index. This process is isolated from its parent.
 foreach ($name in @(Get-ChildItem Env: | Where-Object Name -Like 'GIT_*' | ForEach-Object Name)) {

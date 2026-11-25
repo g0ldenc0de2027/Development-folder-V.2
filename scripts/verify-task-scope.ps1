@@ -22,7 +22,7 @@ function Invoke-Git([string[]]$Arguments) {
     return $output
 }
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $branch = ((Invoke-Git @('-C',$repoRoot,'symbolic-ref','--quiet','--short','HEAD')) -join '').Trim()
 $expectedBranchPattern = '^task/' + [regex]::Escape($TaskId) + '(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$'
 if ($branch -cnotmatch $expectedBranchPattern) { throw 'Current branch does not match the task ID or the documented lowercase slug format' }

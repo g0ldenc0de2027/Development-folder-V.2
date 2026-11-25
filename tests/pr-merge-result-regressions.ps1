@@ -3,7 +3,7 @@ param([string]$TempRoot)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $validator = Join-Path $repoRoot 'scripts/verify-pr-merge-result.ps1'
 $workflow = Get-Content -LiteralPath (Join-Path $repoRoot '.github/workflows/quality-gate.yml') -Raw
 $qualityGate = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/quality-gate.ps1') -Raw
