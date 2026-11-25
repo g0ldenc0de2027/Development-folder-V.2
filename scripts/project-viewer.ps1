@@ -98,6 +98,112 @@ function Update-Projects {
     }
 }
 
+function Read-QueueCopy($Folder, $Id) {
+    if (!$Folder) { return @{ state = 'unavailable' } }
+    try {
+        $path = Join-Path $Folder "$Id.md"
+        $file = [IO.FileInfo]::new($path)
+        $attributes = [IO.File]::GetAttributes($path)
+        if ($attributes -band ([IO.FileAttributes]::Directory -bor [IO.FileAttributes]::ReparsePoint)) {
+            throw 'INVALID_QUEUE_FILE'
+        }
+        if ($file.Length -gt 1048576) { throw 'QUEUE_FILE_TOO_LARGE' }
+        $bytes = [IO.File]::ReadAllBytes($path)
+        $text = $utf8.GetString($bytes).TrimStart([char]0xFEFF)
+        if ([string]::IsNullOrWhiteSpace($text)) { throw 'EMPTY_QUEUE_FILE' }
+        return @{ state = 'readable'; text = $text; hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)) }
+    } catch [IO.FileNotFoundException] {
+        return @{ state = 'missing' }
+    } catch {
+        return @{ state = 'unavailable' }
+    }
+}
+
+function Update-Queue {
+    if (!$queue) { return }
+    $folders = @{}
+    try {
+        Assert-PlainPath $queue.path $true
+        $folders.tasks = Join-Path $queue.path 'tasks'
+        Assert-PlainPath $folders.tasks $true
+        $files = @(Get-ChildItem -LiteralPath $folders.tasks -File -Filter '*.md' -Force)
+    } catch {
+        $queue.stale = $true
+        return
+    }
+    foreach ($name in 'reports','accepted') {
+        $path = Join-Path $queue.path $name
+        try { Assert-PlainPath $path $true; $folders[$name] = $path } catch { $folders[$name] = $null }
+    }
+    $items = @{}
+    foreach ($file in $files) {
+        $id = $file.BaseName
+        if ($id -cnotmatch '\A[A-Z0-9]+(?:-[A-Z0-9]+)*\z') { continue }
+        $card = Read-QueueCopy $folders.tasks $id
+        $report = Read-QueueCopy $folders.reports $id
+        $accepted = Read-QueueCopy $folders.accepted $id
+        $state = 'unknown'
+        if ($card.state -eq 'readable') {
+            if ($accepted.state -eq 'readable') { $state = 'accepted' }
+            elseif ($accepted.state -eq 'missing' -and $report.state -eq 'readable') { $state = 'reported' }
+            elseif ($accepted.state -eq 'missing' -and $report.state -eq 'missing') { $state = 'assigned' }
+        }
+        $comparison = 'unavailable'
+        if ($report.state -eq 'readable' -and $accepted.state -eq 'readable') {
+            $comparison = if ($report.hash -ceq $accepted.hash) { 'match' } else { 'conflict' }
+        } elseif ($report.state -eq 'missing') { $comparison = 'missing' }
+        $items[$id] = @{
+            id = $id; state = $state; comparison = $comparison; cardState = $card.state
+            assignee = if ($card.state -eq 'readable') { Read-Field $card.text 'Исполнитель' } else { '' }
+            report = $report; accepted = $accepted
+            lastKnown = if ($state -eq 'unknown' -and $queue.items.ContainsKey($id)) {
+                $previous = $queue.items[$id]
+                if ($previous.state -eq 'unknown') { $previous.lastKnown } else { @{ state = $previous.state; updated = $queue.updated } }
+            } else { $null }
+        }
+    }
+    $queue.items = $items
+    $queue.stale = $false
+    $queue.updated = [DateTimeOffset]::UtcNow.ToString('o')
+}
+
+function Get-AssignmentView($Item) {
+    $view = $Item.Clone()
+    foreach ($name in 'report','accepted') {
+        $view[$name] = $Item[$name].Clone()
+        $view[$name].Remove('text')
+    }
+    return $view
+}
+
+function Get-TrackerAction($Task, $Project, $Assignments) {
+    $instruction = $Project.ownerActions[$Task.id]
+    if ($instruction) {
+        $missing = @($instruction.requires | Where-Object {
+            $queue.stale -or !$queue.items.ContainsKey($_) -or
+                $queue.items[$_].state -ne 'accepted' -or $queue.items[$_].comparison -ne 'match'
+        })
+        return @{ text = $instruction.text; blocked = [bool]$missing.Count; assignments = $missing }
+    }
+    $versions = @($Task.versions.Values | Where-Object { $_.sources.stale -contains $false })
+    if (!$versions.Count -or @($versions | Where-Object status -NotIn 'merged','closed','accepted','done').Count -eq 0) { return }
+    if ($versions.needsDecision -contains $true) { return @{ text = 'Получить решение владельца' } }
+    if (!$queue.stale) {
+        $conflicts = @($Assignments | Where-Object comparison -EQ 'conflict')
+        if ($conflicts.Count) { return @{ text = 'Сверить версии отчёта'; assignments = @($conflicts.id) } }
+    }
+    if ($Project.bindings.ContainsKey($Task.id) -and ($queue.stale  -or
+        @($Assignments | Where-Object { $_.state -eq 'unknown' -or ($_.accepted.state -eq 'readable' -and $_.report.state -eq 'unavailable') }).Count)) {
+        return @{ text = 'Восстановить доступ к источнику'; assignments = $Project.bindings[$Task.id] }
+    }
+    if (@($versions | Where-Object blocker).Count) { return @{ text = 'Устранить блокер' } }
+    $pending = @($Assignments | Where-Object state -EQ 'reported')
+    if ($pending.Count) {
+        $label = if ($pending.Count -eq 1) { 'Проверить отчёт' } else { "Проверить отчёты ($($pending.Count))" }
+        return @{ text = $label; assignments = @($pending.id) }
+    }
+}
+
 function Get-Summary {
     foreach ($project in $projects) {
         $tasks = @{}
@@ -130,8 +236,19 @@ function Get-Summary {
             id = $project.id
             name = $project.name
             sources = @($project.sources | ForEach-Object { @{ path = $_.path; error = $_.error; updated = $_.updated } })
+            queue = if ($queue) { @{ id = $queue.id; stale = $queue.stale; updated = $queue.updated } } else { $null }
+            unlinkedAssignments = @(if ($queue) { $queue.items.Values | Where-Object { !$boundAssignments.Contains($_.id) } | Sort-Object id | ForEach-Object { Get-AssignmentView $_ } })
             tasks = @($tasks.Values | Sort-Object { $_.id.Length }, id | ForEach-Object {
-                @{ id = $_.id; unreadable = $_.unreadable; versions = @($_.versions.Values | Sort-Object hash) }
+                $task = $_
+                $assignments = @(foreach ($assignmentId in $project.bindings[$task.id]) {
+                    if ($queue.items.ContainsKey($assignmentId)) { Get-AssignmentView $queue.items[$assignmentId] }
+                    else { @{ id = $assignmentId; state = 'unknown'; comparison = 'unavailable' } }
+                })
+                @{
+                    id = $task.id; unreadable = $task.unreadable; versions = @($task.versions.Values | Sort-Object hash)
+                    assignments = $assignments
+                    action = if ($queue) { Get-TrackerAction $task $project $assignments } else { $null }
+                }
             })
         }
     }
@@ -139,15 +256,44 @@ function Get-Summary {
 
 $registryFile = Get-Item -LiteralPath $RegistryPath
 $registry = [IO.File]::ReadAllText($registryFile.FullName, $utf8) | ConvertFrom-Json -AsHashtable
+$queue = $null
+if ($registry.Contains('queue')) {
+    $entry = $registry.queue
+    if ($entry -isnot [System.Collections.IDictionary] -or $entry.id -cnotmatch '\A[a-z0-9][a-z0-9-]{0,63}\z' -or
+        $entry.path -isnot [string] -or !$entry.path.Trim() -or $entry.path -match '^[\\/]{2}') { throw 'INVALID_QUEUE_REGISTRY' }
+    $path = [IO.Path]::GetFullPath($entry.path, $registryFile.DirectoryName)
+    if ($path -notmatch '^[A-Za-z]:[\\/]') { throw 'QUEUE_ROOT_MUST_BE_LOCAL' }
+    $queue = @{ id = $entry.id; path = $path; items = @{}; stale = $true; updated = $null }
+}
+$boundAssignments = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 $ids = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $projects = @(foreach ($entry in $registry.projects) {
     if ($entry.id -isnot [string] -or $entry.id -cnotmatch '^[a-z0-9][a-z0-9-]{0,63}$' -or
         !$ids.Add($entry.id) -or $entry.name -isnot [string] -or !$entry.name.Trim() -or
         $entry.roots -isnot [array] -or !$entry.roots.Count) { throw 'INVALID_PROJECT_REGISTRY' }
+    $bindings = @{}
+    $ownerActions = @{}
+    if (($entry.Contains('bindings') -or $entry.Contains('ownerActions')) -and !$queue) { throw 'QUEUE_NOT_CONFIGURED' }
+    foreach ($binding in $entry['bindings']) {
+        if ($binding.taskId -cnotmatch '\AT-[0-9]{3,}\z' -or $binding.assignmentId -cnotmatch '\A[A-Z0-9]+(?:-[A-Z0-9]+)*\z' -or
+            !$boundAssignments.Add($binding.assignmentId)) { throw 'INVALID_TASK_ASSIGNMENT_BINDING' }
+        $bindings[$binding.taskId] = @($bindings[$binding.taskId] | Where-Object { $_ }) + $binding.assignmentId
+    }
+    foreach ($action in $entry['ownerActions']) {
+        if ($action.taskId -cnotmatch '\AT-[0-9]{3,}\z' -or $ownerActions.ContainsKey($action.taskId) -or
+            $action.text -isnot [string] -or !$action.text.Trim() -or $action.requires -isnot [array]) { throw 'INVALID_OWNER_ACTION' }
+        foreach ($required in $action.requires) {
+            if ($required -isnot [string] -or $required -cnotin $bindings[$action.taskId]) { throw 'UNKNOWN_REQUIRED_ASSIGNMENT' }
+        }
+        $ownerActions[$action.taskId] = $action
+    }
+    foreach ($taskId in @($bindings.Keys)) { $bindings[$taskId] = @($bindings[$taskId] | Sort-Object -CaseSensitive) }
     $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     @{
         id = $entry.id
         name = $entry.name
+        bindings = $bindings
+        ownerActions = $ownerActions
         sources = @(foreach ($root in $entry.roots) {
             if ($root -isnot [string] -or !$root.Trim()) { throw 'INVALID_PROJECT_ROOT' }
             $path = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath($root, $registryFile.DirectoryName))
@@ -165,6 +311,7 @@ $listener = [Net.HttpListener]::new()
 $listener.Prefixes.Add("$origin/")
 try {
     Update-Projects
+    Update-Queue
     $listener.Start()
     Write-Output "$origin$prefix"
     while ($listener.IsListening) {
@@ -189,8 +336,14 @@ try {
                 $body = $page
             } elseif (($method -eq 'GET' -and $route -eq 'summary') -or
                 ($method -eq 'POST' -and $route -eq 'refresh' -and $request.Headers['Origin'] -ceq $origin)) {
-                if ($method -eq 'POST') { Update-Projects }
+                if ($method -eq 'POST') { Update-Projects; Update-Queue }
                 $body = ConvertTo-Json -InputObject @(Get-Summary) -Depth 10 -Compress
+            } elseif ($method -eq 'GET' -and $route -eq 'report' -and $queue) {
+                $id = $request.QueryString['assignment']
+                $kind = $request.QueryString['copy']
+                if (!$id -or $kind -cnotin 'report','accepted' -or !$queue.items.ContainsKey($id) -or
+                    $queue.items[$id][$kind].state -ne 'readable') { $response.StatusCode = 404; continue }
+                $body = @{ text = $queue.items[$id][$kind].text; hash = $queue.items[$id][$kind].hash } | ConvertTo-Json -Compress
             } elseif ($method -eq 'GET' -and $route -eq 'card') {
                 $project = $projects | Where-Object { $_.id -ceq $request.QueryString['project'] }
                 if ($null -eq $project) { $response.StatusCode = 404; continue }

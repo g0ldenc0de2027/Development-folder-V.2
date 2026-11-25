@@ -34,6 +34,9 @@ li{overflow-wrap:anywhere} .badge{font-weight:600}
 <p id="count" aria-live="polite"></p>
 <div class="table"><table><thead><tr><th>Задача</th><th>Состояние</th><th>Исполнитель</th><th>Блокер</th><th>Следующее действие</th></tr></thead><tbody id="rows"></tbody></table></div>
 </section>
+<section id="queue" hidden aria-labelledby="queue-title">
+<h2 id="queue-title">Задания без связи</h2><p id="queue-state" role="status"></p><div id="unlinked"></div>
+</section>
 <dialog id="card" aria-labelledby="card-title">
 <header><h2 id="card-title"></h2><button id="close">Закрыть</button></header>
 <div id="versions"></div>
@@ -46,6 +49,45 @@ const node = (tag, text) => {
   if (text !== undefined) result.textContent = text;
   return result;
 };
+function renderAssignments(assignments, stale) {
+  const list = node('ul');
+  for (const item of assignments) {
+    const label = {
+      assigned: 'Задание выдано', reported: 'Отчёт сдан, ожидает проверки',
+      accepted: 'Отчёт принят', unknown: item.accepted?.state === 'unavailable'
+        ? 'Приёмка не подтверждена' : 'Статус задания неизвестен'
+    }[item.state];
+    const comparison = {
+      match: 'копии совпадают', conflict: 'конфликт копий',
+      missing: 'сданная копия отсутствует', unavailable: 'сверка недоступна'
+    }[item.comparison];
+    const entry = node('li', [item.id, item.assignee, label,
+      item.state === 'accepted' ? comparison : '', stale ? 'последнее наблюдение' : ''].filter(Boolean).join(' · '));
+    if (item.lastKnown) entry.append(node('p', 'Последний статус: ' + item.lastKnown.state +
+      ' · ' + new Date(item.lastKnown.updated).toLocaleString('ru')));
+    for (const [kind, title] of [['report','Сданная копия'], ['accepted','Принятая копия']]) {
+      const copy = item[kind];
+      if (copy?.state === 'unavailable') entry.append(node('p', title + ' недоступна'));
+      if (copy?.state !== 'readable') continue;
+      const details = node('details');
+      details.append(node('summary', title), node('p', 'SHA-256 ' + copy.hash));
+      const content = node('pre');
+      details.append(content);
+      details.addEventListener('toggle', async () => {
+        if (!details.open) return;
+        try {
+          const report = await request('report?' + new URLSearchParams({assignment:item.id, copy:kind}));
+          content.textContent = report.hash === copy.hash ? report.text : 'Отчёт изменился. Обновите панель.';
+        } catch {
+          content.textContent = 'Не удалось прочитать отчёт.';
+        }
+      });
+      entry.append(details);
+    }
+    list.append(entry);
+  }
+  return list;
+}
 const controls = ['query', 'state', 'blocked', 'decision'];
 const missing = 'Не указано';
 let projects = [];
@@ -82,6 +124,16 @@ function render() {
     entry.append(button, ' · ' + item.tasks.length + ' задач' + (unavailable ? ' · Есть ошибки чтения' : ''));
     return entry;
   }));
+  const queueProject = projects.find(item => item.queue);
+  byId('queue').hidden = Boolean(project) || !queueProject;
+  if (queueProject && !project) {
+    const {queue, unlinkedAssignments} = queueProject;
+    byId('queue-state').textContent = queue.stale
+      ? (queue.updated ? 'Очередь недоступна · последняя сверка ' + new Date(queue.updated).toLocaleString('ru') : 'Очередь недоступна · статус неизвестен')
+      : '';
+    byId('unlinked').replaceChildren(unlinkedAssignments.length
+      ? renderAssignments(unlinkedAssignments, queue.stale) : node('p', 'Нет заданий без связи'));
+  }
   if (!project) return;
   byId('name').textContent = project.name;
   byId('sources').replaceChildren(...project.sources.map(source =>
@@ -122,6 +174,11 @@ function renderRows() {
     if (task.versions.some(version => version.sources.some(source => source.stale))) cell.append(node('div', 'Есть устаревший источник'));
     row.append(cell);
     for (const key of ['status','assignee','blocker','nextAction']) {
+      if (key === 'nextAction' && project.queue) {
+        const action = task.action;
+        row.append(node('td', action ? action.text + (action.blocked ? ' · Заблокировано' : '') : 'Следующее действие не задано'));
+        continue;
+      }
       const values = [...new Set(task.versions.map(version => version[key] || missing))];
       row.append(node('td', values.length ? values.join(' · ') : missing));
     }
@@ -134,6 +191,19 @@ async function openCard(project, task) {
   byId('card-title').textContent = task.id;
   const container = byId('versions');
   container.replaceChildren(...task.unreadable.map(path => node('p', 'Ошибка чтения · ' + path)));
+  if (task.action) {
+    const action = task.action;
+    container.append(node('p', action.text + (action.blocked ? ' · Заблокировано: сверка не подтверждена' : '') +
+      (action.assignments?.length ? ' · ' + action.assignments.join(', ') : '')));
+  }
+  if (task.assignments?.length) {
+    const queue = project.queue;
+    container.append(node('h3', 'Задания'));
+    if (queue.stale) container.append(node('p', queue.updated
+      ? 'Очередь недоступна · последняя сверка ' + new Date(queue.updated).toLocaleString('ru')
+      : 'Очередь недоступна · статус неизвестен'));
+    container.append(renderAssignments(task.assignments, queue.stale));
+  }
   byId('card').showModal();
   for (const [index, version] of task.versions.entries()) {
     const section = node('section');
@@ -176,7 +246,7 @@ async function load(refresh) {
   try {
     projects = await request(refresh ? 'refresh' : 'summary', refresh ? 'POST' : 'GET');
     render();
-    byId('notice').textContent = projects.some(project => project.sources.some(source => source.error))
+    byId('notice').textContent = projects.some(project => project.queue?.stale || project.sources.some(source => source.error))
       ? 'Часть источников прочитать не удалось.' : '';
   } catch {
     byId('notice').textContent = 'Обновление не удалось. Показаны данные последней загрузки.';

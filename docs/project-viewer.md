@@ -19,3 +19,20 @@ pwsh -NoProfile -File scripts/project-viewer.ps1 -RegistryPath <путь-к-ре
 ## English quick start
 
 Create a local JSON registry, run the command above, and open the printed session URL. Refresh rereads source cards. Ctrl+C stops the viewer. Keep the session URL private.
+
+## Одна локальная очередь
+
+Добавьте `queue` к тому же реестру. Укажите стабильное имя очереди и локальный каталог с подпапками `tasks`, `reports`, `accepted`. Относительный путь разрешается от файла реестра. Например:
+
+```json
+{
+  "queue": {"id":"pilot","path":"./exchange"},
+  "projects":[{
+    "id":"v2","name":"Development Folder V2","roots":["./checkout"],
+    "bindings":[{"taskId":"T-001","assignmentId":"PILOT-001"}],
+    "ownerActions":[{"taskId":"T-001","text":"Проверить итог","requires":["PILOT-001"]}]
+  }]
+}
+```
+
+Привязки и указания необязательны. `requires` перечисляет ID привязанных к этой задаче заданий, по которым обе копии должны читаться и совпадать. Пустой список снимает условие сверки. Один ID задания может быть привязан только к одной задаче в реестре. Задания без привязки показаны отдельно. При недоступной очереди отображается последний снимок в пределах текущего сеанса. Отчёты до 1 МиБ отображаются как текст. Панель читает отчёты локально и не отправляет их во внешние сервисы.

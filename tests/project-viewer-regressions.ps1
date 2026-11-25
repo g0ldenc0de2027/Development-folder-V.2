@@ -48,10 +48,39 @@ CI_HEAD_SHA: $old
     [IO.File]::WriteAllText($b, $sample)
     [IO.File]::WriteAllText($c, ('# T-001 — Другой проект' + [char]10 + '**Статус:** merged · **Исполнитель и координатор:** Kimi.'))
     [void](New-Item -ItemType Junction -Path $junction -Target (Join-Path $root 'other'))
+    foreach ($folder in 'tasks','reports','accepted') {
+        [void][IO.Directory]::CreateDirectory((Join-Path $root "queue/$folder"))
+    }
+    foreach ($accepted in 'readable','missing','unavailable') {
+        foreach ($reported in 'readable','missing','unavailable') {
+            $id = "CASE-$accepted-$reported".ToUpperInvariant()
+            [IO.File]::WriteAllText((Join-Path $root "queue/tasks/$id.md"), 'Исполнитель: Codex')
+            foreach ($pair in @(@('accepted',$accepted), @('reports',$reported))) {
+                $file = Join-Path $root "queue/$($pair[0])/$id.md"
+                if ($pair[1] -eq 'readable') { [IO.File]::WriteAllText($file, 'report <script>throw 1</script>') }
+                if ($pair[1] -eq 'unavailable') { [IO.File]::WriteAllBytes($file, [byte[]]@(255)) }
+            }
+        }
+    }
+    [IO.File]::WriteAllText((Join-Path $root 'Проект А/tasks/T-002-test.md'), "# T-002`nСтатус: in_progress")
+    [IO.File]::WriteAllText((Join-Path $root 'Проект А/tasks/T-003-test.md'), "# T-003`nСтатус: in_progress")
+    [IO.File]::WriteAllText((Join-Path $root 'queue/tasks/SECOND-REPORT.md'), 'Исполнитель: Codex')
+    [IO.File]::WriteAllText((Join-Path $root 'queue/reports/SECOND-REPORT.md'), 'second report')
     $registry = Join-Path $root 'projects.json'
     @{
+        queue = @{ id = 'pilot'; path = 'queue' }
         projects = @(
-            @{ id = 'first'; name = 'Первый'; roots = @('Проект А', 'copy') }
+            @{ id = 'first'; name = 'Первый'; roots = @('Проект А', 'copy')
+                bindings = @(
+                    @{ taskId = 'T-001'; assignmentId = 'CASE-READABLE-READABLE' }
+                    @{ taskId = 'T-002'; assignmentId = 'SECOND-REPORT' }
+                    @{ taskId = 'T-002'; assignmentId = 'CASE-MISSING-READABLE' }
+                )
+                ownerActions = @(
+                    @{ taskId = 'T-001'; text = 'Проверить результат'; requires = @('CASE-READABLE-READABLE') }
+                    @{ taskId = 'T-003'; text = 'Проверить вручную'; requires = @() }
+                )
+            }
             @{ id = 'second'; name = 'Второй'; roots = @('other', 'linked') }
         )
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $registry -Encoding utf8
@@ -94,6 +123,55 @@ CI_HEAD_SHA: $old
     Assert-That ($card.text -ceq $sample) 'PTR-003 exact card text'
     Assert-That ($version.binding -eq 'previous' -and $first[1].tasks[0].versions[0].binding -eq 'unknown') 'PTR-004 evidence binding'
     Assert-That ($null -ne $first[1].sources[1].error) 'PTR-005 junction rejected'
+    $linked = $first[0].tasks[0].assignments[0]
+    Assert-That ($linked.state -eq 'accepted' -and $linked.comparison -eq 'match' -and !$first[0].tasks[0].action.blocked -and
+        !$first[1].tasks[0].assignments.Count -and $first[0].unlinkedAssignments.Count -eq 7) 'T-101 binding, owner instruction and project isolation'
+    $grouped = $first[0].tasks[1]
+    Assert-That ($grouped.action.assignments.Count -eq 2 -and $grouped.action.assignments[0] -eq 'CASE-MISSING-READABLE' -and
+        $grouped.action.assignments[1] -eq 'SECOND-REPORT') 'T-101 grouped review action in stable order'
+    Assert-That (!$first[0].tasks[2].action.blocked) 'T-101 owner instruction without evidence condition'
+    $all = @($first[0].unlinkedAssignments) + @($linked) + @($grouped.assignments | Where-Object id -Like 'CASE-*')
+    foreach ($accepted in 'readable','missing','unavailable') {
+        foreach ($reported in 'readable','missing','unavailable') {
+            $item = $all | Where-Object id -EQ "CASE-$accepted-$reported"
+            $expected = switch ("$accepted/$reported") {
+                'missing/missing' { 'assigned' }
+                'missing/readable' { 'reported' }
+                default { if ($accepted -eq 'readable') { 'accepted' } else { 'unknown' } }
+            }
+            Assert-That ($item.state -eq $expected -and $item.accepted.state -eq $accepted -and $item.report.state -eq $reported) "T-101 copy matrix $accepted/$reported"
+        }
+    }
+    $reportUri = $url + 'report?assignment=CASE-READABLE-READABLE&copy=accepted'
+    $document = Invoke-RestMethod $reportUri -TimeoutSec 10
+    Assert-That ($document.text -ceq 'report <script>throw 1</script>' -and $document.hash -ceq $linked.accepted.hash) 'T-101 exact report snapshot'
+    [IO.File]::WriteAllText((Join-Path $root 'queue/reports/CASE-READABLE-READABLE.md'), 'different')
+    $changed = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
+    Assert-That ($changed[0].tasks[0].assignments[0].comparison -eq 'conflict' -and
+        $changed[0].tasks[0].action.blocked -and $changed[0].tasks[0].action.text -eq 'Проверить результат') 'T-101 conflict blocks dependent owner instruction'
+    $queueTasks = Join-Path $root 'queue/tasks'
+    $originalTasks = Join-Path $root 'original-queue-tasks'
+    Move-Item -LiteralPath $queueTasks -Destination $originalTasks
+    try {
+        [void][IO.Directory]::CreateDirectory($queueTasks)
+        $empty = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
+        Assert-That ($empty[0].unlinkedAssignments -is [array] -and $empty[0].unlinkedAssignments.Count -eq 0) 'T-101 empty unlinked assignments remain an array'
+        Assert-That ($empty[0].tasks[0].action.blocked -and $empty[0].tasks[0].assignments[0].state -eq 'unknown' -and
+            $empty[0].tasks[1].action.text -ceq 'Восстановить доступ к источнику') 'T-101 empty queue keeps missing bindings and blocks dependent instructions'
+        [IO.File]::WriteAllText((Join-Path $queueTasks 'SINGLE.md'), '# Single assignment')
+        $single = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
+        Assert-That ($single[0].unlinkedAssignments -is [array] -and $single[0].unlinkedAssignments.Count -eq 1 -and
+            $single[0].unlinkedAssignments[0].id -ceq 'SINGLE') 'T-101 singleton unlinked assignment remains an array'
+    } finally {
+        Move-Item -LiteralPath $queueTasks -Destination (Join-Path $root 'cardinality-queue-tasks')
+        Move-Item -LiteralPath $originalTasks -Destination $queueTasks
+    }
+    $null = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
+    Move-Item -LiteralPath (Join-Path $root 'queue') -Destination (Join-Path $root 'offline')
+    $offline = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
+    Assert-That ($offline[0].queue.stale -and $offline[0].queue.updated -and
+        $offline[0].tasks[0].assignments[0].comparison -eq 'conflict' -and
+        [IO.File]::ReadAllText((Join-Path $root 'offline/reports/CASE-READABLE-READABLE.md')) -ceq 'different') 'T-101 read-only stale snapshot'
     $wrong = Invoke-WebRequest ($origin + '/summary') -SkipHttpErrorCheck -TimeoutSec 10
     Assert-That ($wrong.StatusCode -eq 404) 'PTR-003 session isolation'
     [IO.File]::AppendAllText($b, ([char]10 + 'Следующее действие: повторить'))
