@@ -906,10 +906,11 @@ try {
         $pidPath = Join-Path $scratch 'timeout-child.txt'
         $childScript = @"
 [IO.File]::WriteAllText('$($pidPath.Replace("'","''"))', "`$PID,`$([Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().Ticks)")
-Start-Sleep -Seconds 20
+Start-Sleep -Seconds 30
 "@
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($childScript))
         $shell = (Join-Path $PSHOME 'pwsh.exe').Replace('\','/')
+        $elapsed = [Diagnostics.Stopwatch]::StartNew()
         try {
             ExpectFailure {
                 & $module {
@@ -920,7 +921,11 @@ Start-Sleep -Seconds 20
         } finally {
             if (-not (Test-Path -LiteralPath $pidPath -PathType Leaf)) { throw 'GIT_TIMEOUT_CHILD_START_NOT_CONFIRMED' }
             $childId,$started = [IO.File]::ReadAllText($pidPath).Split(',')
-            $child = Get-Process -Id ([int]$childId) -ErrorAction SilentlyContinue
+            $child = $null
+            try { $child = Get-Process -Id ([int]$childId) -ErrorAction Stop }
+            catch {
+                if ($_.FullyQualifiedErrorId -cne 'NoProcessFoundForGivenId,Microsoft.PowerShell.Commands.GetProcessCommand') { throw }
+            }
             if ($child) {
                 try {
                     if (!$child.HasExited -and $child.StartTime.ToUniversalTime().Ticks -eq [long]$started) {
@@ -930,6 +935,7 @@ Start-Sleep -Seconds 20
                     }
                 } finally { $child.Dispose() }
             }
+            if ($elapsed.Elapsed.TotalSeconds -ge 20) { throw 'GIT_TIMEOUT_CHILD_STOP_NOT_PROVEN' }
         }
     }
     Case 'GIT-ID-034 bounds output held open after Git exits' {
