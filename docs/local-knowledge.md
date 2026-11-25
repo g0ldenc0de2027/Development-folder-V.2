@@ -22,10 +22,8 @@ Get/search исключают withdrawn и superseded по умолчанию; �
 предназначен для исторического чтения, а не текущей рекомендации. Search сообщает
 общее число совпадений, число выданных записей и `truncated`; результат сверх `-Limit`
 не следует принимать за полный список.
-Агенты могут передать `search -Compact` и получить карточки с ID, типом, заголовком,
-статусом и SHA-256. Тело выбранной записи читается через `get -Id`. Если хеш изменился,
-повторите поиск. Полный поиск используется по умолчанию. Для других команд
-`-Compact` возвращает `KB_COMPACT_SEARCH_ONLY`.
+`search -Compact` возвращает в `result.records` только поля `id`, `kind`, `title`, `status` и `contentSha256`. Поле `result.representation` равно `compact`, а `result.returned` содержит число записей в ответе с учётом лимита. Для другой команды включённый `-Compact` даёт `KB_COMPACT_SEARCH_ONLY`, а явно переданный `-Compact:$false` даёт `KB_OPTION_NOT_SUPPORTED`.
+Тело выбранной записи читается через `get -Id`. Если хеш изменился, повторите поиск. Полный поиск используется по умолчанию.
 Context возвращает весь выбранный набор записей или завершается с `KB_CONTEXT_RECORD_LIMIT`;
 частичный контекст не выдаётся как полный. По умолчанию `-Limit` равен 100, максимум — 1000.
 Context включает index, все закреплённые модули, карту охвата и выбранные записи; при превышении -MaxBytes (UTF-8 байты JSON, включая завершающий LF) отказ
@@ -208,7 +206,7 @@ Doctor reports compatibility as unverified. An empty search returns `records: []
 `totalMatches: 0`; a missing record ID in `get` returns `KB_NOT_FOUND`.
 Use `-Limit` to bound record selection (default 100, maximum 1000) and inspect `truncated`.
 Context rejects an incomplete record selection with `KB_CONTEXT_RECORD_LIMIT`.
-`search -Compact` returns metadata including `contentSha256`. Use `get -Id` for the body.
+`search -Compact` returns only `id`, `kind`, `title`, `status`, and `contentSha256` in each `result.records` entry. `result.representation` is `compact`, and `result.returned` counts the records included after applying the limit. For another command, enabled `-Compact` returns `KB_COMPACT_SEARCH_ONLY`, and explicitly passing `-Compact:$false` returns `KB_OPTION_NOT_SUPPORTED`. Use `get -Id` for the body.
 
 ### English policy-package update and recovery
 
