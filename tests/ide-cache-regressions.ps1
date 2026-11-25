@@ -4,6 +4,8 @@ param([string]$TempRoot = [IO.Path]::GetTempPath())
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $PSNativeCommandUseErrorActionPreference=$false
+# Git for Windows emits UTF-8 paths, independently of the inherited console code page.
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $source=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 # Git hooks export repository-specific environment variables; never let fixture Git
 # commands address the real worktree or index. This process is isolated from its parent.

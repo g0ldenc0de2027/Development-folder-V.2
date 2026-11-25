@@ -8,6 +8,8 @@
 - `spec/project-tracker-pilot.md`
 - `tasks/T-100-project-tracker-pilot.md`
 - `tests/quality-gate-regressions.ps1`
+- `tests/git-identity-regressions.ps1`
+- `tests/ide-cache-regressions.ps1`
 
 Первый push остановился при чтении пути общего каталога Git с кириллицей. В зоне T-100 дополнительно исправлено декодирование вывода Git в этой проверке TempRoot.
 

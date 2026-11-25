@@ -159,17 +159,23 @@ exit 0
 '@
     & $sh -c 'chmod +x "$1"' sh $shim
     if ($LASTEXITCODE -ne 0) { throw 'GIT_IDENTITY_PWSH_SHIM_NOT_EXECUTABLE' }
-    $logPosix = (& $cygpath -u $LogPath).Trim()
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($logPosix)) { throw 'GIT_IDENTITY_SHIM_LOG_PATH_INVALID' }
-    return [pscustomobject]@{
-        Directory=$Directory
-        ShellPath=$sh
-        DirectoryPosix=(& $cygpath -u $Directory).Trim()
-        LogPath=$logPosix
-        StatePath=(& $cygpath -u (Join-Path $Directory 'state.txt')).Trim()
-        PrePushHookPosix=(& $cygpath -u (Join-Path $repoRoot '.githooks/pre-push')).Trim()
-        PreCommitHookPosix=(& $cygpath -u (Join-Path $repoRoot '.githooks/pre-commit')).Trim()
-        Sh=$sh
+    $previousOutputEncoding = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+        $logPosix = (& $cygpath -u $LogPath).Trim()
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($logPosix)) { throw 'GIT_IDENTITY_SHIM_LOG_PATH_INVALID' }
+        return [pscustomobject]@{
+            Directory=$Directory
+            ShellPath=$sh
+            DirectoryPosix=(& $cygpath -u $Directory).Trim()
+            LogPath=$logPosix
+            StatePath=(& $cygpath -u (Join-Path $Directory 'state.txt')).Trim()
+            PrePushHookPosix=(& $cygpath -u (Join-Path $repoRoot '.githooks/pre-push')).Trim()
+            PreCommitHookPosix=(& $cygpath -u (Join-Path $repoRoot '.githooks/pre-commit')).Trim()
+            Sh=$sh
+        }
+    } finally {
+        [Console]::OutputEncoding = $previousOutputEncoding
     }
 }
 function New-HookProxy([string]$Directory) {
