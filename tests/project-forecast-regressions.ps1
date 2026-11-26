@@ -37,3 +37,16 @@ Assert-That ((Get-ProjectDateForecast @options -RemainingWeight 1 -UnresolvedBlo
 Assert-That ((Get-ProjectDateForecast @options -RemainingWeight 9000 -UnitsPerDayLow 1 -UnitsPerDayHigh 2).reason -ceq 'horizon_exceeded') 'PRG-007 bounded date horizon'
 Assert-That ((Get-ProjectDateForecast @options -RemainingWeight 0).reason -ceq 'completion_date_unavailable') 'PRG-007 no false completion date'
 Assert-That ((Get-ProjectDateForecast @options -RemainingWeight 0 -CompletedAt $options.AsOf).state -ceq 'completed') 'PRG-007 evidenced completion'
+
+$previous = $options + @{RemainingWeight = 8; UnitsPerDayLow = 1; UnitsPerDayHigh = 2}
+$current = $options + @{RemainingWeight = 13; UnitsPerDayLow = 1.3; UnitsPerDayHigh = 2.6; DaysOff = @([DateOnly]::new(2026,11,30))}
+$change = Compare-ProjectDateForecast -Previous $previous -Current $current -ScopeWeightDelta 5
+Assert-That ($change.totalDays.earliest -eq 2 -and $change.totalDays.latest -eq 3 -and
+    $change.scopeDays.earliest -eq 5 -and $change.scopeDays.latest -eq 7 -and
+    $change.otherDays.earliest -eq -3 -and $change.otherDays.latest -eq -4) 'PRG-007 explains the shift by scope and remaining assumptions'
+Assert-That ($previous.RemainingWeight -eq 8) 'PRG-008 preserves the prior inputs'
+$withoutScope = Compare-ProjectDateForecast -Previous $previous -Current $current
+Assert-That ($withoutScope.totalDays.latest -eq 3 -and $null -eq $withoutScope.scopeDays -and
+    $null -eq $withoutScope.otherDays) 'PRG-008 no attribution without confirmed scope delta'
+$withoutForecast = Compare-ProjectDateForecast -Previous $previous -Current ($current + @{UnresolvedBlocker = $true})
+Assert-That ($withoutForecast.after.reason -ceq 'blocker_unresolved' -and $null -eq $withoutForecast.totalDays) 'PRG-008 no delta without comparable dates'

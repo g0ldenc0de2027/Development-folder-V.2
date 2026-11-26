@@ -78,4 +78,39 @@ function Get-ProjectDateForecast {
     $result
 }
 
-Export-ModuleMember -Function Get-ProjectDateForecast
+function Compare-ProjectDateForecast {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$Previous,
+        [Parameter(Mandatory)][hashtable]$Current,
+        [Nullable[decimal]]$ScopeWeightDelta
+    )
+
+    $before = Get-ProjectDateForecast @Previous
+    $after = Get-ProjectDateForecast @Current
+    $comparison = @{ before = $before; after = $after; totalDays = $null; scopeDays = $null; otherDays = $null }
+    if ($before.state -cne 'available' -or $after.state -cne 'available') { return $comparison }
+
+    $comparison.totalDays = @{
+        earliest = $after.earliest.DayNumber - $before.earliest.DayNumber
+        latest = $after.latest.DayNumber - $before.latest.DayNumber
+    }
+    if ($null -eq $ScopeWeightDelta) { return $comparison }
+    $scopeOnlyInputs = $Previous.Clone()
+    $scopeOnlyInputs.RemainingWeight += $ScopeWeightDelta
+    if ($scopeOnlyInputs.RemainingWeight -le 0) { return $comparison }
+
+    $scopeOnly = Get-ProjectDateForecast @scopeOnlyInputs
+    if ($scopeOnly.state -cne 'available') { return $comparison }
+    $comparison.scopeDays = @{
+        earliest = $scopeOnly.earliest.DayNumber - $before.earliest.DayNumber
+        latest = $scopeOnly.latest.DayNumber - $before.latest.DayNumber
+    }
+    $comparison.otherDays = @{
+        earliest = $after.earliest.DayNumber - $scopeOnly.earliest.DayNumber
+        latest = $after.latest.DayNumber - $scopeOnly.latest.DayNumber
+    }
+    $comparison
+}
+
+Export-ModuleMember -Function Get-ProjectDateForecast, Compare-ProjectDateForecast
