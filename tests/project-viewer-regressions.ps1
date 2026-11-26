@@ -127,6 +127,17 @@ CI_HEAD_SHA: $old
     Assert-That (!$period.coverage.accepted.complete -and $period.coverage.accepted.gaps.Count -eq 1 -and
         $period.coverage.accepted.gaps[0].eventType -ceq 'acceptance_revoked' -and
         !$period.coverage.merged.complete -and $period.coverage.merged.gaps.Count -eq 1) 'PTR-VIS-005 distinguishes complete metric from missing history'
+    $historyBytes = [IO.File]::ReadAllText($history)
+    $completeHistory = $historyBytes | ConvertFrom-Json -AsHashtable -DateKind String
+    $completeHistory.coverage += @{ type = 'acceptance_revoked'; from = '2026-01-01T00:00:00Z'; until = '2026-01-02T00:00:00Z' }
+    try {
+        [IO.File]::WriteAllText($history, ($completeHistory | ConvertTo-Json -Depth 6))
+        $completePeriod = Invoke-RestMethod $periodUri -TimeoutSec 10
+        Assert-That ($completePeriod.coverage.accepted.complete -and $completePeriod.coverage.accepted.gaps.Count -eq 0 -and
+            $completePeriod.report.totals.accepted -eq 1) 'PTR-VIS-005 acceptance coverage includes revocations'
+    } finally {
+        [IO.File]::WriteAllText($history, $historyBytes)
+    }
     $otherPeriod = Invoke-RestMethod ($url + 'period?project=second&days=3') -TimeoutSec 10
     Assert-That ($otherPeriod.historyState -ceq 'unconfigured' -and $null -eq $otherPeriod.report) 'PTR-VIS-005 history is isolated by project'
     $invalidPeriod = Invoke-WebRequest ($url + 'period?project=first&days=2') -SkipHttpErrorCheck -TimeoutSec 10
