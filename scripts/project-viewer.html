@@ -33,6 +33,9 @@ li,.task-evidence{overflow-wrap:anywhere} .badge{font-weight:600}
 .daily-chart { list-style: none; padding: 0; }
 .daily-chart li { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: .6rem; padding: .55rem 0; border-block-end: 1px solid var(--line); }
 .daily-chart meter, #progress-scale meter { display: block; width: 100%; }
+.weighted-track { height: .75rem; border: 1px solid var(--line); border-radius: .5rem; background: var(--surface); overflow: hidden; }
+.weighted-fill { height: 100%; background: var(--progress-color); width: var(--progress-width); }
+.weighted-ends { display: flex; justify-content: space-between; font-size: .9rem; }
 </style>
 <header><h1>Проекты и задачи</h1><button id="refresh">Обновить</button></header>
 <p id="notice" role="status"></p>
@@ -50,6 +53,11 @@ li,.task-evidence{overflow-wrap:anywhere} .badge{font-weight:600}
 <dl id="progress-totals" class="metrics"></dl>
 <p id="progress-freshness" hidden></p>
 <div id="progress-scale"></div>
+<section aria-labelledby="weighted-title">
+<h4 id="weighted-title">Готовность утверждённого объёма</h4>
+<p id="weighted-status"></p>
+<div id="weighted-scale"></div>
+</section>
 <section aria-labelledby="cost-title">
 <h4 id="cost-title">Стоимость разработки</h4>
 <p id="cost-status"></p>
@@ -233,6 +241,7 @@ function render() {
   }
   byId('name').textContent = project.name;
   renderTimeline(project.timeline);
+  renderWeightedProgress(project.weightedProgress);
   renderCost(project.cost);
   const sources = project.sources.map(source =>
     node('li', source.path + ' · ' + sourceStatus(source.updated, source.error)));
@@ -395,6 +404,44 @@ function renderOverview(project, states) {
     byId('overview').lastElementChild.focus();
   });
   overview.replaceChildren(...buttons, blocked);
+}
+
+function renderWeightedProgress(snapshot) {
+  const status = byId('weighted-status');
+  const scale = byId('weighted-scale');
+  scale.replaceChildren();
+  const messages = {
+    unconfigured: 'Подключите утверждённый объём и журнал приёмок.',
+    incomplete: 'Полнота приёмок и отзывов пока не подтверждена.',
+    invalid: 'Проверьте локальный снимок готовности.',
+    not_assessed: 'На дату среза нет утверждённого объёма с положительным весом.'
+  };
+  if (snapshot?.state !== 'available') {
+    status.textContent = messages[snapshot?.state] ?? messages.unconfigured;
+    return;
+  }
+  const {percent, acceptedWeight, remainingWeight, totalWeight, scopeVersion, asOf} = snapshot;
+  const format = value => new Intl.NumberFormat('ru-RU', {maximumFractionDigits: 3}).format(value);
+  const caption = format(percent) + '% · Принято ' + format(acceptedWeight) + ' из ' +
+    format(totalWeight) + ' · Осталось ' + format(remainingWeight);
+  status.textContent = caption + ' · Объём ' + scopeVersion + ' · Срез ' + asOf.slice(0, 10);
+  const track = node('div');
+  track.className = 'weighted-track';
+  track.setAttribute('role', 'meter');
+  track.setAttribute('aria-label', 'Взвешенная готовность');
+  track.setAttribute('aria-valuemin', '0');
+  track.setAttribute('aria-valuemax', '100');
+  track.setAttribute('aria-valuenow', String(percent));
+  track.setAttribute('aria-valuetext', caption);
+  const fill = node('div');
+  fill.className = 'weighted-fill';
+  fill.style.setProperty('--progress-width', percent + '%');
+  fill.style.setProperty('--progress-color', 'hsl(' + percent * 1.25 + ' 70% 43%)');
+  track.append(fill);
+  const ends = node('div');
+  ends.className = 'weighted-ends';
+  ends.append(node('span', '0%'), node('span', '100%'));
+  scale.append(track, ends);
 }
 
 function renderCost(snapshot) {
