@@ -23,6 +23,8 @@ li,.task-evidence{overflow-wrap:anywhere} .badge{font-weight:600}
 .board ul { padding-inline-start: 1.25rem; }
 .board li + li { margin-top: .75rem; }
 #overview { display: flex; gap: .5rem; flex-wrap: wrap; margin-block: .75rem; }
+#overview button[aria-pressed="true"] { color: var(--accent); background: var(--surface); border-color: currentColor; text-decoration: underline; text-underline-offset: .18em; }
+#overview button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dashboard, section[aria-labelledby="period-title"] { margin-block: 1rem; padding: clamp(.75rem, 2vw, 1.25rem); border: 1px solid var(--line); border-radius: .75rem; }
 .dashboard h3, #period-title { margin-block-start: 0; }
 .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: .65rem; padding: 0; }
