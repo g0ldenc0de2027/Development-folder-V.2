@@ -16,7 +16,7 @@ label{display:inline-flex;align-items:center;gap:.4rem}.tools{margin:1rem 0}
 table{width:100%;border-collapse:collapse;text-align:start} th,td{text-align:start;vertical-align:top;padding:.65rem;border-bottom:1px solid var(--line)}
 thead{background:var(--surface)} pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:1rem;background:var(--surface)}
 dialog{width:min(78rem,85vw);max-height:85vh;overflow:auto;border:1px solid var(--line);border-radius:.6rem}
-li{overflow-wrap:anywhere} .badge{font-weight:600}
+li,.task-evidence{overflow-wrap:anywhere} .badge{font-weight:600}
 .board[hidden] { display: none; }
 .board { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: .75rem; }
 .board section { border: 1px solid; border-radius: .5rem; padding: .75rem; min-width: 0; overflow-wrap: anywhere; }
@@ -396,6 +396,34 @@ async function openCard(project, task) {
       ? 'Очередь недоступна · последняя сверка ' + new Date(queue.updated).toLocaleString('ru')
       : 'Очередь недоступна · статус неизвестен'));
     container.append(renderAssignments(task.assignments, queue.stale));
+  }
+  if (task.evidence) {
+    const {state, record} = task.evidence;
+    const section = node('section');
+    section.className = 'task-evidence';
+    section.append(node('h3', 'Доказательства'));
+    if (state === 'stale') section.append(node('p', 'Снимок устарел · источник недоступен'));
+    if (!record) {
+      section.append(node('p', state === 'readable' ? 'Нет сведений по задаче' : 'Источник недоступен'));
+    } else {
+      section.append(node('p', 'Наблюдение · ' + new Date(record.observedAt).toLocaleString('ru')));
+      section.append(node('p', 'Head ' + record.headSha + ' · Base ' + record.baseSha));
+      const statusLabels = {approved:'Одобрено', changes_requested:'Запрошены изменения',
+        success:'Успешно', failure:'Ошибка', pending:'Ожидается', accepted:'Принято', revoked:'Отозвано'};
+      for (const [field, label] of [['review', 'Ревью'], ['ci', 'CI']]) {
+        const fact = record[field];
+        section.append(node('p', label + ' · ' + (fact
+          ? statusLabels[fact.status] + (fact.current ? '' : ' · прежняя пара ' + fact.headSha + ' / ' + fact.baseSha)
+          : 'нет сведений')));
+      }
+      if (record.ci) section.append(node('p', 'Тестовый коммит CI · ' + record.ci.mergeResultSha));
+      section.append(node('p', 'Слияние · ' + (record.mergeSha ?? 'нет сведений')));
+      const decision = record.ownerAcceptance;
+      section.append(node('p', 'Приёмка владельцем · ' + (decision
+        ? statusLabels[decision.status] + ' · ' + new Date(decision.decidedAt).toLocaleString('ru')
+        : 'нет сведений')));
+    }
+    container.append(section);
   }
   if (!byId('card').open) byId('card').showModal();
   for (const [index, version] of task.versions.entries()) {

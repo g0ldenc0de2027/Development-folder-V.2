@@ -28,7 +28,11 @@ function Assert-PlainPath([string]$Path, [bool]$Directory) {
 }
 
 function Read-TransitionDate([string]$Card, [string]$Label) {
-    $value = Read-Field $Card $Label
+    Read-ObservedInstant (Read-Field $Card $Label)
+}
+
+function Read-ObservedInstant($value) {
+    if ($value -isnot [string]) { return $null }
     $instant = [DateTimeOffset]::MinValue
     if ($value -cmatch '\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|[+-]\d{2}:\d{2})\z' -and
         [DateTimeOffset]::TryParse($value, [Globalization.CultureInfo]::InvariantCulture,
@@ -219,6 +223,77 @@ function Get-TrackerAction($Task, $Project, $Assignments) {
     }
 }
 
+function Read-EvidenceSnapshot($Project) {
+    $path = $Project.evidencePath
+    Assert-PlainPath $path $false
+    $stream = [IO.File]::OpenRead($path)
+    try {
+        if ($stream.Length -gt 4MB) { throw 'EVIDENCE_SIZE_LIMIT' }
+        $bytes = [byte[]]::new([int]$stream.Length)
+        $stream.ReadExactly($bytes)
+        if ($stream.ReadByte() -ne -1) { throw 'EVIDENCE_SIZE_CHANGED' }
+    } finally { $stream.Dispose() }
+    $data = $utf8.GetString($bytes).TrimStart([char]0xFEFF) | ConvertFrom-Json -AsHashtable -DateKind String -Depth 16
+    if ($data -isnot [Collections.IDictionary] -or $data['schemaVersion'] -ne 1 -or
+        $data['projectId'] -cne $Project.id -or $data['tasks'] -isnot [array]) { throw 'INVALID_EVIDENCE' }
+    $items = @{}
+    $sha = '\A[0-9a-f]{40}\z'
+    foreach ($row in $data['tasks']) {
+        if ($row -isnot [Collections.IDictionary] -or $row['taskId'] -cnotmatch '\AT-[0-9]{3,}\z' -or
+            $items.ContainsKey($row['taskId']) -or $row['headSha'] -cnotmatch $sha -or $row['baseSha'] -cnotmatch $sha) {
+            throw 'INVALID_EVIDENCE_TASK'
+        }
+        $observed = Read-ObservedInstant $row['observedAt']
+        if ($null -eq $observed) { throw 'INVALID_EVIDENCE_DATE' }
+        $result = @{ headSha = $row['headSha']; baseSha = $row['baseSha']; observedAt = $observed; review = $null; ci = $null; mergeSha = $null; ownerAcceptance = $null }
+        foreach ($kind in 'review','ci') {
+            $fact = $row[$kind]
+            if ($null -eq $fact) { continue }
+            $allowed = if ($kind -eq 'review') { @('approved','changes_requested') } else { @('success','failure','pending') }
+            if ($fact -isnot [Collections.IDictionary] -or $fact['status'] -cnotin $allowed -or
+                $fact['headSha'] -cnotmatch $sha -or $fact['baseSha'] -cnotmatch $sha) { throw 'INVALID_EVIDENCE_FACT' }
+            $view = @{
+                status = $fact['status']; headSha = $fact['headSha']; baseSha = $fact['baseSha']
+                current = $fact['headSha'] -ceq $result.headSha -and $fact['baseSha'] -ceq $result.baseSha
+            }
+            if ($kind -eq 'ci') {
+                if ($fact['mergeResultSha'] -cnotmatch $sha -or $fact['parents'] -isnot [array] -or
+                    $fact['parents'].Count -ne 2 -or $fact['parents'][0] -cne $fact['baseSha'] -or
+                    $fact['parents'][1] -cne $fact['headSha']) { throw 'INVALID_EVIDENCE_CI' }
+                $view.mergeResultSha = $fact['mergeResultSha']
+            }
+            $result[$kind] = $view
+        }
+        if ($null -ne $row['mergeSha']) {
+            if ($row['mergeSha'] -cnotmatch $sha) { throw 'INVALID_EVIDENCE_MERGE' }
+            $result.mergeSha = $row['mergeSha']
+        }
+        $decision = $row['ownerAcceptance']
+        if ($null -ne $decision) {
+            if ($decision -isnot [Collections.IDictionary] -or $decision['status'] -cnotin 'accepted','revoked') {
+                throw 'INVALID_EVIDENCE_DECISION'
+            }
+            $decided = Read-ObservedInstant $decision['decidedAt']
+            if ($null -eq $decided) { throw 'INVALID_EVIDENCE_DATE' }
+            $result.ownerAcceptance = @{ status = $decision['status']; decidedAt = $decided }
+        }
+        $items.Add($row['taskId'], $result)
+    }
+    $items
+}
+
+function Update-Evidence {
+    foreach ($project in $projects) {
+        if (!$project.evidencePath) { continue }
+        try {
+            $project.evidence = Read-EvidenceSnapshot $project
+            $project.evidenceState = 'readable'
+        } catch {
+            $project.evidenceState = if ($null -eq $project.evidence) { 'unavailable' } else { 'stale' }
+        }
+    }
+}
+
 function Get-Summary {
     foreach ($project in $projects) {
         $tasks = @{}
@@ -270,6 +345,9 @@ function Get-Summary {
                 })
                 @{
                     id = $task.id; unreadable = $task.unreadable; versions = @($task.versions.Values | Sort-Object hash)
+                    evidence = if ($project.evidencePath) {
+                        @{ state = $project.evidenceState; record = if ($null -ne $project.evidence) { $project.evidence[$task.id] } }
+                    }
                     assignments = $assignments
                     action = if ($queue) { Get-TrackerAction $task $project $assignments } else { $null }
                 }
@@ -367,6 +445,15 @@ $projects = @(foreach ($entry in $registry.projects) {
             if ($resolved -notmatch '^[A-Za-z]:[\\/]') { throw 'INVALID_PROJECT_HISTORY_PATH' }
             $resolved
         } else { $null }
+        evidencePath = if ($entry.Contains('evidenceSnapshotPath')) {
+            $path = $entry['evidenceSnapshotPath']
+            if ($path -isnot [string] -or !$path.Trim() -or [IO.Path]::IsPathRooted($path)) { throw 'INVALID_PROJECT_EVIDENCE_PATH' }
+            $resolved = [IO.Path]::GetFullPath($path, $registryFile.DirectoryName)
+            if ($resolved -notmatch '^[A-Za-z]:[\\/]') { throw 'INVALID_PROJECT_EVIDENCE_PATH' }
+            $resolved
+        }
+        evidence = $null
+        evidenceState = 'unavailable'
         bindings = $bindings
         ownerActions = $ownerActions
         sources = @(foreach ($root in $entry.roots) {
@@ -387,6 +474,7 @@ $listener.Prefixes.Add("$origin/")
 try {
     Update-Projects
     Update-Queue
+    Update-Evidence
     $listener.Start()
     Write-Output "$origin$prefix"
     while ($listener.IsListening) {
@@ -411,7 +499,7 @@ try {
                 $body = $page
             } elseif (($method -eq 'GET' -and $route -eq 'summary') -or
                 ($method -eq 'POST' -and $route -eq 'refresh' -and $request.Headers['Origin'] -ceq $origin)) {
-                if ($method -eq 'POST') { Update-Projects; Update-Queue }
+                if ($method -eq 'POST') { Update-Projects; Update-Queue; Update-Evidence }
                 $body = ConvertTo-Json -InputObject @(Get-Summary) -Depth 10 -Compress
             } elseif ($method -eq 'GET' -and $route -eq 'period') {
                 $project = $projects | Where-Object { $_.id -ceq $request.QueryString['project'] }
