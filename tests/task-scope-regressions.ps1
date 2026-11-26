@@ -342,21 +342,32 @@ try {
     $bracketTempRoot = Join-Path ([IO.Path]::GetTempPath()) ('ptr[1]-' + [guid]::NewGuid().ToString('N'))
     [void][IO.Directory]::CreateDirectory($bracketTempRoot)
     $sentinel = Join-Path $bracketTempRoot 'keep.txt'
+    $neighbor = Join-Path $bracketTempRoot 'gate-foreign'
+    $neighborFile = Join-Path $neighbor 'keep.txt'
     $savedGitDir = [Environment]::GetEnvironmentVariable('GIT_DIR', 'Process')
     try {
         [IO.File]::WriteAllText($sentinel, 'keep')
+        [void][IO.Directory]::CreateDirectory($neighbor)
+        [IO.File]::WriteAllText($neighborFile, 'neighbor')
+        $neighborHash = (Get-FileHash -LiteralPath $neighborFile).Hash
         [Environment]::SetEnvironmentVariable('GIT_DIR', (Join-Path $scratch 'invalid-git-dir'), 'Process')
         $gateOutput = @(& $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'scripts/quality-gate.ps1') -TemporaryRoot $bracketTempRoot 2>&1)
         $gateExit = $LASTEXITCODE
         $gateText = $gateOutput -join [Environment]::NewLine
         if ($gateExit -ne 1 -or $gateText -notmatch 'QUALITY-GATE=FAIL: GIT_IDENTITY_' -or
             $gateText -match 'QUALITY-GATE=FAIL: cleanup' -or [IO.File]::ReadAllText($sentinel) -cne 'keep' -or
-            @(Get-ChildItem -LiteralPath $bracketTempRoot -Force).Count -ne 1) {
+            -not (Test-Path -LiteralPath $neighborFile -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $neighborFile).Hash -cne $neighborHash -or
+            @(Get-ChildItem -LiteralPath $bracketTempRoot -Force).Count -ne 2) {
             throw "Quality gate must use a literal temporary path and clean only its own directory. Exit: $gateExit. Output: $gateText"
         }
     } finally {
         [Environment]::SetEnvironmentVariable('GIT_DIR', $savedGitDir, 'Process')
         [IO.File]::Delete($sentinel)
+        [IO.File]::Delete($neighborFile)
+        if ([IO.Directory]::Exists($neighbor) -and @(Get-ChildItem -LiteralPath $neighbor -Force).Count -eq 0) {
+            [IO.Directory]::Delete($neighbor)
+        }
         if (@(Get-ChildItem -LiteralPath $bracketTempRoot -Force).Count -eq 0) {
             [IO.Directory]::Delete($bracketTempRoot)
         }
@@ -377,6 +388,22 @@ try {
         throw 'Quality gate must refuse a TempRoot inside a linked worktree before creating artifacts.'
     }
     $passed++
+    [void][IO.Directory]::CreateDirectory($linkedTempRoot)
+    $linkedSentinel = Join-Path $linkedTempRoot 'keep.txt'
+    [IO.File]::WriteAllText($linkedSentinel, 'keep')
+    $linkedHash = (Get-FileHash -LiteralPath $linkedSentinel).Hash
+    $gateOutput = @(& $pwsh -NoLogo -NoProfile -File $gatePath -TemporaryRoot $linkedTempRoot 2>&1)
+    $gateExit = $LASTEXITCODE
+    $gateText = $gateOutput -join [Environment]::NewLine
+    if ($gateExit -ne 1 -or -not $gateText.Contains('temporary root must be outside the source repository') -or
+        $gateText.Contains('QUALITY-GATE=FAIL: cleanup') -or
+        -not (Test-Path -LiteralPath $linkedSentinel -PathType Leaf) -or
+        (Get-FileHash -LiteralPath $linkedSentinel).Hash -cne $linkedHash -or
+        @(Get-ChildItem -LiteralPath $linkedTempRoot -Force).Count -ne 1) {
+        throw 'Quality gate must preserve files in the rejected TemporaryRoot.'
+    }
+    [IO.File]::Delete($linkedSentinel)
+    [IO.Directory]::Delete($linkedTempRoot)
     $longTempRoot = Join-Path $scratch ('я' * 80)
     $taskSuitePath = Join-Path $PSScriptRoot 'task-scope-regressions.ps1'
     $longTaskOutput = @(& $pwsh -NoLogo -NoProfile -File $taskSuitePath -TempRoot $longTempRoot 2>&1)
