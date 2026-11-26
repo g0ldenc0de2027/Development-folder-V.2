@@ -138,6 +138,10 @@ CI_HEAD_SHA: $old
     } finally {
         [IO.File]::WriteAllText($history, $historyBytes)
     }
+    Assert-That ($wire.sourceFreshness.tasks.Count -eq 2 -and $wire.sourceFreshness.tasks[0].updated -and
+        !$wire.sourceFreshness.tasks[0].stale -and
+        $wire.sourceFreshness.tasks[0].PSObject.Properties.Name -notcontains 'path' -and
+        $wire.sourceFreshness.queue.updated) 'PTR-VIS-013 source freshness excludes paths'
     $otherPeriod = Invoke-RestMethod ($url + 'period?project=second&days=3') -TimeoutSec 10
     Assert-That ($otherPeriod.historyState -ceq 'unconfigured' -and $null -eq $otherPeriod.report) 'PTR-VIS-005 history is isolated by project'
     $invalidPeriod = Invoke-WebRequest ($url + 'period?project=first&days=2') -SkipHttpErrorCheck -TimeoutSec 10

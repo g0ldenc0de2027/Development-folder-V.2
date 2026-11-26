@@ -459,7 +459,13 @@ try {
                     SnapshotAt = $period.SnapshotAt
                     TimeZone = $period.TimeZone
                 }
-                $body = @{ projectId = $project.id; period = $periodView; historyState = $state; report = $result; coverage = $coverage; historyReadAt = if ($state -ceq 'readable') { [DateTimeOffset]::UtcNow } else { $null } } |
+                $sourceFreshness = @{
+                    tasks = @(foreach ($source in $project.sources) {
+                        @{ updated = $source.updated; stale = [bool]$source.error }
+                    })
+                    queue = if ($queue) { @{ updated = $queue.updated; stale = $queue.stale } } else { $null }
+                }
+                $body = @{ projectId = $project.id; sourceFreshness = $sourceFreshness; period = $periodView; historyState = $state; report = $result; coverage = $coverage; historyReadAt = if ($state -ceq 'readable') { [DateTimeOffset]::UtcNow } else { $null } } |
                     ConvertTo-Json -Depth 10 -Compress
             } elseif ($method -eq 'GET' -and $route -eq 'report' -and $queue) {
                 $id = $request.QueryString['assignment']

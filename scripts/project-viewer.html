@@ -575,6 +575,7 @@ async function load(refresh) {
   try {
     const snapshot = await request(refresh ? 'refresh' : 'summary', refresh ? 'POST' : 'GET');
     if (!validSnapshot(snapshot)) throw new Error('Invalid summary');
+    if (refresh) clearPeriod();
     projects = snapshot;
     render();
     if (activeCard && byId('card').open) {
