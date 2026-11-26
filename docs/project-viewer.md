@@ -1,24 +1,30 @@
 # Локальный просмотрщик проектов
 
-Сохраните реестр вне Git. Относительные пути в нём разрешаются от папки реестра.
+## Быстрый старт
 
-```json
+1. Используйте PowerShell 7.6 на Windows. Создайте файл `registry.json` в UTF-8 вне Git. В примере рабочая копия находится рядом с реестром в каталоге `checkout` и содержит папку `tasks`.
+
+~~~json
 {"projects":[{"id":"v2","name":"Development Folder V2","roots":["./checkout"]}]}
-```
+~~~
 
-Указывайте рабочие checkout, например V2/.worktrees/main, и выбранные task worktree. При переносе меняйте путь, сохраняя ID.
+2. Запустите из любой папки. Введите полные пути к скрипту и реестру. Если V2 использует отдельные worktree, укажите путь к скрипту внутри выбранной рабочей копии, а в `roots` перечислите нужные checkout. При переносе обновите пути, сохранив ID проекта. Относительные пути разрешаются от каталога реестра.
 
-```powershell
-pwsh -NoProfile -File scripts/project-viewer.ps1 -RegistryPath <путь-к-реестру>
-```
+~~~powershell
+$viewer = Read-Host 'Полный путь к project-viewer.ps1 без кавычек'
+$registry = Read-Host 'Полный путь к registry.json без кавычек'
+pwsh -NoProfile -File $viewer -RegistryPath $registry
+~~~
 
-Откройте выведенный URL. «Обновить» перечитывает источники. Ctrl+C останавливает панель. URL содержит ключ сеанса, храните его локально.
+3. Откройте полный URL из вывода этого запуска в браузере на том же компьютере. URL содержит ключ локальной сессии. «Обновить» перечитывает источники. Ctrl+C останавливает просмотрщик.
+4. Если URL не появился, проверьте диагностическое сообщение. При отсутствующем реестре исправьте путь. Если порт занят, добавьте `-Port 18765` или укажите другой свободный порт. После успешного запуска можно отдельно подключить очередь заданий, историю и снимок доказательств.
+
 
 Карточка может содержать строки «Блокер:», «Следующее действие:», «Решение владельца: ожидается», а также явно подписанные PR_HEAD_SHA, PR_BASE_SHA, CI_HEAD_SHA и CI_BASE_SHA. Полный исходный текст всегда доступен для прочитанных версий.
 
 ## English quick start
 
-Create a local JSON registry, run the command above, and open the printed session URL. Refresh rereads source cards. Ctrl+C stops the viewer. Keep the session URL private.
+Use PowerShell 7.6 on Windows. Create a UTF-8 registry outside Git and run the command above with absolute paths from any directory. Open the full session URL printed by that process. If no URL appears, check the registry path or retry with a free port such as -Port 18765. Refresh rereads sources. Ctrl+C stops the viewer. Keep the session URL private.
 
 ## Одна локальная очередь
 
