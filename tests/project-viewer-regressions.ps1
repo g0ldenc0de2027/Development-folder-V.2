@@ -71,6 +71,11 @@ CI_HEAD_SHA: $old
         queue = @{ id = 'pilot'; path = 'queue' }
         projects = @(
             @{ id = 'first'; name = 'Первый'; roots = @('Проект А', 'copy')
+                timeline = @{
+                    timeZone = 'UTC'
+                    startDate = '2026-11-20'
+                    stages = @(@{ id = 'pilot'; name = 'Пилот'; plannedDate = '2026-11-26'; taskIds = @('T-001') })
+                }
                 bindings = @(
                     @{ taskId = 'T-001'; assignmentId = 'CASE-READABLE-READABLE' }
                     @{ taskId = 'T-002'; assignmentId = 'SECOND-REPORT' }
@@ -83,11 +88,11 @@ CI_HEAD_SHA: $old
             }
             @{ id = 'second'; name = 'Второй'; roots = @('other', 'linked') }
         )
-    } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $registry -Encoding utf8
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $registry -Encoding utf8
     if ($V2Root) {
         $config = Get-Content -LiteralPath $registry -Raw | ConvertFrom-Json -AsHashtable
         $config.projects += @{ id = 'v2'; name = 'V2'; roots = @($V2Root) }
-        $config | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $registry -Encoding utf8
+        $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $registry -Encoding utf8
     }
     $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $probe.Start()
@@ -109,6 +114,12 @@ CI_HEAD_SHA: $old
     $origin = "http://127.0.0.1:$port"
     $first = Invoke-RestMethod ($url + 'summary') -TimeoutSec 10
     Assert-That ($first.Count -eq (2 + [int][bool]$V2Root) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
+    $timeline = $first[0].timeline
+    Assert-That ($timeline.startDate -ceq '2026-11-20' -and $timeline.timeZone -ceq 'UTC' -and
+        $timeline.today -in @([DateTime]::UtcNow.ToString('yyyy-MM-dd'), [DateTime]::UtcNow.AddDays(-1).ToString('yyyy-MM-dd')) -and
+        $timeline.stages -is [array] -and $timeline.stages.Count -eq 1 -and
+        $timeline.stages[0].plannedDate -ceq '2026-11-26' -and $null -eq $timeline.stages[0].actualDate -and
+        $timeline.stages[0].taskIds.Count -eq 1 -and $timeline.stages[0].taskIds[0] -ceq 'T-001' -and $null -eq $first[1].timeline) 'PTR-VIS-002 timeline and project isolation'
     if ($V2Root) {
         $expected = @(Get-ChildItem -LiteralPath (Join-Path $V2Root 'tasks') -File -Filter 'T-*.md' |
             Where-Object Name -CMatch '^T-[0-9]{3,}(?:-[^.]+)?\.md$').Count

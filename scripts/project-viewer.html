@@ -17,28 +17,46 @@ table{width:100%;border-collapse:collapse;text-align:start} th,td{text-align:sta
 thead{background:var(--surface)} pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:1rem;background:var(--surface)}
 dialog{width:min(78rem,85vw);max-height:85vh;overflow:auto;border:1px solid var(--line);border-radius:.6rem}
 li{overflow-wrap:anywhere} .badge{font-weight:600}
+.board[hidden] { display: none; }
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: .75rem; }
+.board section { border: 1px solid; border-radius: .5rem; padding: .75rem; min-width: 0; overflow-wrap: anywhere; }
+.board ul { padding-inline-start: 1.25rem; }
+.board li + li { margin-top: .75rem; }
+#overview { display: flex; gap: .5rem; flex-wrap: wrap; margin-block: .75rem; }
 </style>
 <header><h1>Проекты и задачи</h1><button id="refresh">Обновить</button></header>
 <p id="notice" role="status"></p>
 <section id="portfolio" aria-labelledby="portfolio-title">
 <h2 id="portfolio-title">Проекты</h2><ul id="projects"></ul>
+<section aria-labelledby="owner-queue-title">
+<h3 id="owner-queue-title">Ожидают решения владельца</h3>
+<ul id="owner-queue"></ul>
+</section>
 </section>
 <section id="project" hidden aria-labelledby="name">
 <button id="back">Все проекты</button><h2 id="name" tabindex="-1"></h2><ul id="sources"></ul>
+<section aria-labelledby="timeline-title">
+<h3 id="timeline-title">Этапы проекта</h3>
+<p id="project-dates"></p>
+<ul id="timeline"></ul>
+</section>
 <div class="tools">
+<label>Этап <select id="stage"><option value="">Все этапы</option></select></label>
 <label>Поиск <input id="query" type="search" placeholder="Номер или название"></label>
 <label>Состояние <select id="state"></select></label>
 <label><input id="blocked" type="checkbox"> Заблокировано</label>
 <label><input id="decision" type="checkbox"> Требует моего решения</label>
 </div>
+<div id="overview" aria-label="Сводка проекта"></div>
+<label>Вид <select id="view"><option value="list">Список</option><option value="board">Доска</option></select></label>
 <p id="count" aria-live="polite"></p>
-<div class="table"><table><thead><tr><th>Задача</th><th>Состояние</th><th>Исполнитель</th><th>Блокер</th><th>Следующее действие</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="table" id="list-view"><table><thead><tr><th>Задача</th><th>Состояние</th><th>Исполнитель</th><th>Блокер</th><th>Следующее действие</th></tr></thead><tbody id="rows"></tbody></table></div><div class="board" id="board" hidden></div>
 </section>
 <section id="queue" hidden aria-labelledby="queue-title">
 <h2 id="queue-title">Задания без связи</h2><p id="queue-state" role="status"></p><div id="unlinked"></div>
 </section>
 <dialog id="card" aria-labelledby="card-title">
-<header><h2 id="card-title"></h2><button id="close">Закрыть</button></header>
+<header><h2 id="card-title"></h2><div><button id="refresh-card">Обновить</button> <button id="close">Закрыть</button></div></header>
 <div id="versions"></div>
 </dialog>
 <script>
@@ -102,6 +120,8 @@ async function request(path, method = 'GET') {
 
 function showProject(id) {
   selected = id;
+  boardFilter = '';
+  byId('stage').value = '';
   for (const control of controls) {
     const element = byId(control);
     if (element.type === 'checkbox') element.checked = false;
@@ -110,6 +130,30 @@ function showProject(id) {
   render();
   if (id) byId('name').focus();
   else byId('projects').querySelector('button')?.focus();
+}
+
+function renderOwnerQueue() {
+  const list = byId('owner-queue');
+  const entries = [];
+  for (const project of projects) {
+    for (const task of project.tasks) {
+      const pending = task.versions.filter(version => version.needsDecision);
+      if (!pending.length) continue;
+      const entry = node('li');
+      const open = taskButton(project, task);
+      const actions = [...new Set(pending.map(version => version.nextAction).filter(Boolean))];
+      const action = task.action?.text ?? (actions.length ? actions.join(' · ') : 'Получить решение владельца');
+      const losesSource = task.unreadable.length || pending.some(version => version.sources.some(source => source.stale));
+      entry.append(node('strong', project.name + ' · '), open,
+        node('div', action + (task.action?.blocked ? ' · Заблокировано' : '')),
+        node('div', 'Дата ожидания: нет даты' + (losesSource ? ' · Источник прочитан не полностью' : '')));
+      if (pending.some(version => version.links.length) || task.assignments?.length) {
+        entry.append(node('div', 'Доказательства в карточке'));
+      }
+      entries.push(entry);
+    }
+  }
+  list.replaceChildren(...(entries.length ? entries : [node('li', 'Нет задач с указанным ожиданием решения')]));
 }
 
 function render() {
@@ -134,11 +178,20 @@ function render() {
     byId('unlinked').replaceChildren(unlinkedAssignments.length
       ? renderAssignments(unlinkedAssignments, queue.stale) : node('p', 'Нет заданий без связи'));
   }
-  if (!project) return;
+  if (!project) {
+    renderOwnerQueue();
+    return;
+  }
   byId('name').textContent = project.name;
-  byId('sources').replaceChildren(...project.sources.map(source =>
-    node('li', source.path + (source.error ? ' · ' + source.error : '') +
-      (source.updated ? ' · Прочитано ' + new Date(source.updated).toLocaleString('ru') : ''))));
+  renderTimeline(project.timeline);
+  const sources = project.sources.map(source =>
+    node('li', source.path + ' · ' + sourceStatus(source.updated, source.error)));
+  if (project.queue) {
+    sources.push(node('li', 'Очередь ' + project.queue.id + ' · ' +
+      sourceStatus(project.queue.updated, project.queue.stale ? 'Очередь недоступна' : '')));
+  }
+  sources.push(node('li', 'Покрытие истории неизвестно · журнал переходов не подключён'));
+  byId('sources').replaceChildren(...sources);
   const state = byId('state');
   const previous = state.value;
   const statuses = [...new Set(project.tasks.flatMap(task => task.versions.map(version => version.status)).filter(Boolean))].sort();
@@ -147,11 +200,125 @@ function render() {
   renderRows();
 }
 
+function sourceStatus(updated, error) {
+  if (!updated) return error ? error + ' · Снимка нет' : 'Время чтения неизвестно';
+  const time = new Date(updated).toLocaleString('ru');
+  return error ? error + ' · Последний полный снимок: ' + time : 'Прочитано: ' + time;
+}
+
+function renderTimeline(timeline) {
+  const date = value => {
+    const time = node('time', value);
+    time.dateTime = value;
+    return time;
+  };
+  const dates = byId('project-dates');
+  dates.replaceChildren();
+  dates.append(...(timeline?.startDate ? ['Старт: ', date(timeline.startDate)] : ['Старт не указан']));
+  if (timeline) dates.append(' · Сегодня: ', date(timeline.today), ' · ', timeline.timeZone);
+
+  const selector = byId('stage');
+  const previous = selector.value;
+  const stages = timeline?.stages ?? [];
+  selector.replaceChildren(new Option('Все этапы', ''),
+    ...stages.map(stage => new Option(stage.name, stage.id)));
+  if (stages.some(stage => stage.id === previous)) selector.value = previous;
+  byId('timeline').replaceChildren(...stages.map(stage => {
+    const item = node('li');
+    const button = node('button', stage.name);
+    button.addEventListener('click', () => {
+      selector.value = stage.id;
+      renderRows();
+      selector.focus();
+    });
+    item.append(button, ' · План: ', stage.plannedDate ? date(stage.plannedDate) : 'не указан',
+      ' · Факт: ', stage.actualDate ? date(stage.actualDate) : 'не указан');
+    return item;
+  }));
+  if (!stages.length) byId('timeline').append(node('li', 'Этапы не указаны'));
+}
+
+const columns = [
+  ['queued', 'В очереди', ['draft', 'backlog', 'ready', 'assigned']],
+  ['active', 'В работе', ['in_progress', 'running']],
+  ['review', 'Ревью', ['in_review', 'review']],
+  ['acceptance', 'Приёмка', ['submitted', 'reported', 'verifying']],
+  ['done', 'Завершено', ['accepted', 'closed', 'completed', 'done', 'merged']],
+  ['other', 'Другие состояния', ['cancelled', 'superseded', 'withdrawn']],
+  ['unknown', 'Неизвестно', []]
+];
+
+function boardState(task) {
+  const states = new Set(task.versions.map(version => version.status));
+  if (states.size !== 1) return 'unknown';
+  const status = states.values().next().value;
+  return columns.find(([, , statuses]) => statuses.includes(status))?.[0] ?? 'unknown';
+}
+
+function taskButton(project, task) {
+  const titles = [...new Set(task.versions.map(version => version.title).filter(Boolean))];
+  const label = titles.length === 1 && titles[0].startsWith(task.id) ? titles[0] :
+    [task.id, ...titles].join(' · ');
+  const button = node('button', label);
+  button.className = 'task';
+  button.addEventListener('click', () => openCard(project, task));
+  return button;
+}
+
+function renderBoard(project, tasks, states) {
+  byId('board').replaceChildren(...columns.map(([id, label]) => {
+    const column = node('section');
+    const items = tasks.filter(task => states.get(task.id) === id);
+    const list = node('ul');
+    for (const task of items) {
+      const entry = node('li');
+      entry.append(taskButton(project, task));
+      for (const [key, caption] of [['assignee', 'Исполнитель'], ['blocker', 'Блокер'], ['nextAction', 'Далее']]) {
+        const values = [...new Set(task.versions.map(version => version[key]).filter(Boolean))];
+        if (key === 'nextAction' && task.action) {
+          entry.append(node('div', caption + ': ' + task.action.text + (task.action.blocked ? ' · Заблокировано' : '')));
+        } else if (values.length) {
+          entry.append(node('div', caption + ': ' + values.join(' · ')));
+        }
+      }
+      list.append(entry);
+    }
+    column.append(node('h3', label + ' (' + items.length + ')'), list);
+    return column;
+  }));
+}
+
+let boardFilter = '';
+function renderOverview(project, states) {
+  const overview = byId('overview');
+  const buttons = columns.map(([id, label]) => {
+    const count = [...states.values()].filter(value => value === id).length;
+    const button = node('button', label + ' (' + count + ')');
+    button.setAttribute('aria-pressed', String(boardFilter === id));
+    button.addEventListener('click', () => {
+      boardFilter = boardFilter === id ? '' : id;
+      renderRows();
+      byId('overview').children[columns.findIndex(([key]) => key === id)]?.focus();
+    });
+    return button;
+  });
+  const blocked = node('button', 'Блокеры (' + project.tasks.filter(task => task.versions.some(version => version.blocker)).length + ')');
+  blocked.setAttribute('aria-pressed', String(byId('blocked').checked));
+  blocked.addEventListener('click', () => {
+    byId('blocked').checked = !byId('blocked').checked;
+    renderRows();
+    byId('overview').lastElementChild.focus();
+  });
+  overview.replaceChildren(...buttons, blocked);
+}
+
 function renderRows() {
   const project = projects.find(item => item.id === selected);
   if (!project) return;
   const query = byId('query').value.trim().toLocaleLowerCase('ru');
   const state = byId('state').value;
+  const stage = project.timeline?.stages.find(item => item.id === byId('stage').value);
+  const stageTasks = stage ? new Set(stage.taskIds) : null;
   const blocked = byId('blocked').checked;
   const decision = byId('decision').checked;
   const idMatch = task => task.id.toLowerCase().includes(query);
@@ -159,16 +326,22 @@ function renderRows() {
     (!state && !blocked && !decision && idMatch(task)) ||
     task.versions.some(version => (idMatch(task) || version.title.toLocaleLowerCase('ru').includes(query)) &&
       (!state || version.status === state) && (!blocked || version.blocker) && (!decision || version.needsDecision)));
-  byId('count').textContent = matching.length + ' из ' + project.tasks.length + ' задач';
-  byId('rows').replaceChildren(...matching.map(task => {
+  const states = new Map(project.tasks.map(task => [task.id, boardState(task)]));
+  const visible = matching.filter(task =>
+    (!stageTasks || stageTasks.has(task.id)) && (!boardFilter || states.get(task.id) === boardFilter));
+  renderOverview(project, states);
+  byId('count').textContent = visible.length + ' из ' + project.tasks.length;
+  const boardVisible = byId('view').value === 'board';
+  byId('list-view').hidden = boardVisible;
+  byId('board').hidden = !boardVisible;
+  if (boardVisible) {
+    renderBoard(project, visible, states);
+    return;
+  }
+  byId('rows').replaceChildren(...visible.map(task => {
     const row = node('tr');
     const cell = node('td');
-    const titles = [...new Set(task.versions.map(version => version.title).filter(Boolean))];
-    const button = node('button', titles.length === 1 && titles[0].startsWith(task.id) ? titles[0] :
-      [task.id, ...titles].join(' · '));
-    button.className = 'task';
-    button.addEventListener('click', () => openCard(project, task));
-    cell.append(button);
+    cell.append(taskButton(project, task));
     if (task.versions.length > 1) cell.append(node('div', 'Версии расходятся'));
     if (task.unreadable.length) cell.append(node('div', 'Ошибка чтения'));
     if (task.versions.some(version => version.sources.some(source => source.stale))) cell.append(node('div', 'Есть устаревший источник'));
@@ -186,7 +359,9 @@ function renderRows() {
   }));
 }
 
+let activeCard;
 async function openCard(project, task) {
+  activeCard = {projectId: project.id, taskId: task.id};
   const generation = ++viewGeneration;
   byId('card-title').textContent = task.id;
   const container = byId('versions');
@@ -204,7 +379,7 @@ async function openCard(project, task) {
       : 'Очередь недоступна · статус неизвестен'));
     container.append(renderAssignments(task.assignments, queue.stale));
   }
-  byId('card').showModal();
+  if (!byId('card').open) byId('card').showModal();
   for (const [index, version] of task.versions.entries()) {
     const section = node('section');
     section.append(node('h3', 'Версия ' + (index + 1)));
@@ -239,26 +414,52 @@ async function openCard(project, task) {
   }
 }
 
+function validSnapshot(snapshot) {
+  return Array.isArray(snapshot) && snapshot.every(project =>
+    project && typeof project.id === 'string' && Array.isArray(project.sources) && Array.isArray(project.tasks) &&
+    Array.isArray(project.unlinkedAssignments) &&
+    (!project.timeline || (Array.isArray(project.timeline.stages) &&
+      project.timeline.stages.every(stage => stage && Array.isArray(stage.taskIds)))) &&
+    project.tasks.every(task => task && typeof task.id === 'string' && Array.isArray(task.unreadable) &&
+      Array.isArray(task.versions) && task.versions.every(version =>
+        version && typeof version.title === 'string' && Array.isArray(version.sources) && Array.isArray(version.links))));
+}
 async function load(refresh) {
   const button = byId('refresh');
   button.disabled = true;
+  byId('refresh-card').disabled = true;
   byId('notice').textContent = 'Чтение источников…';
   try {
-    projects = await request(refresh ? 'refresh' : 'summary', refresh ? 'POST' : 'GET');
+    const snapshot = await request(refresh ? 'refresh' : 'summary', refresh ? 'POST' : 'GET');
+    if (!validSnapshot(snapshot)) throw new Error('Invalid summary');
+    projects = snapshot;
     render();
+    if (activeCard && byId('card').open) {
+      const project = projects.find(item => item.id === activeCard.projectId);
+      const task = project?.tasks.find(item => item.id === activeCard.taskId);
+      if (task) await openCard(project, task);
+      else {
+        viewGeneration++;
+        byId('versions').replaceChildren(node('p', 'Карточка отсутствует в текущем снимке.'));
+      }
+    }
     byId('notice').textContent = projects.some(project => project.queue?.stale || project.sources.some(source => source.error))
       ? 'Часть источников прочитать не удалось.' : '';
   } catch {
     byId('notice').textContent = 'Обновление не удалось. Показаны данные последней загрузки.';
   } finally {
     button.disabled = false;
+    byId('refresh-card').disabled = false;
   }
 }
 
 byId('refresh').addEventListener('click', () => load(true));
+byId('refresh-card').addEventListener('click', () => load(true));
+byId('view').addEventListener('change', renderRows);
+byId('stage').addEventListener('change', renderRows);
 byId('back').addEventListener('click', () => showProject(undefined));
 byId('close').addEventListener('click', () => byId('card').close());
-byId('card').addEventListener('close', () => { viewGeneration++; });
+byId('card').addEventListener('close', () => { viewGeneration++; activeCard = undefined; });
 for (const id of controls) byId(id).addEventListener('input', renderRows);
 load(false);
 </script>
