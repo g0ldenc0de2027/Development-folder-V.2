@@ -84,8 +84,10 @@ function Get-ProjectPeriodEvents {
     }
 
     $zone = [TimeZoneInfo]::FindSystemTimeZoneById($Period.TimeZone)
-    $rows = @(foreach ($row in ($unique.Values | Sort-Object At, SourceId, EventId -CaseSensitive)) {
-        if ($row.At -lt $Period.StartUtc -or $row.At -ge $Period.EndUtc) { continue }
+    $visible = @(foreach ($row in $unique.Values) {
+        if ($row.At -ge $Period.StartUtc -and $row.At -lt $Period.EndUtc) { $row }
+    })
+    $rows = @(foreach ($row in ($visible | Sort-Object At, SourceId, EventId -CaseSensitive)) {
         $last = $counted[$row.TaskId]
         $included = $row.Type -cne 'accepted' -or ($last.SourceId -ceq $row.SourceId -and $last.EventId -ceq $row.EventId)
         [pscustomobject]@{
