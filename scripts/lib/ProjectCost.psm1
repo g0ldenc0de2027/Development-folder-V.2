@@ -18,6 +18,7 @@ function Get-CostEstimate($Hours, [decimal]$Rate, $AiRub, $AiUsd, [decimal]$RubP
     $laborRub = if ($null -ne $Hours) { @($Hours | ForEach-Object { $_ * $Rate }) }
     $rub = $null
     $usd = $null
+    $needsExchangeRate = $false
     if ($null -ne $laborRub -and $null -ne $AiRub -and $null -ne $AiUsd -and
         $null -ne $SpentRub -and $null -ne $SpentUsd) {
         $nativeRub = for ($i = 0; $i -lt 3; $i++) { $SpentRub + $laborRub[$i] + $AiRub[$i] }
@@ -28,6 +29,7 @@ function Get-CostEstimate($Hours, [decimal]$Rate, $AiRub, $AiUsd, [decimal]$RubP
         } else {
             if ($nativeUsd[2] -eq 0) { $rub = $nativeRub }
             if ($nativeRub[2] -eq 0) { $usd = $nativeUsd }
+            $needsExchangeRate = $null -eq $rub -or $null -eq $usd
         }
     }
     @{
@@ -40,7 +42,7 @@ function Get-CostEstimate($Hours, [decimal]$Rate, $AiRub, $AiUsd, [decimal]$RubP
             if ($null -eq $Hours) { 'hours' }
             if ($null -eq $AiRub -or $null -eq $AiUsd) { 'ai' }
             if ($null -eq $SpentRub -or $null -eq $SpentUsd) { 'confirmedCost' }
-            if ($RubPerUsd -eq 0) { 'exchangeRate' }
+            if ($needsExchangeRate) { 'exchangeRate' }
         )
     }
 }

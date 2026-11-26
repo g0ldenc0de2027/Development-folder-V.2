@@ -119,6 +119,14 @@ CI_HEAD_SHA: $old
         $config.projects += @{ id = 'v2'; name = 'V2'; roots = @($V2Root) }
         $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $registry -Encoding utf8
     }
+    $badVersions = @($true, '1', [double]1)
+    $config = Get-Content -LiteralPath $registry -Raw | ConvertFrom-Json -AsHashtable
+    for ($i = 0; $i -lt $badVersions.Count; $i++) {
+        $cost = $config.projects[0].cost.Clone()
+        $cost.schemaVersion = $badVersions[$i]
+        $config.projects += @{ id = "bad-cost-$i"; name = "Снимок $i"; roots = @('other'); cost = $cost }
+    }
+    $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $registry -Encoding utf8
     $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $probe.Start()
     $port = $probe.LocalEndpoint.Port
@@ -174,6 +182,8 @@ CI_HEAD_SHA: $old
     $restoredPeriod = Invoke-RestMethod $periodUri -TimeoutSec 10
     Assert-That ($restoredPeriod.report.totals.accepted -eq 1) 'PTR-VIS-005 restored history does not duplicate events'
     $first = Invoke-RestMethod ($url + 'summary') -TimeoutSec 10
+    $invalidCosts = @($first | Where-Object id -Like 'bad-cost-*')
+    Assert-That ($invalidCosts.Count -eq 3 -and @($invalidCosts | Where-Object { $_.cost.state -cne 'invalid' }).Count -eq 0) 'PRG-014 rejects boolean, string and floating-point JSON schema versions'
     Assert-That ($first[0].cost.state -ceq 'available' -and $first[0].cost.asOf -ceq '2026-11-26' -and
         $first[0].cost.values.plan.totalRub[1] -eq 80000 -and $first[0].cost.values.plan.totalUsd[1] -eq 800 -and
         $null -eq $first[0].cost.values.forecast.totalRub -and $first[1].cost.state -ceq 'unconfigured') 'PRG-012 cost snapshot is isolated by project'
@@ -205,7 +215,7 @@ CI_HEAD_SHA: $old
     Assert-That ($recovered[0].tasks[0].evidence.state -ceq 'readable' -and
         $recovered[0].tasks[0].evidence.record.ownerAcceptance.status -ceq 'accepted') 'PTR-VIS-007 recovery and explicit acceptance'
     Assert-That ($first[0].historyConfigured -and !$first[1].historyConfigured) 'PTR-VIS-005 summary distinguishes history configuration by project'
-    Assert-That ($first.Count -eq (2 + [int][bool]$V2Root) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
+    Assert-That ($first.Count -eq (2 + [int][bool]$V2Root + $badVersions.Count) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
     $timeline = $first[0].timeline
     Assert-That ($timeline.startDate -ceq '2026-11-20' -and $timeline.timeZone -ceq 'UTC' -and
         $timeline.today -in @([DateTime]::UtcNow.ToString('yyyy-MM-dd'), [DateTime]::UtcNow.AddDays(-1).ToString('yyyy-MM-dd')) -and

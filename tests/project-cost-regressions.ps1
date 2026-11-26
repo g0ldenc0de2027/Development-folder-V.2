@@ -45,3 +45,9 @@ foreach ($bad in @(
     }
 }
 Write-Output 'PASS: unavailable FX, missing inputs and invalid input boundaries'
+
+$zeroForecast = Get-ProjectCost -RemainingHours $zero -RemainingAiRub $zero -RemainingAiUsd $zero `
+    -ConfirmedLaborRub 0 -ConfirmedAiRub 0 -ConfirmedAiUsd 0
+Assert-Equal $zeroForecast.forecast.totalRub $zero 'PRG-014 zero RUB without exchange rate'
+Assert-Equal $zeroForecast.forecast.totalUsd $zero 'PRG-014 zero USD without exchange rate'
+if ('exchangeRate' -cin $zeroForecast.forecast.missingInputs) { throw 'Zero totals do not require FX.' }

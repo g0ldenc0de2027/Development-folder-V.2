@@ -403,7 +403,11 @@ function Read-ProjectCostSnapshot($Entry) {
     if (!$Entry.Contains('cost')) { return @{ state = 'unconfigured' } }
     try {
         $cost = $Entry.cost
-        if ($cost -isnot [Collections.IDictionary] -or $cost.schemaVersion -cne 1) { throw 'INVALID_COST_SNAPSHOT' }
+        if ($cost -isnot [Collections.IDictionary]) { throw 'INVALID_COST_SNAPSHOT' }
+        $schemaVersion = $cost['schemaVersion']
+        if (($schemaVersion -isnot [int] -and $schemaVersion -isnot [long]) -or $schemaVersion -ne 1) {
+            throw 'INVALID_COST_SNAPSHOT'
+        }
         $date = Read-TimelineDate $cost.asOf
         $scope = $cost.scopeVersion
         if ($scope -isnot [string] -or $scope -cnotmatch '\A[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}\z') { throw 'INVALID_COST_SCOPE' }
