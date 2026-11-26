@@ -161,64 +161,16 @@ function Assert-Scope([int]$ExpectedExit, [string]$ExpectedMessage, [string]$Exp
     }
 }
 
-function Assert-TempRootOutsideGitRepositories {
-    $probe = $tempRootFull
-    while (-not [IO.Directory]::Exists($probe)) {
-        $parent = Split-Path -Parent $probe
-        if ([string]::IsNullOrWhiteSpace($parent) -or [string]::Equals($parent, $probe, [StringComparison]::OrdinalIgnoreCase)) { break }
-        $probe = $parent
-    }
-    if (-not [IO.Directory]::Exists($probe)) { throw 'Task scope regression TempRoot has no existing parent directory' }
-
-    $probeGuardNames = @(Get-GitHookEnvironmentNames)
-    $savedProbeEnvironment = @{}
-    foreach ($name in $probeGuardNames) {
-        $savedProbeEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
-        Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
-    }
-    try {
-        while ($probe) {
-            $gitMarker = Join-Path $probe '.git'
-            $bareRepositoryMarkers = (
-                (Test-Path -LiteralPath (Join-Path $probe 'HEAD') -PathType Leaf) -and
-                (Test-Path -LiteralPath (Join-Path $probe 'config') -PathType Leaf) -and
-                (Test-Path -LiteralPath (Join-Path $probe 'objects') -PathType Container) -and
-                (Test-Path -LiteralPath (Join-Path $probe 'refs') -PathType Container)
-            )
-            if ((Test-Path -LiteralPath $gitMarker) -or $bareRepositoryMarkers) {
-                throw 'Task scope regression TempRoot must be outside every Git repository'
-            }
-            $gitRoot = @(& git -C $probe rev-parse --show-toplevel 2>$null)
-            $gitRootExit = $LASTEXITCODE
-            $bareState = @(& git -C $probe rev-parse --is-bare-repository 2>$null)
-            $bareStateExit = $LASTEXITCODE
-            if ($gitRootExit -eq 0 -or ($bareStateExit -eq 0 -and ($bareState -join '').Trim() -eq 'true')) {
-                throw 'Task scope regression TempRoot must be outside every Git repository'
-            }
-            $parent = Split-Path -Parent $probe
-            if ([string]::IsNullOrWhiteSpace($parent) -or [string]::Equals($parent, $probe, [StringComparison]::OrdinalIgnoreCase)) { break }
-            $probe = $parent
-        }
-    } finally {
-        foreach ($name in $probeGuardNames) {
-            $savedValue = [string]$savedProbeEnvironment[$name]
-            if ([string]::IsNullOrEmpty($savedValue)) {
-                Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
-            } else {
-                [Environment]::SetEnvironmentVariable($name, $savedValue, 'Process')
-            }
-        }
-    }
-}
-
 try {
-    Assert-TempRootOutsideGitRepositories
     $fixtureGitDirProbe = [IO.Path]::GetFullPath((Join-Path $scratch 'repo\.git\worktrees\wt'))
     $fixtureGitDirUtf8Bytes = [Text.Encoding]::UTF8.GetByteCount($fixtureGitDirProbe)
     if ($fixtureGitDirUtf8Bytes -gt 200) {
         throw ("Task scope regression TempRoot would exceed Git for Windows GIT_DIR limit: {0} UTF-8 bytes; maximum is 200." -f $fixtureGitDirUtf8Bytes)
     }
     $sourceStateBefore = Get-SourceGitState
+    . (Join-Path $PSScriptRoot 'git-fixture-temp.ps1')
+    Assert-GitFixtureTempRoot $tempRootFull
+
     $poisonRoot = Join-Path $scratch 'inherited-git-context'
     [Environment]::SetEnvironmentVariable('GIT_DIR', (Join-Path $poisonRoot 'git-dir'), 'Process')
     [Environment]::SetEnvironmentVariable('GIT_WORK_TREE', (Join-Path $poisonRoot 'work-tree'), 'Process')
