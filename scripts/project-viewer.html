@@ -58,6 +58,10 @@ li,.task-evidence{overflow-wrap:anywhere} .badge{font-weight:600}
 <p id="weighted-status"></p>
 <div id="weighted-scale"></div>
 </section>
+<section aria-labelledby="date-forecast-title">
+<h4 id="date-forecast-title">Прогноз завершения</h4>
+<p id="date-forecast"></p>
+</section>
 <section aria-labelledby="cost-title">
 <h4 id="cost-title">Стоимость разработки</h4>
 <p id="cost-status"></p>
@@ -241,6 +245,7 @@ function render() {
   }
   byId('name').textContent = project.name;
   renderTimeline(project.timeline);
+  renderDateForecast(project.dateForecast);
   renderWeightedProgress(project.weightedProgress);
   renderCost(project.cost);
   const sources = project.sources.map(source =>
@@ -404,6 +409,35 @@ function renderOverview(project, states) {
     byId('overview').lastElementChild.focus();
   });
   overview.replaceChildren(...buttons, blocked);
+}
+
+function renderDateForecast(snapshot) {
+  const element = byId('date-forecast');
+  const explanations = {
+    configuration_unavailable: 'Укажите календарь и диапазон темпа.',
+    scope_unavailable: 'Нужен подтверждённый остаток утверждённого объёма.',
+    scope_version_mismatch: 'Объём работ изменился. Обновите параметры прогноза для новой версии.',
+    calendar_unavailable: 'Рабочий календарь не задан.',
+    pace_unavailable: 'Темп разработки не задан.',
+    capacity_zero: 'Нижняя оценка темпа равна нулю.',
+    blocker_unresolved: 'Критическая зависимость без даты.',
+    completion_date_unavailable: 'Дата последней приёмки не подтверждена.',
+    horizon_exceeded: 'Прогноз выходит за пределы расчётного горизонта.',
+    invalid_configuration: 'Проверьте настройки и версию объёма.'
+  };
+  if (snapshot?.state === 'completed') {
+    element.textContent = 'Завершено ' + snapshot.completedAt;
+    return;
+  }
+  if (snapshot?.state !== 'available') {
+    element.textContent = explanations[snapshot?.reason] ?? explanations.configuration_unavailable;
+    return;
+  }
+  const delta = value => (value > 0 ? '+' : '') + value;
+  element.textContent = 'Сценарная оценка · ' + snapshot.earliest + ' – ' + snapshot.latest +
+    ' · Срез на ' + snapshot.asOf +
+    (snapshot.planFinish ? ' · План ' + snapshot.planFinish +
+      ' · Сдвиг границ ' + delta(snapshot.earliestDeltaDays) + ' / ' + delta(snapshot.latestDeltaDays) + ' дн.' : '');
 }
 
 function renderWeightedProgress(snapshot) {

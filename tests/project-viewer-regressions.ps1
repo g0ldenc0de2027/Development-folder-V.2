@@ -98,6 +98,11 @@ CI_HEAD_SHA: $old
                     decisions = @(@{projectId = 'first'; eventId = 'accept-a'; itemId = 'A'; scopeVersion = 'v1'
                         criteriaVersion = 'v1'; at = '2026-01-02T00:00:00Z'; type = 'accepted'; evidenceId = 'synthetic'})
                 }
+                forecast = @{
+                    schemaVersion = 1; scopeVersion = 'v1'; unitsPerDayLow = 1; unitsPerDayHigh = 2
+                    workDays = @('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')
+                    planFinish = '2026-01-08'
+                }
                 cost = @{
                     schemaVersion = 1; asOf = '2026-11-26'; scopeVersion = 'v1'
                     planHours = @(40, 50, 60); planAiRub = @(5000, 5000, 5000); planAiUsd = @(0, 0, 0); planRubPerUsd = 100
@@ -132,7 +137,12 @@ CI_HEAD_SHA: $old
     for ($i = 0; $i -lt $badVersions.Count; $i++) {
         $cost = $config.projects[0].cost.Clone()
         $cost.schemaVersion = $badVersions[$i]
-        $config.projects += @{ id = "bad-cost-$i"; name = "Снимок $i"; roots = @('other'); cost = $cost }
+        $forecast = $config.projects[0].forecast.Clone()
+        $forecast.schemaVersion = $badVersions[$i]
+        $config.projects += @{ id = "bad-cost-$i"; name = "Снимок $i"; roots = @('other'); cost = $cost; forecast = $forecast }
+        $config.projects[-1].progress = $config.projects[0].progress | ConvertTo-Json -Depth 8 | ConvertFrom-Json -AsHashtable
+        $config.projects[-1].progress.baselines[0].projectId = "bad-cost-$i"
+        $config.projects[-1].progress.decisions[0].projectId = "bad-cost-$i"
     }
     $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $registry -Encoding utf8
     $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
@@ -192,8 +202,16 @@ CI_HEAD_SHA: $old
     $first = Invoke-RestMethod ($url + 'summary') -TimeoutSec 10
     Assert-That ($first[0].weightedProgress.state -ceq 'available' -and $first[0].weightedProgress.percent -eq 37.5 -and
         $first[0].weightedProgress.remainingWeight -eq 5 -and $first[1].weightedProgress.state -ceq 'unconfigured') 'PRG-003 weighted progress is isolated by project'
+    $forecast = $first[0].dateForecast
+    Assert-That ($forecast.state -ceq 'available' -and $forecast.method -ceq 'scenario' -and
+        $forecast.asOf -ceq '2026-01-03' -and $forecast.earliest -ceq '2026-01-07' -and
+        $forecast.latest -ceq '2026-01-09' -and $forecast.earliestDeltaDays -eq -1 -and
+        $forecast.latestDeltaDays -eq 1) 'PRG-007 scenario range and plan deltas reach the project summary'
+    Assert-That ($first[1].dateForecast.state -ceq 'not_assessed' -and
+        $first[1].dateForecast.reason -ceq 'configuration_unavailable') 'PRG-008 forecast settings are isolated by project'
     $invalidCosts = @($first | Where-Object id -Like 'bad-cost-*')
     Assert-That ($invalidCosts.Count -eq 3 -and @($invalidCosts | Where-Object { $_.cost.state -cne 'invalid' }).Count -eq 0) 'PRG-014 rejects boolean, string and floating-point JSON schema versions'
+    Assert-That (@($invalidCosts | Where-Object { $_.dateForecast.reason -cne 'invalid_configuration' }).Count -eq 0) 'PRG-011 forecast rejects non-integer schema versions'
     Assert-That ($first[0].cost.state -ceq 'available' -and $first[0].cost.asOf -ceq '2026-11-26' -and
         $first[0].cost.values.plan.totalRub[1] -eq 80000 -and $first[0].cost.values.plan.totalUsd[1] -eq 800 -and
         $null -eq $first[0].cost.values.forecast.totalRub -and $first[1].cost.state -ceq 'unconfigured') 'PRG-012 cost snapshot is isolated by project'
