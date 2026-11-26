@@ -397,6 +397,33 @@ async function openCard(project, task) {
       : 'Очередь недоступна · статус неизвестен'));
     container.append(renderAssignments(task.assignments, queue.stale));
   }
+  if (task.evidence) {
+    const {state, record} = task.evidence;
+    const section = node('section');
+    section.append(node('h3', 'Доказательства'));
+    if (state === 'stale') section.append(node('p', 'Снимок устарел · источник недоступен'));
+    if (!record) {
+      section.append(node('p', state === 'readable' ? 'Нет сведений по задаче' : 'Источник недоступен'));
+    } else {
+      section.append(node('p', 'Наблюдение · ' + new Date(record.observedAt).toLocaleString('ru')));
+      section.append(node('p', 'Head ' + record.headSha + ' · Base ' + record.baseSha));
+      const statusLabels = {approved:'Одобрено', changes_requested:'Запрошены изменения',
+        success:'Успешно', failure:'Ошибка', pending:'Ожидается', accepted:'Принято', revoked:'Отозвано'};
+      for (const [field, label] of [['review', 'Ревью'], ['ci', 'CI']]) {
+        const fact = record[field];
+        section.append(node('p', label + ' · ' + (fact
+          ? statusLabels[fact.status] + (fact.current ? '' : ' · прежняя пара ' + fact.headSha + ' / ' + fact.baseSha)
+          : 'нет сведений')));
+      }
+      if (record.ci) section.append(node('p', 'Тестовый коммит CI · ' + record.ci.mergeResultSha));
+      section.append(node('p', 'Слияние · ' + (record.mergeSha ?? 'нет сведений')));
+      const decision = record.ownerAcceptance;
+      section.append(node('p', 'Приёмка владельцем · ' + (decision
+        ? statusLabels[decision.status] + ' · ' + new Date(decision.decidedAt).toLocaleString('ru')
+        : 'нет сведений')));
+    }
+    container.append(section);
+  }
   if (!byId('card').open) byId('card').showModal();
   for (const [index, version] of task.versions.entries()) {
     const section = node('section');

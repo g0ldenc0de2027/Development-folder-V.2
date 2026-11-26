@@ -70,12 +70,28 @@ CI_HEAD_SHA: $old
     @'
 {"schemaVersion":1,"projectId":"first","coverage":[{"type":"accepted","from":"2026-01-01T00:00:00Z","until":"2026-01-02T00:00:00Z"}],"events":[{"at":"2026-01-01T00:00:00Z","sourceId":"local","eventId":"e1","taskId":"T-001","type":"accepted"},{"at":"2026-01-01T00:00:00Z","sourceId":"local","eventId":"e1","taskId":"T-001","type":"accepted"}]}
 '@ | Set-Content -LiteralPath $history -Encoding utf8
+    $evidenceFile = Join-Path $root 'evidence.json'
+    $evidenceHead = 'a' * 40
+    $evidenceBase = 'b' * 40
+    $evidenceCi = @{
+        status = 'success'; headSha = $evidenceHead; baseSha = $evidenceBase
+        mergeResultSha = 'c' * 40; parents = @($evidenceBase, $evidenceHead)
+    }
+    $evidenceRow = @{
+        taskId = 'T-001'; headSha = $evidenceHead; baseSha = $evidenceBase
+        observedAt = '2026-01-01T00:00:00Z'; ci = $evidenceCi
+        review = @{status = 'approved'; headSha = $evidenceHead; baseSha = $evidenceBase}
+        mergeSha = 'd' * 40
+    }
+    $evidence = @{schemaVersion = 1; projectId = 'first'; tasks = @($evidenceRow)}
+    $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $evidenceFile -Encoding utf8
     $registry = Join-Path $root 'projects.json'
     @{
         queue = @{ id = 'pilot'; path = 'queue' }
         projects = @(
             @{ id = 'first'; name = 'Первый'; roots = @('Проект А', 'copy')
                 historyPath = 'history.json'
+                evidenceSnapshotPath = 'evidence.json'
                 timeline = @{
                     timeZone = 'UTC'
                     startDate = '2026-11-20'
@@ -154,6 +170,33 @@ CI_HEAD_SHA: $old
     $restoredPeriod = Invoke-RestMethod $periodUri -TimeoutSec 10
     Assert-That ($restoredPeriod.report.totals.accepted -eq 1) 'PTR-VIS-005 restored history does not duplicate events'
     $first = Invoke-RestMethod ($url + 'summary') -TimeoutSec 10
+    $view = $first[0].tasks[0].evidence
+    Assert-That ($view.state -ceq 'readable' -and $view.record.ci.current -and $view.record.review.current -and
+        !$view.record.ownerAcceptance -and $view.record.mergeSha -and !$first[1].tasks[0].evidence -and
+        (($view | ConvertTo-Json -Depth 8) -notmatch 'evidence\.json')) 'PTR-VIS-007 isolated evidence and independent acceptance'
+    $evidenceRow.baseSha = 'e' * 40
+    $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $evidenceFile -Encoding utf8
+    $changedEvidence = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{Origin = $origin} -TimeoutSec 10
+    Assert-That (!$changedEvidence[0].tasks[0].evidence.record.ci.current -and
+        !$changedEvidence[0].tasks[0].evidence.record.review.current) 'PTR-VIS-007 base change marks evidence historical'
+    $evidenceRow.baseSha = $evidenceBase
+    $evidenceRow.headSha = 'e' * 40
+    $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $evidenceFile -Encoding utf8
+    $changedEvidence = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{Origin = $origin} -TimeoutSec 10
+    Assert-That (!$changedEvidence[0].tasks[0].evidence.record.ci.current -and
+        !$changedEvidence[0].tasks[0].evidence.record.review.current) 'PTR-VIS-007 head change marks evidence historical'
+    $evidenceCi.parents = @($evidenceHead, $evidenceBase)
+    $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $evidenceFile -Encoding utf8
+    $staleEvidence = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{Origin = $origin} -TimeoutSec 10
+    Assert-That ($staleEvidence[0].tasks[0].evidence.state -ceq 'stale' -and
+        $staleEvidence[0].tasks[0].evidence.record.baseSha -ceq $evidenceBase) 'PTR-VIS-007 invalid parents keep last snapshot'
+    $evidenceCi.parents = @($evidenceBase, $evidenceHead)
+    $evidenceRow.headSha = $evidenceHead
+    $evidenceRow.ownerAcceptance = @{status = 'accepted'; decidedAt = '2026-01-01T01:00:00Z'}
+    $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $evidenceFile -Encoding utf8
+    $recovered = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{Origin = $origin} -TimeoutSec 10
+    Assert-That ($recovered[0].tasks[0].evidence.state -ceq 'readable' -and
+        $recovered[0].tasks[0].evidence.record.ownerAcceptance.status -ceq 'accepted') 'PTR-VIS-007 recovery and explicit acceptance'
     Assert-That ($first[0].historyConfigured -and !$first[1].historyConfigured) 'PTR-VIS-005 summary distinguishes history configuration by project'
     Assert-That ($first.Count -eq (2 + [int][bool]$V2Root) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
     $timeline = $first[0].timeline
