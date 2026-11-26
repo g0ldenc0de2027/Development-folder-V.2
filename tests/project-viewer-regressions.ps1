@@ -90,6 +90,10 @@ CI_HEAD_SHA: $old
         queue = @{ id = 'pilot'; path = 'queue' }
         projects = @(
             @{ id = 'first'; name = 'Первый'; roots = @('Проект А', 'copy')
+                cost = @{
+                    schemaVersion = 1; asOf = '2026-11-26'; scopeVersion = 'v1'
+                    planHours = @(40, 50, 60); planAiRub = @(5000, 5000, 5000); planAiUsd = @(0, 0, 0); planRubPerUsd = 100
+                }
                 historyPath = 'history.json'
                 evidenceSnapshotPath = 'evidence.json'
                 timeline = @{
@@ -170,6 +174,9 @@ CI_HEAD_SHA: $old
     $restoredPeriod = Invoke-RestMethod $periodUri -TimeoutSec 10
     Assert-That ($restoredPeriod.report.totals.accepted -eq 1) 'PTR-VIS-005 restored history does not duplicate events'
     $first = Invoke-RestMethod ($url + 'summary') -TimeoutSec 10
+    Assert-That ($first[0].cost.state -ceq 'available' -and $first[0].cost.asOf -ceq '2026-11-26' -and
+        $first[0].cost.values.plan.totalRub[1] -eq 80000 -and $first[0].cost.values.plan.totalUsd[1] -eq 800 -and
+        $null -eq $first[0].cost.values.forecast.totalRub -and $first[1].cost.state -ceq 'unconfigured') 'PRG-012 cost snapshot is isolated by project'
     $view = $first[0].tasks[0].evidence
     Assert-That ($view.state -ceq 'readable' -and $view.record.ci.current -and $view.record.review.current -and
         !$view.record.ownerAcceptance -and $view.record.mergeSha -and !$first[1].tasks[0].evidence -and

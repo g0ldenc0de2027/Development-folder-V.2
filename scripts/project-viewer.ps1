@@ -10,6 +10,7 @@ $ErrorActionPreference = 'Stop'
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 
 Import-Module (Join-Path $PSScriptRoot 'lib/ProjectPeriod.psm1')
+Import-Module (Join-Path $PSScriptRoot 'lib/ProjectCost.psm1')
 
 function Read-Field([string]$Card, [string]$Label) {
     $match = [regex]::Match($Card, '(?im)^[ \t]*(?:\*\*)?' + [regex]::Escape($Label) +
@@ -326,6 +327,7 @@ function Get-Summary {
             id = $project.id
             name = $project.name
             historyConfigured = [bool]$project.historyPath
+            cost = $project.cost
             timeline = if ($project.timeline) {
                 @{
                     startDate = $project.timeline.startDate
@@ -397,6 +399,32 @@ function Read-TimelineDate($Value) {
     return $Value
 }
 
+function Read-ProjectCostSnapshot($Entry) {
+    if (!$Entry.Contains('cost')) { return @{ state = 'unconfigured' } }
+    try {
+        $cost = $Entry.cost
+        if ($cost -isnot [Collections.IDictionary] -or $cost.schemaVersion -cne 1) { throw 'INVALID_COST_SNAPSHOT' }
+        $date = Read-TimelineDate $cost.asOf
+        $scope = $cost.scopeVersion
+        if ($scope -isnot [string] -or $scope -cnotmatch '\A[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}\z') { throw 'INVALID_COST_SCOPE' }
+
+        $inputs = @{}
+        foreach ($name in 'PlanHours','PlanAiRub','PlanAiUsd','RemainingHours','RemainingAiRub','RemainingAiUsd',
+            'PlanRateRub','PlanRubPerUsd','RateRub','RubPerUsd','ConfirmedLaborRub','ConfirmedAiRub','ConfirmedAiUsd') {
+            $key = $name.Substring(0,1).ToLowerInvariant() + $name.Substring(1)
+            if (!$cost.Contains($key) -or $null -eq $cost[$key]) { continue }
+            $value = $cost[$key]
+            if ($name -match 'RateRub|RubPerUsd|Confirmed' -and $value -isnot [long] -and
+                $value -isnot [double] -and $value -isnot [decimal]) { throw 'INVALID_COST_VALUE' }
+            $inputs[$name] = $value
+        }
+        $result = Get-ProjectCost @inputs
+        @{ state = 'available'; asOf = $date; scopeVersion = $scope; values = $result }
+    } catch {
+        @{ state = 'invalid' }
+    }
+}
+
 $registryFile = Get-Item -LiteralPath $RegistryPath
 $registry = [IO.File]::ReadAllText($registryFile.FullName, $utf8) | ConvertFrom-Json -AsHashtable
 $queue = $null
@@ -436,6 +464,7 @@ $projects = @(foreach ($entry in $registry.projects) {
         id = $entry.id
         name = $entry.name
         timeline = Read-ProjectTimeline $entry
+        cost = Read-ProjectCostSnapshot $entry
         historyPath = if ($entry.Contains('historyPath')) {
             $history = $entry['historyPath']
             if ($history -isnot [string] -or !$history.Trim() -or [IO.Path]::IsPathRooted($history)) {
