@@ -11,6 +11,7 @@ $utf8 = [Text.UTF8Encoding]::new($false, $true)
 
 Import-Module (Join-Path $PSScriptRoot 'lib/ProjectPeriod.psm1')
 Import-Module (Join-Path $PSScriptRoot 'lib/ProjectProgress.psm1')
+Import-Module (Join-Path $PSScriptRoot 'lib/ProjectForecast.psm1')
 Import-Module (Join-Path $PSScriptRoot 'lib/ProjectCost.psm1')
 
 function Read-Field([string]$Card, [string]$Label) {
@@ -328,6 +329,7 @@ function Get-Summary {
             id = $project.id
             name = $project.name
             historyConfigured = [bool]$project.historyPath
+            dateForecast = $project.dateForecast
             weightedProgress = $project.weightedProgress
             cost = $project.cost
             timeline = if ($project.timeline) {
@@ -417,6 +419,65 @@ function Read-WeightedProgress($Entry) {
     }
 }
 
+function Read-ProjectDateForecast($Entry, $Progress, $Timeline) {
+    if (!$Entry.Contains('forecast')) { return @{ state = 'not_assessed'; reason = 'configuration_unavailable' } }
+    if ($Progress.state -cne 'available') { return @{ state = 'not_assessed'; reason = 'scope_unavailable' } }
+    try {
+        $config = $Entry['forecast']
+        if ($config -isnot [Collections.IDictionary] -or
+            ($config['schemaVersion'] -isnot [int] -and $config['schemaVersion'] -isnot [long]) -or
+            $config['schemaVersion'] -ne 1) {
+            throw 'FORECAST_INVALID_CONFIGURATION'
+        }
+        if ($config['scopeVersion'] -cne $Progress.scopeVersion) {
+            return @{ state = 'not_assessed'; reason = 'scope_version_mismatch' }
+        }
+        $zone = if ($Timeline) { $Timeline.zone } else { [TimeZoneInfo]::Utc }
+        $date = [DateOnly]::FromDateTime([TimeZoneInfo]::ConvertTime($Progress.asOf, $zone).DateTime)
+        $arguments = @{ AsOf = $date; RemainingWeight = $Progress.remainingWeight }
+        foreach ($name in 'UnitsPerDayLow','UnitsPerDayHigh','WorkDays','DaysOff','PlanFinish','NotBefore','CompletedAt','UnresolvedBlocker') {
+            $key = $name.Substring(0,1).ToLowerInvariant() + $name.Substring(1)
+            if (!$config.Contains($key) -or $null -eq $config[$key]) { continue }
+            $value = $config[$key]
+            switch ($name) {
+                { $_ -in 'UnitsPerDayLow','UnitsPerDayHigh' } {
+                    if ($value -isnot [long] -and $value -isnot [double] -and $value -isnot [decimal]) {
+                        throw 'FORECAST_INVALID_PACE'
+                    }
+                }
+                'WorkDays' {
+                    $dayNames = [Enum]::GetNames([DayOfWeek])
+                    if ($value -isnot [array] -or @($value | Where-Object { $_ -isnot [string] -or $_ -cnotin $dayNames }).Count) {
+                        throw 'FORECAST_INVALID_WORK_DAYS'
+                    }
+                }
+                'DaysOff' {
+                    if ($value -isnot [array]) { throw 'FORECAST_INVALID_DAYS_OFF' }
+                    $value = @($value | ForEach-Object {
+                        [DateOnly]::ParseExact((Read-TimelineDate $_), 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+                    })
+                }
+                { $_ -in 'PlanFinish','NotBefore','CompletedAt' } {
+                    $value = [DateOnly]::ParseExact((Read-TimelineDate $value), 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+                }
+            }
+            $arguments[$name] = $value
+        }
+        if ($arguments.ContainsKey('UnresolvedBlocker') -and $arguments.UnresolvedBlocker -isnot [bool]) {
+            throw 'FORECAST_INVALID_BLOCKER'
+        }
+        $forecast = Get-ProjectDateForecast @arguments
+        foreach ($field in 'asOf','planFinish','earliest','latest','completedAt') {
+            if ($null -ne $forecast[$field]) {
+                $forecast[$field] = $forecast[$field].ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+            }
+        }
+        $forecast
+    } catch {
+        @{ state = 'not_assessed'; reason = 'invalid_configuration' }
+    }
+}
+
 function Read-ProjectCostSnapshot($Entry) {
     if (!$Entry.Contains('cost')) { return @{ state = 'unconfigured' } }
     try {
@@ -481,12 +542,15 @@ $projects = @(foreach ($entry in $registry.projects) {
         $ownerActions[$action.taskId] = $action
     }
     foreach ($taskId in @($bindings.Keys)) { $bindings[$taskId] = @($bindings[$taskId] | Sort-Object -CaseSensitive) }
+    $progress = Read-WeightedProgress $entry
+    $timeline = Read-ProjectTimeline $entry
     $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     @{
         id = $entry.id
         name = $entry.name
-        timeline = Read-ProjectTimeline $entry
-        weightedProgress = Read-WeightedProgress $entry
+        timeline = $timeline
+        weightedProgress = $progress
+        dateForecast = Read-ProjectDateForecast $entry $progress $timeline
         cost = Read-ProjectCostSnapshot $entry
         historyPath = if ($entry.Contains('historyPath')) {
             $history = $entry['historyPath']
