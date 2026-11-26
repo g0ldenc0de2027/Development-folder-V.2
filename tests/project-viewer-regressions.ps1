@@ -181,6 +181,13 @@ CI_HEAD_SHA: $old
     $stale = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
     Assert-That ($null -ne $stale[0].sources[0].error -and $stale[0].tasks[0].versions.sources.stale -contains $true) 'PTR-005 stale source retained'
     Assert-That ([IO.File]::ReadAllText((Join-Path $root 'moved/tasks/T-001-test.md')) -ceq $sample) 'PTR-005 source bytes unchanged'
+    Move-Item -LiteralPath (Join-Path $root 'moved') -Destination (Join-Path $root 'Проект А')
+    Move-Item -LiteralPath (Join-Path $root 'offline') -Destination (Join-Path $root 'queue')
+    [IO.File]::WriteAllText((Join-Path $root 'queue/reports/CASE-READABLE-READABLE.md'), 'report <script>throw 1</script>')
+    $restored = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
+    Assert-That (!$restored[0].queue.stale -and $restored[0].tasks[0].assignments[0].comparison -eq 'match') 'T-101 queue recovered'
+    Assert-That (!$restored[0].sources[0].error -and $restored[0].tasks[0].versions.Count -eq 2 -and
+        $restored[0].tasks[0].versions.sources.stale -notcontains $true) 'PTR-005 source recovered'
 } finally {
     if ($process) {
         if (!$process.HasExited) { $process.Kill(); $process.WaitForExit() }
