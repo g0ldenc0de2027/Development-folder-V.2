@@ -124,7 +124,8 @@ CI_HEAD_SHA: $old
         $wire.period.TimeZone -ceq 'UTC' -and $wire.historyReadAt) 'PTR-VIS-013 serializes calendar dates and source freshness'
     Assert-That ($period.historyState -ceq 'readable' -and $period.report.totals.accepted -eq 1 -and
         $period.report.events.Count -eq 1 -and $period.report.events[0].day -ceq '2026-01-01') 'PTR-VIS-005 period counts deduplicated events at midnight'
-    Assert-That ($period.coverage.accepted.complete -and $period.coverage.accepted.gaps.Count -eq 0 -and
+    Assert-That (!$period.coverage.accepted.complete -and $period.coverage.accepted.gaps.Count -eq 1 -and
+        $period.coverage.accepted.gaps[0].eventType -ceq 'acceptance_revoked' -and
         !$period.coverage.merged.complete -and $period.coverage.merged.gaps.Count -eq 1) 'PTR-VIS-005 distinguishes complete metric from missing history'
     $otherPeriod = Invoke-RestMethod ($url + 'period?project=second&days=3') -TimeoutSec 10
     Assert-That ($otherPeriod.historyState -ceq 'unconfigured' -and $null -eq $otherPeriod.report) 'PTR-VIS-005 history is isolated by project'
@@ -138,6 +139,7 @@ CI_HEAD_SHA: $old
     $restoredPeriod = Invoke-RestMethod $periodUri -TimeoutSec 10
     Assert-That ($restoredPeriod.report.totals.accepted -eq 1) 'PTR-VIS-005 restored history does not duplicate events'
     $first = Invoke-RestMethod ($url + 'summary') -TimeoutSec 10
+    Assert-That ($first[0].historyConfigured -and !$first[1].historyConfigured) 'PTR-VIS-005 summary distinguishes history configuration by project'
     Assert-That ($first.Count -eq (2 + [int][bool]$V2Root) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
     $timeline = $first[0].timeline
     Assert-That ($timeline.startDate -ceq '2026-11-20' -and $timeline.timeZone -ceq 'UTC' -and

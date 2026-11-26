@@ -195,6 +195,15 @@ function Get-ProjectHistoryCoverage($Period, [object[]]$Coverage, [string[]]$Typ
         if ($cursor -lt $Period.EndUtc) { @{ from = $cursor; until = $Period.EndUtc } })
         $result[$type] = @{ complete = $gaps.Count -eq 0; gaps = $gaps }
     }
+    # Итог действующих приёмок зависит и от полноты истории отзывов.
+    if ($result.Contains('accepted') -and $result.Contains('acceptance_revoked')) {
+        $acceptanceGaps = @(foreach ($type in 'accepted', 'acceptance_revoked') {
+            foreach ($gap in $result[$type].gaps) {
+                @{ from = $gap.from; until = $gap.until; eventType = $type }
+            }
+        })
+        $result['accepted'] = @{ complete = $acceptanceGaps.Count -eq 0; gaps = $acceptanceGaps }
+    }
     $result
 }
 

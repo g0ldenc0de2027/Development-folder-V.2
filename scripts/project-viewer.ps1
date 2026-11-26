@@ -250,6 +250,7 @@ function Get-Summary {
         @{
             id = $project.id
             name = $project.name
+            historyConfigured = [bool]$project.historyPath
             timeline = if ($project.timeline) {
                 @{
                     startDate = $project.timeline.startDate

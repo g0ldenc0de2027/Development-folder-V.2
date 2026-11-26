@@ -206,7 +206,9 @@ function render() {
     sources.push(node('li', 'Очередь ' + project.queue.id + ' · ' +
       sourceStatus(project.queue.updated, project.queue.stale ? 'Очередь недоступна' : '')));
   }
-  sources.push(node('li', 'Покрытие истории неизвестно · журнал переходов не подключён'));
+  sources.push(node('li', project.historyConfigured
+    ? 'Источник истории настроен · доступность и покрытие проверяются при построении отчёта'
+    : 'Источник истории не подключён'));
   byId('sources').replaceChildren(...sources);
   const state = byId('state');
   const previous = state.value;
@@ -484,7 +486,7 @@ function renderPeriod(snapshot) {
     if (!metric.complete) {
       const details = node('details');
       const intervals = node('ul');
-      for (const gap of metric.gaps) intervals.append(node('li', instant(gap.from) + ' — ' + instant(gap.until)));
+      for (const gap of metric.gaps) intervals.append(node('li', (gap.eventType ? eventLabels[gap.eventType] + ': ' : '') + instant(gap.from) + ' — ' + instant(gap.until)));
       details.append(node('summary', 'Пропуски истории'), intervals);
       item.append(details);
     }
