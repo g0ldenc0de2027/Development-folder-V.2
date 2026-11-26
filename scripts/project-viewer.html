@@ -279,7 +279,12 @@ function taskButton(project, task) {
     [task.id, ...titles].join(' · ');
   const button = node('button', label);
   button.className = 'task';
-  button.addEventListener('click', () => openCard(project, task));
+  button.dataset.projectId = project.id;
+  button.dataset.taskId = task.id;
+  button.addEventListener('click', () => {
+    cardOpener = button;
+    openCard(project, task);
+  });
   return button;
 }
 
@@ -378,6 +383,19 @@ function renderRows() {
 }
 
 let activeCard;
+let cardOpener;
+
+function restoreTaskFocus(button) {
+  if (!button) return;
+  if (button.isConnected && !button.closest('[hidden]')) {
+    button.focus();
+    return;
+  }
+  const replacement = [...document.querySelectorAll('button.task')].find(item =>
+    item.dataset.projectId === button.dataset.projectId &&
+    item.dataset.taskId === button.dataset.taskId && !item.closest('[hidden]'));
+  (replacement ?? (byId('project').hidden ? byId('refresh') : byId('query'))).focus();
+}
 async function openCard(project, task) {
   activeCard = {projectId: project.id, taskId: task.id};
   const generation = ++viewGeneration;
@@ -597,15 +615,18 @@ function validSnapshot(snapshot) {
 }
 async function load(refresh) {
   const button = byId('refresh');
+  if (button.disabled) return;
   button.disabled = true;
-  byId('refresh-card').disabled = true;
+  byId('refresh-card').setAttribute('aria-disabled', 'true');
   byId('notice').textContent = 'Чтение источников…';
   try {
     const snapshot = await request(refresh ? 'refresh' : 'summary', refresh ? 'POST' : 'GET');
     if (!validSnapshot(snapshot)) throw new Error('Invalid summary');
     if (refresh) clearPeriod();
+    const focusedTask = document.activeElement?.matches('button.task') ? document.activeElement : null;
     projects = snapshot;
     render();
+    if (focusedTask && !byId('card').open && !focusedTask.isConnected) restoreTaskFocus(focusedTask);
     if (activeCard && byId('card').open) {
       const project = projects.find(item => item.id === activeCard.projectId);
       const task = project?.tasks.find(item => item.id === activeCard.taskId);
@@ -621,7 +642,7 @@ async function load(refresh) {
     byId('notice').textContent = 'Обновление не удалось. Показаны данные последней загрузки.';
   } finally {
     button.disabled = false;
-    byId('refresh-card').disabled = false;
+    byId('refresh-card').removeAttribute('aria-disabled');
   }
 }
 
@@ -631,7 +652,21 @@ byId('view').addEventListener('change', renderRows);
 byId('stage').addEventListener('change', renderRows);
 byId('back').addEventListener('click', () => showProject(undefined));
 byId('close').addEventListener('click', () => byId('card').close());
-byId('card').addEventListener('close', () => { viewGeneration++; activeCard = undefined; });
+byId('card').addEventListener('close', () => {
+  viewGeneration++;
+  activeCard = undefined;
+  const opener = cardOpener;
+  cardOpener = undefined;
+  const focusAfterClose = document.activeElement;
+  requestAnimationFrame(() => {
+    const dialog = byId('card');
+    const focused = document.activeElement;
+    if (!dialog.open && (focused === focusAfterClose || focused === document.body ||
+        focused === document.documentElement || dialog.contains(focused))) {
+      restoreTaskFocus(opener);
+    }
+  });
+});
 for (const id of controls) byId(id).addEventListener('input', renderRows);
 load(false);
 </script>
