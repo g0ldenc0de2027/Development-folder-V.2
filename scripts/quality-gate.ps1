@@ -237,8 +237,16 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Task-scope regressions failed' }
 
     $manifest = Get-Content -LiteralPath (Join-Path $repoRoot 'config/security/tools.json') -Raw | ConvertFrom-Json
+    Write-Output 'QUALITY-GATE: running project cost regressions'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-cost-regressions.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "project-cost-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-viewer-regressions.ps1') -TempRoot $temporaryRoot
     if ($LASTEXITCODE -ne 0) { throw "project-viewer-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
+    Write-Output 'QUALITY-GATE: running weighted progress regressions'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-progress-regressions.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "project-progress-regressions.ps1 failed with exit code $LASTEXITCODE" }
 
     Write-Output 'QUALITY-GATE: running project date forecast regressions'
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-forecast-regressions.ps1')
