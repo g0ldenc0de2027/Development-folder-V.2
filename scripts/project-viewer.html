@@ -657,10 +657,12 @@ byId('card').addEventListener('close', () => {
   activeCard = undefined;
   const opener = cardOpener;
   cardOpener = undefined;
+  const focusAfterClose = document.activeElement;
   requestAnimationFrame(() => {
     const dialog = byId('card');
     const focused = document.activeElement;
-    if (!dialog.open && (focused === document.body || focused === document.documentElement || dialog.contains(focused))) {
+    if (!dialog.open && (focused === focusAfterClose || focused === document.body ||
+        focused === document.documentElement || dialog.contains(focused))) {
       restoreTaskFocus(opener);
     }
   });
