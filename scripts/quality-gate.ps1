@@ -248,6 +248,10 @@ try {
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-progress-regressions.ps1')
     if ($LASTEXITCODE -ne 0) { throw "project-progress-regressions.ps1 failed with exit code $LASTEXITCODE" }
 
+    Write-Output 'QUALITY-GATE: running project date forecast regressions'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-forecast-regressions.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "project-forecast-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
     $actionlint = Get-PinnedExecutable -Tool $manifest.tools.actionlint -Name 'actionlint'
     $gitleaks = Get-PinnedExecutable -Tool $manifest.tools.gitleaks -Name 'gitleaks'
 
