@@ -36,6 +36,7 @@ li,.task-evidence{overflow-wrap:anywhere} .badge{font-weight:600}
 .weighted-track { height: .75rem; border: 1px solid var(--line); border-radius: .5rem; background: var(--surface); overflow: hidden; }
 .weighted-fill { height: 100%; background: var(--progress-color); width: var(--progress-width); }
 .weighted-ends { display: flex; justify-content: space-between; font-size: .9rem; }
+.remaining-chart { display:block; width:100%; height:180px; }
 </style>
 <header><h1>Проекты и задачи</h1><button id="refresh">Обновить</button></header>
 <p id="notice" role="status"></p>
@@ -676,6 +677,7 @@ let periodSnapshot;
 let periodGeneration = 0;
 
 function clearPeriod() {
+  remainingObserver?.disconnect();
   periodGeneration++;
   periodSnapshot = undefined;
   byId('period-result').replaceChildren();
@@ -683,10 +685,109 @@ function clearPeriod() {
   byId('period-download').disabled = true;
 }
 
+let remainingObserver;
+function drawRemainingChart(canvas, points) {
+  const width = canvas.clientWidth;
+  if (width < 64) return;
+  const height = 180;
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = Math.round(width * ratio);
+  canvas.height = Math.round(height * ratio);
+  const context = canvas.getContext('2d');
+  context.scale(ratio, ratio);
+  const style = getComputedStyle(canvas);
+  const accent = style.getPropertyValue('--accent').trim();
+  const grid = style.getPropertyValue('--line').trim();
+  const max = Math.max(1, ...points.map(point => point.totalWeight ?? 0));
+  const pad = 18;
+  const x = i => points.length === 1 ? width / 2 : pad + i * (width - 2 * pad) / (points.length - 1);
+  const y = value => height - pad - value / max * (height - 2 * pad);
+  const line = (x1,y1,x2,y2,color) => {
+    context.strokeStyle = color;
+    context.beginPath();
+    context.moveTo(x1,y1);
+    context.lineTo(x2,y2);
+    context.stroke();
+  };
+  line(pad,y(0),width-pad,y(0),grid);
+  for (const [index, point] of points.entries()) {
+    if (point.scopeChanged) {
+      context.setLineDash([4,4]);
+      line(x(index),pad,x(index),y(0),grid);
+      context.setLineDash([]);
+    }
+    if (!Number.isFinite(point.remainingWeight)) continue;
+    const previous = points[index - 1]?.remainingWeight;
+    const vertical = y(point.remainingWeight);
+    if (Number.isFinite(previous) && !point.scopeChanged) line(x(index-1),y(previous),x(index),vertical,accent);
+    context.fillStyle = accent;
+    context.beginPath();
+    context.arc(x(index),vertical,3,0,2*Math.PI);
+    context.fill();
+  }
+}
+
+function renderRemainingWork(snapshot) {
+  const section = node('section');
+  section.setAttribute('aria-labelledby', 'remaining-work-title');
+  const heading = node('h4', 'Динамика остатка');
+  heading.id = 'remaining-work-title';
+  section.append(heading);
+  const messages = {
+    unconfigured: 'Утверждённый объём не подключён.',
+    incomplete: 'Нужны подтверждённые данные о приёмках и отзывах.',
+    before_period: 'За этот период нет подтверждённых снимков готовности.',
+    range_too_large: 'Для графика выберите период до 90 дней.',
+    invalid: 'Не удалось рассчитать остаток по истории проекта.'
+  };
+  if (snapshot?.state !== 'available') {
+    section.append(node('p', messages[snapshot?.state] ?? messages.unconfigured));
+    return section;
+  }
+  const table = node('table');
+  const header = node('tr');
+  for (const title of ['Дата', 'Версия', 'Всего', 'Принято', 'Остаток']) {
+    const cell = node('th', title);
+    cell.scope = 'col';
+    header.append(cell);
+  }
+  const head = node('thead');
+  head.append(header);
+  const rows = node('tbody');
+  for (const point of snapshot.points) {
+    const row = node('tr');
+    const version = point.scopeVersion ?? '—';
+    const values = [point.date, point.scopeChanged ? version + ' · новый объём' : version,
+      point.totalWeight ?? '—', point.acceptedWeight ?? '—', point.remainingWeight ?? 'Нет данных'];
+    for (const value of values) row.append(node('td', String(value)));
+    rows.append(row);
+  }
+  table.append(head, rows);
+  if (snapshot.points.some(point => Number.isFinite(point.remainingWeight))) {
+    const canvas = node('canvas');
+    canvas.className = 'remaining-chart';
+    canvas.setAttribute('aria-hidden', 'true');
+    section.append(canvas);
+    section.append(node('p', 'Пунктир отмечает смену объёма. Линия прерывается при смене версии или потере подтверждённых данных.'));
+    remainingObserver?.disconnect();
+    remainingObserver = new ResizeObserver(() => drawRemainingChart(canvas, snapshot.points));
+    remainingObserver.observe(canvas);
+  }
+  const container = node('div');
+  container.className = 'table';
+  container.tabIndex = 0;
+  container.setAttribute('role', 'region');
+  container.setAttribute('aria-label', 'Точки графика остатка');
+  container.append(table);
+  section.append(container);
+  return section;
+}
+
 function renderPeriod(snapshot) {
   const {period, report, historyState, coverage} = snapshot;
   const range = period.From + ' — ' + period.Through + ' · ' + period.TimeZone;
   const status = byId('period-status');
+  byId('period-result').append(renderRemainingWork(snapshot.remainingWork));
   if (!report) {
     status.textContent = range + ' · ' +
       (historyState === 'unconfigured' ? 'Источник истории не подключён' : 'История недоступна');

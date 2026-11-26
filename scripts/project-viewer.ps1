@@ -11,6 +11,7 @@ $utf8 = [Text.UTF8Encoding]::new($false, $true)
 
 Import-Module (Join-Path $PSScriptRoot 'lib/ProjectPeriod.psm1')
 Import-Module (Join-Path $PSScriptRoot 'lib/ProjectProgress.psm1')
+Import-Module (Join-Path $PSScriptRoot 'lib/ProjectRemainingWork.psm1')
 Import-Module (Join-Path $PSScriptRoot 'lib/ProjectForecast.psm1')
 Import-Module (Join-Path $PSScriptRoot 'lib/ProjectCost.psm1')
 
@@ -403,6 +404,21 @@ function Read-TimelineDate($Value) {
     return $Value
 }
 
+function Get-RemainingWorkView($Project, $Period, $Zone, $History) {
+    $data = $Project.progressInput
+    if ($null -eq $data) { return @{ state = 'unconfigured'; points = @() } }
+    if ($Project.weightedProgress.state -cne 'available' -or $null -eq $History) {
+        return @{ state = 'incomplete'; points = @() }
+    }
+    $cutoff = $Project.weightedProgress.asOf
+    if ($cutoff -gt $Period.SnapshotAt) { $cutoff = $Period.SnapshotAt }
+    $lastDate = [DateOnly]::FromDateTime([TimeZoneInfo]::ConvertTime($cutoff, $Zone).DateTime)
+    if ($lastDate -gt $Period.Through) { $lastDate = $Period.Through }
+    if ($lastDate -lt $Period.From) { return @{ state = 'before_period'; points = @() } }
+    $intervals = @($History.coverage | Where-Object { $_.type -cin 'accepted', 'acceptance_revoked' })
+    Get-ProjectRemainingWork -ProjectId $Project.id -From $Period.From -Through $lastDate -SnapshotAt $cutoff -TimeZone $Zone -Baselines $data.baselines -Decisions $data.decisions -Coverage $intervals -Checkpoint $data['checkpoint']
+}
+
 function Read-WeightedProgress($Entry) {
     if (!$Entry.Contains('progress')) { return @{ state = 'unconfigured' } }
     try {
@@ -550,6 +566,7 @@ $projects = @(foreach ($entry in $registry.projects) {
         name = $entry.name
         timeline = $timeline
         weightedProgress = $progress
+        progressInput = $entry['progress']
         dateForecast = Read-ProjectDateForecast $entry $progress $timeline
         cost = Read-ProjectCostSnapshot $entry
         historyPath = if ($entry.Contains('historyPath')) {
@@ -655,6 +672,11 @@ try {
                         $state = 'unavailable'
                     }
                 }
+                try {
+                    $remainingWork = Get-RemainingWorkView $project $period $zone $(if ($state -ceq 'readable') { $history })
+                } catch {
+                    $remainingWork = @{ state = 'invalid'; points = @() }
+                }
                 $periodView = @{
                     From = $period.From.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
                     Through = $period.Through.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
@@ -669,7 +691,7 @@ try {
                     })
                     queue = if ($queue) { @{ updated = $queue.updated; stale = $queue.stale } } else { $null }
                 }
-                $body = @{ projectId = $project.id; sourceFreshness = $sourceFreshness; period = $periodView; historyState = $state; report = $result; coverage = $coverage; historyReadAt = if ($state -ceq 'readable') { [DateTimeOffset]::UtcNow } else { $null } } |
+                $body = @{ projectId = $project.id; sourceFreshness = $sourceFreshness; period = $periodView; historyState = $state; report = $result; coverage = $coverage; remainingWork = $remainingWork; historyReadAt = if ($state -ceq 'readable') { [DateTimeOffset]::UtcNow } else { $null } } |
                     ConvertTo-Json -Depth 10 -Compress
             } elseif ($method -eq 'GET' -and $route -eq 'report' -and $queue) {
                 $id = $request.QueryString['assignment']
