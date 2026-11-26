@@ -38,6 +38,9 @@ Assert-Snapshot 'PRG-004 reweighted scope' '50/12' $current @($b1, $reweighted) 
 $almost = Baseline almost first '2026-11-04T00:00:00Z' @((Item A 9999), (Item B 1))
 Assert-Snapshot 'PRG-009 positive remainder below rounding threshold' '99.9/1' $current @($b1, $almost) @($accepted)
 
+$barely = Baseline barely first '2026-11-04T00:00:00Z' @((Item A 1), (Item B 2000))
+Assert-Snapshot 'PRG-009 positive acceptance below rounding threshold' '0.1/2000' $current @($b1, $barely) @($accepted)
+
 $foreign = $accepted.Clone()
 $foreign.projectId = 'different'
 try {
