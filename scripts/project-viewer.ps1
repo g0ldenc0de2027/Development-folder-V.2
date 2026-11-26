@@ -235,6 +235,14 @@ function Get-Summary {
         @{
             id = $project.id
             name = $project.name
+            timeline = if ($project.timeline) {
+                @{
+                    startDate = $project.timeline.startDate
+                    timeZone = $project.timeline.zone.Id
+                    today = [TimeZoneInfo]::ConvertTime([DateTimeOffset]::UtcNow, $project.timeline.zone).ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+                    stages = $project.timeline.stages
+                }
+            } else { $null }
             sources = @($project.sources | ForEach-Object { @{ path = $_.path; error = $_.error; updated = $_.updated } })
             queue = if ($queue) { @{ id = $queue.id; stale = $queue.stale; updated = $queue.updated } } else { $null }
             unlinkedAssignments = @(if ($queue) { $queue.items.Values | Where-Object { !$boundAssignments.Contains($_.id) } | Sort-Object id | ForEach-Object { Get-AssignmentView $_ } })
@@ -252,6 +260,47 @@ function Get-Summary {
             })
         }
     }
+}
+
+function Read-ProjectTimeline($Entry) {
+    if (!$Entry.Contains('timeline')) { return $null }
+    $timeline = $Entry.timeline
+    if ($timeline -isnot [Collections.IDictionary] -or $timeline.timeZone -isnot [string] -or
+        !$timeline.timeZone.Trim() -or $timeline.stages -isnot [array]) { throw 'INVALID_PROJECT_TIMELINE' }
+    try { $zone = [TimeZoneInfo]::FindSystemTimeZoneById($timeline.timeZone) }
+    catch { throw 'INVALID_PROJECT_TIME_ZONE' }
+    $stageIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $stages = @(foreach ($stage in $timeline.stages) {
+        if ($stage -isnot [Collections.IDictionary] -or $stage.id -isnot [string] -or
+            $stage.id -cnotmatch '\A[a-z0-9][a-z0-9-]{0,63}\z' -or !$stageIds.Add($stage.id) -or
+            $stage.name -isnot [string] -or !$stage.name.Trim() -or $stage.taskIds -isnot [array]) {
+            throw 'INVALID_PROJECT_STAGE'
+        }
+        $taskIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        foreach ($id in $stage.taskIds) {
+            if ($id -isnot [string] -or $id -cnotmatch '\AT-[0-9]{3,}\z' -or !$taskIds.Add($id)) {
+                throw 'INVALID_STAGE_TASK_ID'
+            }
+        }
+        @{
+            id = $stage.id
+            name = $stage.name
+            plannedDate = Read-TimelineDate $stage['plannedDate']
+            actualDate = Read-TimelineDate $stage['actualDate']
+            taskIds = $stage.taskIds
+        }
+    })
+    @{ startDate = Read-TimelineDate $timeline['startDate']; zone = $zone; stages = $stages }
+}
+
+function Read-TimelineDate($Value) {
+    if ($null -eq $Value) { return $null }
+    $date = [DateOnly]::MinValue
+    if ($Value -isnot [string] -or ![DateOnly]::TryParseExact($Value, 'yyyy-MM-dd',
+        [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$date)) {
+        throw 'INVALID_PROJECT_TIMELINE_DATE'
+    }
+    return $Value
 }
 
 $registryFile = Get-Item -LiteralPath $RegistryPath
@@ -292,6 +341,7 @@ $projects = @(foreach ($entry in $registry.projects) {
     @{
         id = $entry.id
         name = $entry.name
+        timeline = Read-ProjectTimeline $entry
         bindings = $bindings
         ownerActions = $ownerActions
         sources = @(foreach ($root in $entry.roots) {
