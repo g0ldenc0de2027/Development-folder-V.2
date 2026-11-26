@@ -219,6 +219,9 @@ try {
         throw ("Task scope regression TempRoot would exceed Git for Windows GIT_DIR limit: {0} UTF-8 bytes; maximum is 200." -f $fixtureGitDirUtf8Bytes)
     }
     $sourceStateBefore = Get-SourceGitState
+    . (Join-Path $PSScriptRoot 'git-fixture-temp.ps1')
+    Assert-GitFixtureTempRoot $tempRootFull
+
     $poisonRoot = Join-Path $scratch 'inherited-git-context'
     [Environment]::SetEnvironmentVariable('GIT_DIR', (Join-Path $poisonRoot 'git-dir'), 'Process')
     [Environment]::SetEnvironmentVariable('GIT_WORK_TREE', (Join-Path $poisonRoot 'work-tree'), 'Process')
