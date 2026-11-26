@@ -9,6 +9,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 
+Import-Module (Join-Path $PSScriptRoot 'lib/ProjectPeriod.psm1')
+
 function Read-Field([string]$Card, [string]$Label) {
     $match = [regex]::Match($Card, '(?im)^[ \t]*(?:\*\*)?' + [regex]::Escape($Label) +
         '[ \t]*:(?:\*\*)?[ \t]*(?<value>[^\r\n]*)')
@@ -23,6 +25,17 @@ function Assert-PlainPath([string]$Path, [bool]$Directory) {
         if ($cursor -is [IO.FileInfo]) { $cursor = $cursor.Directory }
         else { $cursor = $cursor.Parent }
     }
+}
+
+function Read-TransitionDate([string]$Card, [string]$Label) {
+    $value = Read-Field $Card $Label
+    $instant = [DateTimeOffset]::MinValue
+    if ($value -cmatch '\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|[+-]\d{2}:\d{2})\z' -and
+        [DateTimeOffset]::TryParse($value, [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::None, [ref]$instant) -and $instant -le [DateTimeOffset]::UtcNow) {
+        return $instant.ToUniversalTime().ToString('o')
+    }
+    return $null
 }
 
 function Read-Card([IO.FileInfo]$File, [string]$Source) {
@@ -55,6 +68,8 @@ function Read-Card([IO.FileInfo]$File, [string]$Source) {
         status = [regex]::Match($status, '^[a-zA-Z][a-zA-Z0-9_-]*(?=[\s.;·]|$)').Value
         assignee = $assignee
         blocker = Read-Field $card 'Блокер'
+        statusSince = Read-TransitionDate $card 'Статус с'
+        blockedSince = Read-TransitionDate $card 'Блокировка с'
         nextAction = Read-Field $card 'Следующее действие'
         needsDecision = (Read-Field $card 'Решение владельца') -eq 'ожидается'
         source = $Source
@@ -342,6 +357,15 @@ $projects = @(foreach ($entry in $registry.projects) {
         id = $entry.id
         name = $entry.name
         timeline = Read-ProjectTimeline $entry
+        historyPath = if ($entry.Contains('historyPath')) {
+            $history = $entry['historyPath']
+            if ($history -isnot [string] -or !$history.Trim() -or [IO.Path]::IsPathRooted($history)) {
+                throw 'INVALID_PROJECT_HISTORY_PATH'
+            }
+            $resolved = [IO.Path]::GetFullPath($history, $registryFile.DirectoryName)
+            if ($resolved -notmatch '^[A-Za-z]:[\\/]') { throw 'INVALID_PROJECT_HISTORY_PATH' }
+            $resolved
+        } else { $null }
         bindings = $bindings
         ownerActions = $ownerActions
         sources = @(foreach ($root in $entry.roots) {
@@ -388,6 +412,54 @@ try {
                 ($method -eq 'POST' -and $route -eq 'refresh' -and $request.Headers['Origin'] -ceq $origin)) {
                 if ($method -eq 'POST') { Update-Projects; Update-Queue }
                 $body = ConvertTo-Json -InputObject @(Get-Summary) -Depth 10 -Compress
+            } elseif ($method -eq 'GET' -and $route -eq 'period') {
+                $project = $projects | Where-Object { $_.id -ceq $request.QueryString['project'] }
+                if (!$project) { $response.StatusCode = 404; continue }
+                $zone = if ($project.timeline) { $project.timeline.zone } else { [TimeZoneInfo]::Utc }
+                $args = @{TimeZone = $zone; SnapshotAt = [DateTimeOffset]::UtcNow}
+                try {
+                    $from = $request.QueryString['from']
+                    $through = $request.QueryString['through']
+                    $days = $request.QueryString['days']
+                    if ($null -ne $from -or $null -ne $through) {
+                        if ($null -ne $days) { throw 'PROJECT_PERIOD_MIXED_FILTERS' }
+                        $culture = [Globalization.CultureInfo]::InvariantCulture
+                        $args.From = [DateOnly]::ParseExact($from, 'yyyy-MM-dd', $culture)
+                        $args.Through = [DateOnly]::ParseExact($through, 'yyyy-MM-dd', $culture)
+                    } elseif ($null -ne $days) {
+                        if ($days -cnotin '1','3','7','30') { throw 'PROJECT_PERIOD_INVALID_DAYS' }
+                        $args.Days = [int]$days
+                    }
+                    $period = Get-ProjectPeriod @args
+                } catch {
+                    $response.StatusCode = 400
+                    continue
+                }
+                $state = 'unconfigured'
+                $result = $null
+                $coverage = $null
+                if ($project.historyPath) {
+                    try {
+                        Assert-PlainPath $project.historyPath $false
+                        $history = Read-ProjectHistory -Path $project.historyPath -ProjectId $project.id
+                        $result = Get-ProjectPeriodEvents -ProjectId $project.id -Period $period -Events $history.events
+                        $coverage = Get-ProjectHistoryCoverage $period $history.coverage @($result.totals.Keys)
+                        $state = 'readable'
+                    } catch {
+                        $result = $null
+                        $state = 'unavailable'
+                    }
+                }
+                $periodView = @{
+                    From = $period.From.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+                    Through = $period.Through.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+                    StartUtc = $period.StartUtc
+                    EndUtc = $period.EndUtc
+                    SnapshotAt = $period.SnapshotAt
+                    TimeZone = $period.TimeZone
+                }
+                $body = @{ projectId = $project.id; period = $periodView; historyState = $state; report = $result; coverage = $coverage; historyReadAt = if ($state -ceq 'readable') { [DateTimeOffset]::UtcNow } else { $null } } |
+                    ConvertTo-Json -Depth 10 -Compress
             } elseif ($method -eq 'GET' -and $route -eq 'report' -and $queue) {
                 $id = $request.QueryString['assignment']
                 $kind = $request.QueryString['copy']

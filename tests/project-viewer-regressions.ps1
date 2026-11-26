@@ -66,11 +66,16 @@ CI_HEAD_SHA: $old
     [IO.File]::WriteAllText((Join-Path $root 'Проект А/tasks/T-003-test.md'), "# T-003`nСтатус: in_progress")
     [IO.File]::WriteAllText((Join-Path $root 'queue/tasks/SECOND-REPORT.md'), 'Исполнитель: Codex')
     [IO.File]::WriteAllText((Join-Path $root 'queue/reports/SECOND-REPORT.md'), 'second report')
+    $history = Join-Path $root 'history.json'
+    @'
+{"schemaVersion":1,"projectId":"first","coverage":[{"type":"accepted","from":"2026-01-01T00:00:00Z","until":"2026-01-02T00:00:00Z"}],"events":[{"at":"2026-01-01T00:00:00Z","sourceId":"local","eventId":"e1","taskId":"T-001","type":"accepted"},{"at":"2026-01-01T00:00:00Z","sourceId":"local","eventId":"e1","taskId":"T-001","type":"accepted"}]}
+'@ | Set-Content -LiteralPath $history -Encoding utf8
     $registry = Join-Path $root 'projects.json'
     @{
         queue = @{ id = 'pilot'; path = 'queue' }
         projects = @(
             @{ id = 'first'; name = 'Первый'; roots = @('Проект А', 'copy')
+                historyPath = 'history.json'
                 timeline = @{
                     timeZone = 'UTC'
                     startDate = '2026-11-20'
@@ -112,6 +117,26 @@ CI_HEAD_SHA: $old
     $url = $pending.Result
     if (!$url) { throw ($process.StandardError.ReadToEnd()) }
     $origin = "http://127.0.0.1:$port"
+    $periodUri = $url + 'period?project=first&from=2026-01-01&through=2026-01-01'
+    $period = Invoke-RestMethod $periodUri -TimeoutSec 10
+    $wire = (Invoke-WebRequest $periodUri -TimeoutSec 10).Content | ConvertFrom-Json -DateKind String
+    Assert-That ($wire.period.From -ceq '2026-01-01' -and $wire.period.Through -ceq '2026-01-01' -and
+        $wire.period.TimeZone -ceq 'UTC' -and $wire.historyReadAt) 'PTR-VIS-013 serializes calendar dates and source freshness'
+    Assert-That ($period.historyState -ceq 'readable' -and $period.report.totals.accepted -eq 1 -and
+        $period.report.events.Count -eq 1 -and $period.report.events[0].day -ceq '2026-01-01') 'PTR-VIS-005 period counts deduplicated events at midnight'
+    Assert-That ($period.coverage.accepted.complete -and $period.coverage.accepted.gaps.Count -eq 0 -and
+        !$period.coverage.merged.complete -and $period.coverage.merged.gaps.Count -eq 1) 'PTR-VIS-005 distinguishes complete metric from missing history'
+    $otherPeriod = Invoke-RestMethod ($url + 'period?project=second&days=3') -TimeoutSec 10
+    Assert-That ($otherPeriod.historyState -ceq 'unconfigured' -and $null -eq $otherPeriod.report) 'PTR-VIS-005 history is isolated by project'
+    $invalidPeriod = Invoke-WebRequest ($url + 'period?project=first&days=2') -SkipHttpErrorCheck -TimeoutSec 10
+    Assert-That ($invalidPeriod.StatusCode -eq 400) 'PTR-VIS-005 unsupported period is refused'
+    $offlineHistory = Join-Path $root 'history-offline.json'
+    Move-Item -LiteralPath $history -Destination $offlineHistory
+    $missingPeriod = Invoke-RestMethod $periodUri -TimeoutSec 10
+    Assert-That ($missingPeriod.historyState -ceq 'unavailable' -and $null -eq $missingPeriod.report) 'PTR-VIS-005 missing history does not report zero'
+    Move-Item -LiteralPath $offlineHistory -Destination $history
+    $restoredPeriod = Invoke-RestMethod $periodUri -TimeoutSec 10
+    Assert-That ($restoredPeriod.report.totals.accepted -eq 1) 'PTR-VIS-005 restored history does not duplicate events'
     $first = Invoke-RestMethod ($url + 'summary') -TimeoutSec 10
     Assert-That ($first.Count -eq (2 + [int][bool]$V2Root) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
     $timeline = $first[0].timeline

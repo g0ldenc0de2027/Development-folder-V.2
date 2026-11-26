@@ -51,6 +51,21 @@ li{overflow-wrap:anywhere} .badge{font-weight:600}
 <label>Вид <select id="view"><option value="list">Список</option><option value="board">Доска</option></select></label>
 <p id="count" aria-live="polite"></p>
 <div class="table" id="list-view"><table><thead><tr><th>Задача</th><th>Состояние</th><th>Исполнитель</th><th>Блокер</th><th>Следующее действие</th></tr></thead><tbody id="rows"></tbody></table></div><div class="board" id="board" hidden></div>
+<section aria-labelledby="period-title">
+<h3 id="period-title">Работа за период</h3>
+<form id="period-form" class="tools">
+<label>Период <select id="period-range">
+<option value="1">Сегодня</option><option value="3">3 дня</option>
+<option value="7">7 дней</option><option value="30">30 дней</option>
+<option value="custom">Свои даты</option></select></label>
+<span id="period-custom" hidden><label>С <input id="period-from" type="date"></label>
+<label>По <input id="period-through" type="date"></label></span>
+<button type="submit">Показать отчёт</button>
+<button type="button" id="period-download" disabled>Скачать JSON</button>
+</form>
+<p id="period-status" role="status"></p>
+<div id="period-result"></div>
+</section>
 </section>
 <section id="queue" hidden aria-labelledby="queue-title">
 <h2 id="queue-title">Задания без связи</h2><p id="queue-state" role="status"></p><div id="unlinked"></div>
@@ -120,6 +135,7 @@ async function request(path, method = 'GET') {
 
 function showProject(id) {
   selected = id;
+  clearPeriod();
   boardFilter = '';
   byId('stage').value = '';
   for (const control of controls) {
@@ -383,6 +399,15 @@ async function openCard(project, task) {
   for (const [index, version] of task.versions.entries()) {
     const section = node('section');
     section.append(node('h3', 'Версия ' + (index + 1)));
+    const age = value => {
+      if (!value) return 'Нет даты';
+      const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(value)) / 60000));
+      if (minutes < 60) return minutes + ' мин';
+      const hours = Math.floor(minutes / 60);
+      return hours < 24 ? hours + ' ч' : Math.floor(hours / 24) + ' дн ' + hours % 24 + ' ч';
+    };
+    section.append(node('p', 'В текущем статусе: ' + age(version.statusSince)));
+    if (version.blocker) section.append(node('p', 'Длительность блокировки: ' + age(version.blockedSince)));
     const list = node('ul');
     for (const source of version.sources) list.append(node('li', source.path + (source.stale ? ' · Устарело' : '')));
     section.append(list);
@@ -413,6 +438,122 @@ async function openCard(project, task) {
     }
   }
 }
+
+const eventLabels = {
+  started:'Начато', reported:'Сдано отчётов', reviewed:'Завершено ревью',
+  merged:'Слито PR', added:'Добавлено задач', accepted:'Принято задач',
+  acceptance_revoked:'Отозвано приёмок'
+};
+let periodSnapshot;
+let periodGeneration = 0;
+
+function clearPeriod() {
+  periodGeneration++;
+  periodSnapshot = undefined;
+  byId('period-result').replaceChildren();
+  byId('period-status').textContent = '';
+  byId('period-download').disabled = true;
+}
+
+function renderPeriod(snapshot) {
+  const {period, report, historyState, coverage} = snapshot;
+  const range = period.From + ' — ' + period.Through + ' · ' + period.TimeZone;
+  const status = byId('period-status');
+  if (!report) {
+    status.textContent = range + ' · ' +
+      (historyState === 'unconfigured' ? 'Источник истории не подключён' : 'История недоступна');
+    return;
+  }
+  status.textContent = range + (Object.values(coverage).every(metric => metric.complete)
+    ? ' · История полная' : ' · История неполная');
+  const instant = value => {
+    const date = new Date(value);
+    try {
+      return date.toLocaleString('ru-RU', {timeZone: period.TimeZone, dateStyle:'short', timeStyle:'short'});
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      return date.toISOString();
+    }
+  };
+  status.textContent += ' · История прочитана: ' + instant(snapshot.historyReadAt);
+  const result = byId('period-result');
+  const totals = node('ul');
+  for (const [type, label] of Object.entries(eventLabels)) {
+    const metric = coverage[type];
+    const item = node('li', label + ': ' + (metric.complete ? '' : 'подтверждено ') + report.totals[type]);
+    if (!metric.complete) {
+      const details = node('details');
+      const intervals = node('ul');
+      for (const gap of metric.gaps) intervals.append(node('li', instant(gap.from) + ' — ' + instant(gap.until)));
+      details.append(node('summary', 'Пропуски истории'), intervals);
+      item.append(details);
+    }
+    totals.append(item);
+  }
+  const chart = node('ul');
+  const daily = Object.entries(report.days).map(([day, metrics]) =>
+    [day, Object.values(metrics).reduce((total, count) => total + count, 0)]);
+  const peak = Math.max(1, ...daily.map(([, count]) => count));
+  for (const [day, count] of daily) {
+    const item = node('li', day + ' · ' + count + ' ');
+    const bar = node('meter');
+    bar.min = 0;
+    bar.max = peak;
+    bar.value = count;
+    bar.setAttribute('aria-label', day + ', учтено событий: ' + count);
+    item.append(bar);
+    chart.append(item);
+  }
+  const events = node('ul');
+  for (const event of report.events) {
+    events.append(node('li', event.day + ' · ' + event.taskId + ' · ' + eventLabels[event.type] +
+      (event.counted ? '' : ' · Не входит в итог')));
+  }
+  result.append(node('h4', 'Итоги'), totals, node('h4', 'События по дням'),
+    daily.length ? chart : node('p', 'За период нет подтверждённых событий'),
+    node('h4', 'Детализация'), events);
+  periodSnapshot = snapshot;
+  byId('period-download').disabled = false;
+}
+
+byId('period-range').addEventListener('change', () => {
+  byId('period-custom').hidden = byId('period-range').value !== 'custom';
+  clearPeriod();
+});
+for (const id of ['period-from', 'period-through']) byId(id).addEventListener('input', clearPeriod);
+byId('period-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  clearPeriod();
+  const generation = periodGeneration;
+  const params = new URLSearchParams({project: selected});
+  const choice = byId('period-range').value;
+  if (choice === 'custom') {
+    const from = byId('period-from').value;
+    const through = byId('period-through').value;
+    if (!from || !through || from > through) {
+      byId('period-status').textContent = 'Укажи начало и конец периода';
+      return;
+    }
+    params.set('from', from);
+    params.set('through', through);
+  } else params.set('days', choice);
+  byId('period-status').textContent = 'Чтение истории…';
+  try {
+    const snapshot = await request('period?' + params);
+    if (generation === periodGeneration) renderPeriod(snapshot);
+  } catch {
+    if (generation === periodGeneration) byId('period-status').textContent = 'Не удалось построить отчёт. Проверь даты.';
+  }
+});
+byId('period-download').addEventListener('click', () => {
+  if (!periodSnapshot) return;
+  const url = URL.createObjectURL(new Blob([JSON.stringify(periodSnapshot, null, 2)], {type:'application/json'}));
+  const link = node('a');
+  link.href = url;
+  link.download = 'project-period.json';
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
 
 function validSnapshot(snapshot) {
   return Array.isArray(snapshot) && snapshot.every(project =>
