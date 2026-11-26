@@ -392,6 +392,11 @@ try {
     $linkedSentinel = Join-Path $linkedTempRoot 'keep.txt'
     [IO.File]::WriteAllText($linkedSentinel, 'keep')
     $linkedHash = (Get-FileHash -LiteralPath $linkedSentinel).Hash
+    $linkedNeighbor = Join-Path $linkedTempRoot 'gate-foreign'
+    [void][IO.Directory]::CreateDirectory($linkedNeighbor)
+    $linkedNeighborSentinel = Join-Path $linkedNeighbor 'keep.txt'
+    [IO.File]::WriteAllText($linkedNeighborSentinel, 'neighbor')
+    $linkedNeighborHash = (Get-FileHash -LiteralPath $linkedNeighborSentinel).Hash
     $gateOutput = @(& $pwsh -NoLogo -NoProfile -File $gatePath -TemporaryRoot $linkedTempRoot 2>&1)
     $gateExit = $LASTEXITCODE
     $gateText = $gateOutput -join [Environment]::NewLine
@@ -399,10 +404,15 @@ try {
         $gateText.Contains('QUALITY-GATE=FAIL: cleanup') -or
         -not (Test-Path -LiteralPath $linkedSentinel -PathType Leaf) -or
         (Get-FileHash -LiteralPath $linkedSentinel).Hash -cne $linkedHash -or
-        @(Get-ChildItem -LiteralPath $linkedTempRoot -Force).Count -ne 1) {
+        -not (Test-Path -LiteralPath $linkedNeighborSentinel -PathType Leaf) -or
+        (Get-FileHash -LiteralPath $linkedNeighborSentinel).Hash -cne $linkedNeighborHash -or
+        @(Get-ChildItem -LiteralPath $linkedNeighbor -Force).Count -ne 1 -or
+        @(Get-ChildItem -LiteralPath $linkedTempRoot -Force).Count -ne 2) {
         throw 'Quality gate must preserve files in the rejected TemporaryRoot.'
     }
     [IO.File]::Delete($linkedSentinel)
+    [IO.File]::Delete($linkedNeighborSentinel)
+    [IO.Directory]::Delete($linkedNeighbor)
     [IO.Directory]::Delete($linkedTempRoot)
     $longTempRoot = Join-Path $scratch ('я' * 80)
     $taskSuitePath = Join-Path $PSScriptRoot 'task-scope-regressions.ps1'
