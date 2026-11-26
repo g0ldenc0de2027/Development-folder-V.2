@@ -1,21 +1,113 @@
 # Локальный просмотрщик проектов
 
-Сохраните реестр вне Git. Относительные пути в нём разрешаются от папки реестра.
+## Быстрый старт
 
-```json
+1. Используйте PowerShell 7.6 на Windows. Создайте файл `registry.json` в UTF-8 вне Git. В примере рабочая копия находится рядом с реестром в каталоге `checkout` и содержит папку `tasks`.
+
+~~~json
 {"projects":[{"id":"v2","name":"Development Folder V2","roots":["./checkout"]}]}
-```
+~~~
 
-Указывайте рабочие checkout, например V2/.worktrees/main, и выбранные task worktree. При переносе меняйте путь, сохраняя ID.
+2. Запустите из любой папки. Введите полные пути к скрипту и реестру. Если V2 использует отдельные worktree, укажите путь к скрипту внутри выбранной рабочей копии, а в `roots` перечислите нужные checkout. При переносе обновите пути, сохранив ID проекта. Относительные пути разрешаются от каталога реестра.
 
-```powershell
-pwsh -NoProfile -File scripts/project-viewer.ps1 -RegistryPath <путь-к-реестру>
-```
+~~~powershell
+$viewer = Read-Host 'Полный путь к project-viewer.ps1 без кавычек'
+$registry = Read-Host 'Полный путь к registry.json без кавычек'
+pwsh -NoProfile -File $viewer -RegistryPath $registry
+~~~
 
-Откройте выведенный URL. «Обновить» перечитывает источники. Ctrl+C останавливает панель. URL содержит ключ сеанса, храните его локально.
+3. Откройте полный URL из вывода этого запуска в браузере на том же компьютере. URL содержит ключ локальной сессии. «Обновить» перечитывает источники. Ctrl+C останавливает просмотрщик.
+4. Если URL не появился, проверьте диагностическое сообщение. При отсутствующем реестре исправьте путь. Если порт занят, добавьте `-Port 18765` или укажите другой свободный порт. После успешного запуска можно отдельно подключить очередь заданий, историю и снимок доказательств.
+
 
 Карточка может содержать строки «Блокер:», «Следующее действие:», «Решение владельца: ожидается», а также явно подписанные PR_HEAD_SHA, PR_BASE_SHA, CI_HEAD_SHA и CI_BASE_SHA. Полный исходный текст всегда доступен для прочитанных версий.
 
 ## English quick start
 
-Create a local JSON registry, run the command above, and open the printed session URL. Refresh rereads source cards. Ctrl+C stops the viewer. Keep the session URL private.
+Use PowerShell 7.6 on Windows. Create a UTF-8 registry outside Git and run the command above with absolute paths from any directory. Open the full session URL printed by that process. If no URL appears, check the registry path or retry with a free port such as -Port 18765. Refresh rereads sources. Ctrl+C stops the viewer. Keep the session URL private.
+
+## Одна локальная очередь
+
+Добавьте `queue` к тому же реестру. Укажите стабильное имя очереди и локальный каталог с подпапками `tasks`, `reports`, `accepted`. Относительный путь разрешается от файла реестра. Например:
+
+```json
+{
+  "queue": {"id":"pilot","path":"./exchange"},
+  "projects":[{
+    "id":"v2","name":"Development Folder V2","roots":["./checkout"],
+    "bindings":[{"taskId":"T-001","assignmentId":"PILOT-001"}],
+    "ownerActions":[{"taskId":"T-001","text":"Проверить итог","requires":["PILOT-001"]}]
+  }]
+}
+```
+
+Привязки и указания необязательны. `requires` перечисляет ID привязанных к этой задаче заданий, по которым обе копии должны читаться и совпадать. Пустой список снимает условие сверки. Один ID задания может быть привязан только к одной задаче в реестре. Задания без привязки показаны отдельно. При недоступной очереди отображается последний снимок в пределах текущего сеанса. Отчёты до 1 МиБ отображаются как текст. Панель читает отчёты локально и не отправляет их во внешние сервисы.
+
+## Панель хода разработки
+
+Для календаря добавьте необязательный объект `timeline` к записи проекта в реестре:
+
+~~~json
+{
+  "id": "v2",
+  "name": "Development Folder V2",
+  "roots": ["./checkout"],
+  "timeline": {
+    "timeZone": "UTC",
+    "startDate": "2026-11-20",
+    "stages": [
+      {
+        "id": "pilot",
+        "name": "Пилот",
+        "plannedDate": "2026-11-26",
+        "taskIds": ["T-001"]
+      }
+    ]
+  }
+}
+~~~
+
+Используйте даты в формате `YYYY-MM-DD`. Дата старта, плановая и фактическая даты этапа необязательны. Для факта используйте поле `actualDate`. Часовой пояс определяет отметку «Сегодня». Нажмите название этапа, чтобы отфильтровать задачи. Доска и список используют общий поиск и фильтры.
+
+Общий экран показывает задачи с полем «Решение владельца: ожидается». Из списка открывается карточка с действием и доступными доказательствами. Если источник отключён, отображается время последнего полного чтения. Данные за период доступны при подключённом файле истории.
+
+### Development overview
+
+Add optional `timeline` metadata to a project as shown above. The time zone controls the Today marker. Dates use `YYYY-MM-DD` and may be omitted. Select a stage to filter tasks. The board and list share filters. The portfolio shows tasks waiting for an owner decision and the project view shows source freshness.
+
+## Работа за период
+
+Добавьте в запись проекта `"historyPath": "./v2-history.json"`. Путь считается от каталога локального реестра. Файл содержит UTF-8 JSON размером до 4 МиБ.
+
+~~~json
+{
+  "schemaVersion": 1,
+  "projectId": "v2",
+  "events": [
+    {"sourceId":"local","eventId":"e1","taskId":"T-001","type":"accepted","at":"2026-11-26T09:15:00+03:00"}
+  ],
+  "coverage": [
+    {"type":"accepted","from":"2026-11-26T00:00:00+03:00","until":"2026-11-27T00:00:00+03:00"},
+    {"type":"acceptance_revoked","from":"2026-11-26T00:00:00+03:00","until":"2026-11-27T00:00:00+03:00"}
+  ]
+}
+~~~
+
+Типы событий: `started`, `reported`, `reviewed`, `merged`, `added`, `accepted`, `acceptance_revoked`. Время указывается с UTC-смещением или суффиксом `Z`. Покрытие подтверждается отдельно по типу событий. Для полного итога принятых задач нужны интервалы и по приёмкам, и по отзывам приёмок. Конец интервала исключается. Без подтверждённого покрытия панель показывает известное число и пропуски.
+
+Откройте проект, выберите период и нажмите «Показать отчёт». Кнопка «Скачать JSON» экспортирует показанный снимок, включая время чтения истории.
+
+Для возраста текущего статуса укажите в карточке поле «Статус с:» с датой перехода. Для активного блокера укажите отдельно «Блокировка с:». Обе даты задаются в ISO 8601 со смещением. При отсутствии корректной даты карточка показывает «Нет даты».
+
+## Доказательства по задаче
+
+В объект проекта в локальном реестре добавьте `"evidenceSnapshotPath": "./evidence.json"`. Файл JSON в UTF-8 до 4 МиБ содержит `schemaVersion: 1`, `projectId` и массив `tasks`. Каждая запись содержит `taskId`, наблюдаемые `headSha` и `baseSha` и время `observedAt` в ISO 8601 со смещением. Используйте полные SHA в нижнем регистре.
+
+Необязательные поля записи:
+
+- `review` с `headSha`, `baseSha` и `status` (`approved` или `changes_requested`).
+- `ci` с `headSha`, `baseSha`, `status` (`success`, `failure` или `pending`), `mergeResultSha` и массивом из двух `parents` в порядке base, head.
+- `mergeSha` итогового коммита.
+- `ownerAcceptance` со `status` (`accepted` или `revoked`) и временем `decidedAt`.
+
+Обновляйте снимок из проверенных источников. Кнопка «Обновить» перечитывает файл. При сбое показывается последняя валидная копия текущего сеанса с отметкой устаревания. Панель проверяет согласованность данных снимка и показывает пару прежней проверки при изменении любой SHA. Для отчётов за период используется отдельный файл истории.
