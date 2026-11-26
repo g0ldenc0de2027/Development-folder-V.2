@@ -172,6 +172,12 @@ function renderOwnerQueue() {
   list.replaceChildren(...(entries.length ? entries : [node('li', 'Нет задач с указанным ожиданием решения')]));
 }
 
+const taskCountRules = new Intl.PluralRules('ru');
+const taskCountForms = {one: 'задача', few: 'задачи', many: 'задач', other: 'задачи'};
+function formatTaskCount(count) {
+  return count + ' ' + taskCountForms[taskCountRules.select(count)];
+}
+
 function render() {
   const project = projects.find(item => item.id === selected);
   byId('portfolio').hidden = Boolean(project);
@@ -181,7 +187,7 @@ function render() {
     const button = node('button', item.name);
     button.addEventListener('click', () => showProject(item.id));
     const unavailable = item.sources.some(source => source.error);
-    entry.append(button, ' · ' + item.tasks.length + ' задач' + (unavailable ? ' · Есть ошибки чтения' : ''));
+    entry.append(button, ' · ' + formatTaskCount(item.tasks.length) + (unavailable ? ' · Есть ошибки чтения' : ''));
     return entry;
   }));
   const queueProject = projects.find(item => item.queue);
