@@ -175,12 +175,19 @@ CI_HEAD_SHA: $old
         !$period.coverage.merged.complete -and $period.coverage.merged.gaps.Count -eq 1) 'PTR-VIS-005 distinguishes complete metric from missing history'
     $historyBytes = [IO.File]::ReadAllText($history)
     $completeHistory = $historyBytes | ConvertFrom-Json -AsHashtable -DateKind String
+    Assert-That ($period.remainingWork.points.Count -eq 1 -and
+        $period.remainingWork.points[0].state -ceq 'incomplete' -and
+        $null -eq $period.remainingWork.points[0].PSObject.Properties['remainingWeight']) 'PRG-008 refuses cumulative weight where revocation coverage is missing'
     $completeHistory.coverage += @{ type = 'acceptance_revoked'; from = '2026-01-01T00:00:00Z'; until = '2026-01-02T00:00:00Z' }
     try {
         [IO.File]::WriteAllText($history, ($completeHistory | ConvertTo-Json -Depth 6))
         $completePeriod = Invoke-RestMethod $periodUri -TimeoutSec 10
         Assert-That ($completePeriod.coverage.accepted.complete -and $completePeriod.coverage.accepted.gaps.Count -eq 0 -and
             $completePeriod.report.totals.accepted -eq 1) 'PTR-VIS-005 acceptance coverage includes revocations'
+        $point = $completePeriod.remainingWork.points[0]
+        Assert-That ($point.state -ceq 'available' -and $point.date -ceq '2026-01-01' -and
+            $point.totalWeight -eq 8 -and $point.remainingWeight -eq 8 -and
+            $point.acceptedWeight -eq 0) 'PRG-003 restores confirmed weight independently of merged or accepted event count'
     } finally {
         [IO.File]::WriteAllText($history, $historyBytes)
     }
