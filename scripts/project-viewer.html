@@ -23,6 +23,14 @@ li,.task-evidence{overflow-wrap:anywhere} .badge{font-weight:600}
 .board ul { padding-inline-start: 1.25rem; }
 .board li + li { margin-top: .75rem; }
 #overview { display: flex; gap: .5rem; flex-wrap: wrap; margin-block: .75rem; }
+.dashboard, section[aria-labelledby="period-title"] { margin-block: 1rem; padding: clamp(.75rem, 2vw, 1.25rem); border: 1px solid var(--line); border-radius: .75rem; }
+.dashboard h3, #period-title { margin-block-start: 0; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: .65rem; padding: 0; }
+.metrics > div { padding: .75rem; border-radius: .5rem; background: var(--surface); }
+.metrics dd { margin: .2rem 0 0; font-size: 1.45rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.daily-chart { list-style: none; padding: 0; }
+.daily-chart li { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: .6rem; padding: .55rem 0; border-block-end: 1px solid var(--line); }
+.daily-chart meter, #progress-scale meter { display: block; width: 100%; }
 </style>
 <header><h1>Проекты и задачи</h1><button id="refresh">Обновить</button></header>
 <p id="notice" role="status"></p>
@@ -35,22 +43,13 @@ li,.task-evidence{overflow-wrap:anywhere} .badge{font-weight:600}
 </section>
 <section id="project" hidden aria-labelledby="name">
 <button id="back">Все проекты</button><h2 id="name" tabindex="-1"></h2><ul id="sources"></ul>
-<section aria-labelledby="timeline-title">
-<h3 id="timeline-title">Этапы проекта</h3>
-<p id="project-dates"></p>
-<ul id="timeline"></ul>
+<section class="dashboard" aria-labelledby="progress-title">
+<h3 id="progress-title">Ход разработки</h3>
+<dl id="progress-totals" class="metrics"></dl>
+<p id="progress-freshness" hidden></p>
+<div id="progress-scale"></div>
+<div id="overview" aria-label="Фильтры сводки проекта"></div>
 </section>
-<div class="tools">
-<label>Этап <select id="stage"><option value="">Все этапы</option></select></label>
-<label>Поиск <input id="query" type="search" placeholder="Номер или название"></label>
-<label>Состояние <select id="state"></select></label>
-<label><input id="blocked" type="checkbox"> Заблокировано</label>
-<label><input id="decision" type="checkbox"> Требует моего решения</label>
-</div>
-<div id="overview" aria-label="Сводка проекта"></div>
-<label>Вид <select id="view"><option value="list">Список</option><option value="board">Доска</option></select></label>
-<p id="count" aria-live="polite"></p>
-<div class="table" id="list-view"><table><thead><tr><th>Задача</th><th>Состояние</th><th>Исполнитель</th><th>Блокер</th><th>Следующее действие</th></tr></thead><tbody id="rows"></tbody></table></div><div class="board" id="board" hidden></div>
 <section aria-labelledby="period-title">
 <h3 id="period-title">Работа за период</h3>
 <form id="period-form" class="tools">
@@ -66,6 +65,22 @@ li,.task-evidence{overflow-wrap:anywhere} .badge{font-weight:600}
 <p id="period-status" role="status"></p>
 <div id="period-result"></div>
 </section>
+<section aria-labelledby="timeline-title">
+<h3 id="timeline-title">Этапы проекта</h3>
+<p id="project-dates"></p>
+<ul id="timeline"></ul>
+</section>
+<div class="tools">
+<label>Этап <select id="stage"><option value="">Все этапы</option></select></label>
+<label>Поиск <input id="query" type="search" placeholder="Номер или название"></label>
+<label>Состояние <select id="state"></select></label>
+<label><input id="blocked" type="checkbox"> Заблокировано</label>
+<label><input id="decision" type="checkbox"> Требует моего решения</label>
+</div>
+
+<label>Вид <select id="view"><option value="list">Список</option><option value="board">Доска</option></select></label>
+<p id="count" aria-live="polite"></p>
+<div class="table" id="list-view"><table><thead><tr><th>Задача</th><th>Состояние</th><th>Исполнитель</th><th>Блокер</th><th>Следующее действие</th></tr></thead><tbody id="rows"></tbody></table></div><div class="board" id="board" hidden></div>
 </section>
 <section id="queue" hidden aria-labelledby="queue-title">
 <h2 id="queue-title">Задания без связи</h2><p id="queue-state" role="status"></p><div id="unlinked"></div>
@@ -144,7 +159,12 @@ function showProject(id) {
     else element.value = '';
   }
   render();
-  if (id) byId('name').focus();
+  if (id) {
+    byId('name').focus();
+    byId('period-range').value = '1';
+    byId('period-custom').hidden = true;
+    byId('period-form').requestSubmit();
+  }
   else byId('projects').querySelector('button')?.focus();
 }
 
@@ -320,8 +340,36 @@ function renderBoard(project, tasks, states) {
 let boardFilter = '';
 function renderOverview(project, states) {
   const overview = byId('overview');
+  const counts = new Map(columns.map(([id]) => [id, 0]));
+  for (const state of states.values()) counts.set(state, counts.get(state) + 1);
+  const remaining = ['queued', 'active', 'review', 'acceptance'].reduce((sum, state) => sum + counts.get(state), 0);
+  const metrics = [
+    ['Завершено', counts.get('done')], ['Осталось по известным статусам', remaining],
+    ['В работе', counts.get('active')], ['На ревью и приёмке', counts.get('review') + counts.get('acceptance')],
+    ['Статус неизвестен', counts.get('unknown')]
+  ];
+  byId('progress-totals').replaceChildren(...metrics.map(([label, value]) => {
+    const item = node('div');
+    item.append(node('dt', label), node('dd', String(value)));
+    return item;
+  }));
+  const freshness = byId('progress-freshness');
+  freshness.hidden = !project.sources.some(source => source.error);
+  freshness.textContent = freshness.hidden ? '' : 'Часть источников недоступна. Остаток рассчитан по доступному снимку.';
+  const scale = byId('progress-scale');
+  scale.replaceChildren();
+  const done = counts.get('done');
+  const knownScope = done + remaining;
+  if (freshness.hidden && !counts.get('unknown') && knownScope) {
+    const caption = 'Завершено ' + done + ' из ' + knownScope + ' задач в рабочем объёме';
+    const bar = node('meter');
+    bar.max = knownScope;
+    bar.value = done;
+    bar.setAttribute('aria-label', caption);
+    scale.append(node('span', caption), bar);
+  }
   const buttons = columns.map(([id, label]) => {
-    const count = [...states.values()].filter(value => value === id).length;
+    const count = counts.get(id);
     const button = node('button', label + ' (' + count + ')');
     button.setAttribute('aria-pressed', String(boardFilter === id));
     button.addEventListener('click', () => {
@@ -545,17 +593,26 @@ function renderPeriod(snapshot) {
     totals.append(item);
   }
   const chart = node('ul');
-  const daily = Object.entries(report.days).map(([day, metrics]) =>
-    [day, Object.values(metrics).reduce((total, count) => total + count, 0)]);
-  const peak = Math.max(1, ...daily.map(([, count]) => count));
-  for (const [day, count] of daily) {
-    const item = node('li', day + ' · ' + count + ' ');
-    const bar = node('meter');
-    bar.min = 0;
-    bar.max = peak;
-    bar.value = count;
-    bar.setAttribute('aria-label', day + ', учтено событий: ' + count);
-    item.append(bar);
+  chart.className = 'daily-chart';
+  const daily = Object.entries(report.days);
+  const series = [['accepted', 'Принято задач'], ['merged', 'Слито PR']];
+  const peak = daily.reduce((max, [, metrics]) => Math.max(max, metrics.accepted ?? 0, metrics.merged ?? 0), 1);
+  for (const [day, metrics] of daily) {
+    const total = Object.values(metrics).reduce((sum, count) => sum + count, 0);
+    const item = node('li');
+    item.append(node('strong', day + ' · Событий: ' + total));
+    for (const [type, label] of series) {
+      const count = metrics[type] ?? 0;
+      const caption = label + ': ' + (coverage[type].complete ? '' : 'подтверждено ') + count;
+      const column = node('span', caption);
+      const bar = node('meter');
+      bar.min = 0;
+      bar.max = peak;
+      bar.value = count;
+      bar.setAttribute('aria-label', day + ' · ' + caption);
+      column.append(bar);
+      item.append(column);
+    }
     chart.append(item);
   }
   const events = node('ul');
@@ -632,6 +689,7 @@ async function load(refresh) {
     const focusedTask = document.activeElement?.matches('button.task') ? document.activeElement : null;
     projects = snapshot;
     render();
+    if (refresh && !byId('project').hidden) byId('period-form').requestSubmit();
     if (focusedTask && !byId('card').open && !focusedTask.isConnected) restoreTaskFocus(focusedTask);
     if (activeCard && byId('card').open) {
       const project = projects.find(item => item.id === activeCard.projectId);
