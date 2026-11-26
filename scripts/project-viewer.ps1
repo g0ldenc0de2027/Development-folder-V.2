@@ -10,6 +10,7 @@ $ErrorActionPreference = 'Stop'
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 
 Import-Module (Join-Path $PSScriptRoot 'lib/ProjectPeriod.psm1')
+Import-Module (Join-Path $PSScriptRoot 'lib/ProjectProgress.psm1')
 
 function Read-Field([string]$Card, [string]$Label) {
     $match = [regex]::Match($Card, '(?im)^[ \t]*(?:\*\*)?' + [regex]::Escape($Label) +
@@ -326,6 +327,7 @@ function Get-Summary {
             id = $project.id
             name = $project.name
             historyConfigured = [bool]$project.historyPath
+            weightedProgress = $project.weightedProgress
             timeline = if ($project.timeline) {
                 @{
                     startDate = $project.timeline.startDate
@@ -397,8 +399,24 @@ function Read-TimelineDate($Value) {
     return $Value
 }
 
+function Read-WeightedProgress($Entry) {
+    if (!$Entry.Contains('progress')) { return @{ state = 'unconfigured' } }
+    try {
+        $data = $Entry.progress
+        if ($data -isnot [Collections.IDictionary] -or $data.schemaVersion -cne 1 -or
+            $data.baselines -isnot [array] -or $data.decisions -isnot [array] -or
+            $data.decisionsComplete -isnot [bool]) { throw 'INVALID_PROGRESS_SNAPSHOT' }
+        if (!$data.decisionsComplete) { return @{ state = 'incomplete' } }
+        $asOf = Read-ObservedInstant $data.asOf
+        if ($null -eq $asOf) { throw 'INVALID_PROGRESS_CUTOFF' }
+        Get-ProjectProgress -ProjectId $Entry.id -AsOf $asOf -Baselines $data.baselines -Decisions $data.decisions
+    } catch {
+        @{ state = 'invalid' }
+    }
+}
+
 $registryFile = Get-Item -LiteralPath $RegistryPath
-$registry = [IO.File]::ReadAllText($registryFile.FullName, $utf8) | ConvertFrom-Json -AsHashtable
+$registry = [IO.File]::ReadAllText($registryFile.FullName, $utf8) | ConvertFrom-Json -AsHashtable -DateKind String
 $queue = $null
 if ($registry.Contains('queue')) {
     $entry = $registry.queue
@@ -436,6 +454,7 @@ $projects = @(foreach ($entry in $registry.projects) {
         id = $entry.id
         name = $entry.name
         timeline = Read-ProjectTimeline $entry
+        weightedProgress = Read-WeightedProgress $entry
         historyPath = if ($entry.Contains('historyPath')) {
             $history = $entry['historyPath']
             if ($history -isnot [string] -or !$history.Trim() -or [IO.Path]::IsPathRooted($history)) {

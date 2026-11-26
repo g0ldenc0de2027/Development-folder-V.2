@@ -90,6 +90,14 @@ CI_HEAD_SHA: $old
         queue = @{ id = 'pilot'; path = 'queue' }
         projects = @(
             @{ id = 'first'; name = 'Первый'; roots = @('Проект А', 'copy')
+                progress = @{
+                    schemaVersion = 1; asOf = '2026-01-03T00:00:00Z'; decisionsComplete = $true
+                    baselines = @(@{ projectId = 'first'; version = 'v1'; approvedAt = '2026-01-01T00:00:00Z'
+                        items = @(@{id = 'A'; criteriaVersion = 'v1'; weight = 3}, @{id = 'B'; criteriaVersion = 'v1'; weight = 5})
+                    })
+                    decisions = @(@{projectId = 'first'; eventId = 'accept-a'; itemId = 'A'; scopeVersion = 'v1'
+                        criteriaVersion = 'v1'; at = '2026-01-02T00:00:00Z'; type = 'accepted'; evidenceId = 'synthetic'})
+                }
                 historyPath = 'history.json'
                 evidenceSnapshotPath = 'evidence.json'
                 timeline = @{
@@ -170,6 +178,8 @@ CI_HEAD_SHA: $old
     $restoredPeriod = Invoke-RestMethod $periodUri -TimeoutSec 10
     Assert-That ($restoredPeriod.report.totals.accepted -eq 1) 'PTR-VIS-005 restored history does not duplicate events'
     $first = Invoke-RestMethod ($url + 'summary') -TimeoutSec 10
+    Assert-That ($first[0].weightedProgress.state -ceq 'available' -and $first[0].weightedProgress.percent -eq 37.5 -and
+        $first[0].weightedProgress.remainingWeight -eq 5 -and $first[1].weightedProgress.state -ceq 'unconfigured') 'PRG-003 weighted progress is isolated by project'
     $view = $first[0].tasks[0].evidence
     Assert-That ($view.state -ceq 'readable' -and $view.record.ci.current -and $view.record.review.current -and
         !$view.record.ownerAcceptance -and $view.record.mergeSha -and !$first[1].tasks[0].evidence -and
