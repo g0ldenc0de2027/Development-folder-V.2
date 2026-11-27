@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $root 'scripts/lib/ProjectDecisionJournal.psm1')
 Import-Module (Join-Path $root 'scripts/lib/ProjectProgress.psm1')
+Import-Module (Join-Path $root 'scripts/lib/ProjectPeriod.psm1')
 $writer = Join-Path $root 'scripts/update-project-owner-decisions.ps1'
 $directory = [IO.Directory]::CreateTempSubdirectory('decision-journal-')
 $path = Join-Path $directory.FullName 'decisions.json'
@@ -113,6 +114,24 @@ try {
         $progress = Get-ProjectProgress -ProjectId demo -AsOf ([DateTimeOffset]$slice.at) -Baselines $baselines -Decisions $snapshot.document.events
         Assert-Journal ($progress.percent -eq $slice.expected) "Wrong progress at $($slice.at)"
     }
+    $late = $event.Clone()
+    $late.eventId = 'late'; $late.at = '2026-11-27T15:00:00Z'
+    Assert-Journal ((& $writer @inputArgs -Decision $late).published) 'Known event outside the verified window was lost'
+    $snapshot = Read-ProjectDecisionJournal -Path $path -ProjectId demo -Baselines $baselines
+    Assert-Journal ($snapshot.document.events.Count -eq 5) 'Partial journal lost its known event'
+    $types = 'accepted', 'acceptance_revoked'
+    $window = @{ StartUtc = [DateTimeOffset]'2026-11-27T08:00:00Z'; EndUtc = [DateTimeOffset]'2026-11-27T13:00:00Z' }
+    $coverageView = Get-ProjectHistoryCoverage -Period $window -Coverage $snapshot.document.coverage -Types $types
+    Assert-Journal $coverageView.accepted.complete 'An event outside the period invalidated documented coverage'
+    $window.EndUtc = [DateTimeOffset]'2026-11-27T16:00:00Z'
+    $coverageView = Get-ProjectHistoryCoverage -Period $window -Coverage $snapshot.document.coverage -Types $types
+    Assert-Journal (!$coverageView.accepted.complete -and $coverageView.accepted.gaps.Count -eq 2) 'Known events outside coverage hid an unverified tail'
+    $valid = Get-ProjectJournalProgress -Snapshot $snapshot -ProjectId demo -Baselines $baselines -AsOf ([DateTimeOffset]'2026-11-27T12:30:00Z')
+    Assert-Journal ($valid.state -ceq 'available' -and $valid.percent -eq 75) 'Verified history did not produce weight'
+    $atEnd = Get-ProjectJournalProgress -Snapshot $snapshot -ProjectId demo -Baselines $baselines -AsOf ([DateTimeOffset]'2026-11-27T13:00:00Z')
+    Assert-Journal ($atEnd.state -ceq 'incomplete' -and !$atEnd.ContainsKey('percent')) 'Inclusive cutoff counted unverified instant'
+    $afterGap = Get-ProjectJournalProgress -Snapshot $snapshot -ProjectId demo -Baselines $baselines -AsOf ([DateTimeOffset]'2026-11-27T16:00:00Z')
+    Assert-Journal ($afterGap.state -ceq 'incomplete' -and !$afterGap.ContainsKey('percent')) 'Known decision hid a gap in weighted progress'
     Assert-Journal (@($directory.GetFiles()).Count -eq 1) 'Unexpected staged files'
     'PASS: publish, replay, conflict, writer contention, replacement failure, revoke and cleanup'
 } finally {

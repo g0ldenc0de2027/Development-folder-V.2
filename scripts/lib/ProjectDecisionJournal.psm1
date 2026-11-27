@@ -1,5 +1,6 @@
 Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'ProjectProgress.psm1')
+Import-Module (Join-Path $PSScriptRoot 'ProjectPeriod.psm1')
 
 function Get-DecisionJournalInstant($Value) {
     $instant = [DateTimeOffset]::MinValue
@@ -59,4 +60,32 @@ function Read-ProjectDecisionJournal {
     }
 }
 
-Export-ModuleMember -Function Read-ProjectDecisionJournal
+function Get-ProjectJournalProgress {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][Collections.IDictionary]$Snapshot,
+        [Parameter(Mandatory)][string]$ProjectId,
+        [Parameter(Mandatory)][DateTimeOffset]$AsOf,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Baselines
+    )
+
+    $data = $Snapshot.document
+    if ($data['projectId'] -cne $ProjectId) { throw 'DECISION_JOURNAL_INVALID_DOCUMENT' }
+    $progress = Get-ProjectProgress -ProjectId $ProjectId -AsOf $AsOf -Baselines $Baselines -Decisions $data['events']
+    if ($progress.state -cne 'available') { return $progress }
+
+    # Включительный срез требует покрытия до следующего тика полуоткрытого интервала.
+    if ($AsOf -eq [DateTimeOffset]::MaxValue) { throw 'DECISION_JOURNAL_INVALID_TIMESTAMP' }
+    $window = @{
+        StartUtc = (Get-DecisionJournalInstant $Baselines[0]['approvedAt']).ToUniversalTime()
+        EndUtc = $AsOf.ToUniversalTime().AddTicks(1)
+    }
+    $types = 'accepted', 'acceptance_revoked'
+    $coverage = Get-ProjectHistoryCoverage -Period $window -Coverage $data['coverage'] -Types $types
+    if (!$coverage.accepted.complete) {
+        return @{ state = 'incomplete'; projectId = $ProjectId; asOf = $AsOf; gaps = $coverage.accepted.gaps }
+    }
+    $progress
+}
+
+Export-ModuleMember -Function Read-ProjectDecisionJournal, Get-ProjectJournalProgress
