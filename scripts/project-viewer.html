@@ -23,6 +23,20 @@ li,.task-evidence{overflow-wrap:anywhere} .badge{font-weight:600}
 .board ul { padding-inline-start: 1.25rem; }
 .board li + li { margin-top: .75rem; }
 #overview { display: flex; gap: .5rem; flex-wrap: wrap; margin-block: .75rem; }
+#overview button[aria-pressed="true"] { color: var(--accent); background: var(--surface); border-color: currentColor; text-decoration: underline; text-underline-offset: .18em; }
+#overview button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dashboard, section[aria-labelledby="period-title"] { margin-block: 1rem; padding: clamp(.75rem, 2vw, 1.25rem); border: 1px solid var(--line); border-radius: .75rem; }
+.dashboard h3, #period-title { margin-block-start: 0; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: .65rem; padding: 0; }
+.metrics > div { padding: .75rem; border-radius: .5rem; background: var(--surface); }
+.metrics dd { margin: .2rem 0 0; font-size: 1.45rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.daily-chart { list-style: none; padding: 0; }
+.daily-chart li { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: .6rem; padding: .55rem 0; border-block-end: 1px solid var(--line); }
+.daily-chart meter, #progress-scale meter { display: block; width: 100%; }
+.weighted-track { height: .75rem; border: 1px solid var(--line); border-radius: .5rem; background: var(--surface); overflow: hidden; }
+.weighted-fill { height: 100%; background: var(--progress-color); width: var(--progress-width); }
+.weighted-ends { display: flex; justify-content: space-between; font-size: .9rem; }
+.remaining-chart { display:block; width:100%; height:180px; }
 </style>
 <header><h1>Проекты и задачи</h1><button id="refresh">Обновить</button></header>
 <p id="notice" role="status"></p>
@@ -35,22 +49,27 @@ li,.task-evidence{overflow-wrap:anywhere} .badge{font-weight:600}
 </section>
 <section id="project" hidden aria-labelledby="name">
 <button id="back">Все проекты</button><h2 id="name" tabindex="-1"></h2><ul id="sources"></ul>
-<section aria-labelledby="timeline-title">
-<h3 id="timeline-title">Этапы проекта</h3>
-<p id="project-dates"></p>
-<ul id="timeline"></ul>
+<section class="dashboard" aria-labelledby="progress-title">
+<h3 id="progress-title">Ход разработки</h3>
+<dl id="progress-totals" class="metrics"></dl>
+<p id="progress-freshness" hidden></p>
+<div id="progress-scale"></div>
+<section aria-labelledby="weighted-title">
+<h4 id="weighted-title">Готовность утверждённого объёма</h4>
+<p id="weighted-status"></p>
+<div id="weighted-scale"></div>
 </section>
-<div class="tools">
-<label>Этап <select id="stage"><option value="">Все этапы</option></select></label>
-<label>Поиск <input id="query" type="search" placeholder="Номер или название"></label>
-<label>Состояние <select id="state"></select></label>
-<label><input id="blocked" type="checkbox"> Заблокировано</label>
-<label><input id="decision" type="checkbox"> Требует моего решения</label>
-</div>
-<div id="overview" aria-label="Сводка проекта"></div>
-<label>Вид <select id="view"><option value="list">Список</option><option value="board">Доска</option></select></label>
-<p id="count" aria-live="polite"></p>
-<div class="table" id="list-view"><table><thead><tr><th>Задача</th><th>Состояние</th><th>Исполнитель</th><th>Блокер</th><th>Следующее действие</th></tr></thead><tbody id="rows"></tbody></table></div><div class="board" id="board" hidden></div>
+<section aria-labelledby="date-forecast-title">
+<h4 id="date-forecast-title">Прогноз завершения</h4>
+<p id="date-forecast"></p>
+</section>
+<section aria-labelledby="cost-title">
+<h4 id="cost-title">Стоимость разработки</h4>
+<p id="cost-status"></p>
+<dl id="cost-totals" class="metrics"></dl>
+</section>
+<div id="overview" aria-label="Фильтры сводки проекта"></div>
+</section>
 <section aria-labelledby="period-title">
 <h3 id="period-title">Работа за период</h3>
 <form id="period-form" class="tools">
@@ -66,6 +85,22 @@ li,.task-evidence{overflow-wrap:anywhere} .badge{font-weight:600}
 <p id="period-status" role="status"></p>
 <div id="period-result"></div>
 </section>
+<section aria-labelledby="timeline-title">
+<h3 id="timeline-title">Этапы проекта</h3>
+<p id="project-dates"></p>
+<ul id="timeline"></ul>
+</section>
+<div class="tools">
+<label>Этап <select id="stage"><option value="">Все этапы</option></select></label>
+<label>Поиск <input id="query" type="search" placeholder="Номер или название"></label>
+<label>Состояние <select id="state"></select></label>
+<label><input id="blocked" type="checkbox"> Заблокировано</label>
+<label><input id="decision" type="checkbox"> Требует моего решения</label>
+</div>
+
+<label>Вид <select id="view"><option value="list">Список</option><option value="board">Доска</option></select></label>
+<p id="count" aria-live="polite"></p>
+<div class="table" id="list-view"><table><thead><tr><th>Задача</th><th>Состояние</th><th>Исполнитель</th><th>Блокер</th><th>Следующее действие</th></tr></thead><tbody id="rows"></tbody></table></div><div class="board" id="board" hidden></div>
 </section>
 <section id="queue" hidden aria-labelledby="queue-title">
 <h2 id="queue-title">Задания без связи</h2><p id="queue-state" role="status"></p><div id="unlinked"></div>
@@ -129,11 +164,12 @@ let viewGeneration = 0;
 
 async function request(path, method = 'GET') {
   const response = await fetch(path, {method, cache:'no-store'});
-  if (!response.ok) throw new Error('REQUEST_FAILED');
+  if (!response.ok) throw new Error(response.status === 409 ? 'FRAME_CHANGED' : 'REQUEST_FAILED');
   return response.json();
 }
 
 function showProject(id) {
+  if (activeCard && activeCard.projectId !== id) byId('close').click();
   selected = id;
   clearPeriod();
   boardFilter = '';
@@ -144,7 +180,12 @@ function showProject(id) {
     else element.value = '';
   }
   render();
-  if (id) byId('name').focus();
+  if (id) {
+    byId('name').focus();
+    byId('period-range').value = '1';
+    byId('period-custom').hidden = true;
+    byId('period-form').requestSubmit();
+  }
   else byId('projects').querySelector('button')?.focus();
 }
 
@@ -206,11 +247,22 @@ function render() {
   }
   byId('name').textContent = project.name;
   renderTimeline(project.timeline);
+  renderDateForecast(project.dateForecast);
+  renderWeightedProgress(project.weightedProgress);
+  if (project.journal?.state === 'stale') {
+    byId('weighted-status').textContent += ' · Снимок журнала устарел';
+  }
+  renderCost(project.cost);
   const sources = project.sources.map(source =>
     node('li', source.path + ' · ' + sourceStatus(source.updated, source.error)));
   if (project.queue) {
     sources.push(node('li', 'Очередь ' + project.queue.id + ' · ' +
       sourceStatus(project.queue.updated, project.queue.stale ? 'Очередь недоступна' : '')));
+  }
+  if (project.journal) {
+    const warning = project.journal.state === 'stale' ? 'Снимок журнала устарел'
+      : project.journal.state === 'unavailable' ? 'Журнал недоступен' : '';
+    sources.push(node('li', 'Журнал решений · ' + sourceStatus(project.journal.readAt, warning)));
   }
   sources.push(node('li', project.historyConfigured
     ? 'Источник истории настроен · доступность и покрытие проверяются при построении отчёта'
@@ -320,8 +372,36 @@ function renderBoard(project, tasks, states) {
 let boardFilter = '';
 function renderOverview(project, states) {
   const overview = byId('overview');
+  const counts = new Map(columns.map(([id]) => [id, 0]));
+  for (const state of states.values()) counts.set(state, counts.get(state) + 1);
+  const remaining = ['queued', 'active', 'review', 'acceptance'].reduce((sum, state) => sum + counts.get(state), 0);
+  const metrics = [
+    ['Завершено', counts.get('done')], ['Осталось по известным статусам', remaining],
+    ['В работе', counts.get('active')], ['На ревью и приёмке', counts.get('review') + counts.get('acceptance')],
+    ['Статус неизвестен', counts.get('unknown')]
+  ];
+  byId('progress-totals').replaceChildren(...metrics.map(([label, value]) => {
+    const item = node('div');
+    item.append(node('dt', label), node('dd', String(value)));
+    return item;
+  }));
+  const freshness = byId('progress-freshness');
+  freshness.hidden = !project.sources.some(source => source.error);
+  freshness.textContent = freshness.hidden ? '' : 'Часть источников недоступна. Остаток рассчитан по доступному снимку.';
+  const scale = byId('progress-scale');
+  scale.replaceChildren();
+  const done = counts.get('done');
+  const knownScope = done + remaining;
+  if (freshness.hidden && !counts.get('unknown') && knownScope) {
+    const caption = 'Завершено ' + done + ' из ' + knownScope + ' задач в рабочем объёме';
+    const bar = node('meter');
+    bar.max = knownScope;
+    bar.value = done;
+    bar.setAttribute('aria-label', caption);
+    scale.append(node('span', caption), bar);
+  }
   const buttons = columns.map(([id, label]) => {
-    const count = [...states.values()].filter(value => value === id).length;
+    const count = counts.get(id);
     const button = node('button', label + ' (' + count + ')');
     button.setAttribute('aria-pressed', String(boardFilter === id));
     button.addEventListener('click', () => {
@@ -339,6 +419,121 @@ function renderOverview(project, states) {
     byId('overview').lastElementChild.focus();
   });
   overview.replaceChildren(...buttons, blocked);
+}
+
+function renderDateForecast(snapshot) {
+  const element = byId('date-forecast');
+  const explanations = {
+    configuration_unavailable: 'Укажите календарь и диапазон темпа.',
+    scope_unavailable: 'Нужен подтверждённый остаток утверждённого объёма.',
+    scope_version_mismatch: 'Объём работ изменился. Обновите параметры прогноза для новой версии.',
+    calendar_unavailable: 'Рабочий календарь не задан.',
+    pace_unavailable: 'Темп разработки не задан.',
+    capacity_zero: 'Нижняя оценка темпа равна нулю.',
+    blocker_unresolved: 'Критическая зависимость без даты.',
+    completion_date_unavailable: 'Дата последней приёмки не подтверждена.',
+    horizon_exceeded: 'Прогноз выходит за пределы расчётного горизонта.',
+    invalid_configuration: 'Проверьте настройки и версию объёма.'
+  };
+  if (snapshot?.state === 'completed') {
+    element.textContent = 'Завершено ' + snapshot.completedAt;
+    return;
+  }
+  if (snapshot?.state !== 'available') {
+    element.textContent = explanations[snapshot?.reason] ?? explanations.configuration_unavailable;
+    return;
+  }
+  const delta = value => (value > 0 ? '+' : '') + value;
+  element.textContent = 'Сценарная оценка · ' + snapshot.earliest + ' – ' + snapshot.latest +
+    ' · Срез на ' + snapshot.asOf +
+    (snapshot.planFinish ? ' · План ' + snapshot.planFinish +
+      ' · Сдвиг границ ' + delta(snapshot.earliestDeltaDays) + ' / ' + delta(snapshot.latestDeltaDays) + ' дн.' : '');
+}
+
+function renderWeightedProgress(snapshot) {
+  const status = byId('weighted-status');
+  const scale = byId('weighted-scale');
+  scale.replaceChildren();
+  const messages = {
+    unconfigured: 'Подключите утверждённый объём и журнал приёмок.',
+    incomplete: 'Полнота приёмок и отзывов пока не подтверждена.',
+    invalid: 'Проверьте локальный снимок готовности.',
+    not_assessed: 'На дату среза нет утверждённого объёма с положительным весом.'
+  };
+  if (snapshot?.state !== 'available') {
+    status.textContent = messages[snapshot?.state] ?? messages.unconfigured;
+    return;
+  }
+  const {percent, acceptedWeight, remainingWeight, totalWeight, scopeVersion, asOf} = snapshot;
+  const format = value => new Intl.NumberFormat('ru-RU', {maximumFractionDigits: 3}).format(value);
+  const caption = format(percent) + '% · Принято ' + format(acceptedWeight) + ' из ' +
+    format(totalWeight) + ' · Осталось ' + format(remainingWeight);
+  status.textContent = caption + ' · Объём ' + scopeVersion + ' · Срез ' + asOf.slice(0, 10);
+  const track = node('div');
+  track.className = 'weighted-track';
+  track.setAttribute('role', 'meter');
+  track.setAttribute('aria-label', 'Взвешенная готовность');
+  track.setAttribute('aria-valuemin', '0');
+  track.setAttribute('aria-valuemax', '100');
+  track.setAttribute('aria-valuenow', String(percent));
+  track.setAttribute('aria-valuetext', caption);
+  const fill = node('div');
+  fill.className = 'weighted-fill';
+  fill.style.setProperty('--progress-width', percent + '%');
+  fill.style.setProperty('--progress-color', 'hsl(' + percent * 1.25 + ' 70% 43%)');
+  track.append(fill);
+  const ends = node('div');
+  ends.className = 'weighted-ends';
+  ends.append(node('span', '0%'), node('span', '100%'));
+  scale.append(track, ends);
+}
+
+function renderCost(snapshot) {
+  const status = byId('cost-status');
+  const totals = byId('cost-totals');
+  totals.replaceChildren();
+  if (snapshot?.state !== 'available') {
+    status.textContent = snapshot?.state === 'invalid'
+      ? 'Проверьте локальные данные расчёта стоимости.'
+      : 'Данные о стоимости пока не подключены.';
+    return;
+  }
+  const format = (value, currency) => new Intl.NumberFormat('ru-RU', {
+    style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 2
+  }).format(value);
+  const range = (values, currency) => {
+    if (!Array.isArray(values)) return 'Нет оценки';
+    if (values[0] === values[2]) return format(values[1], currency);
+    return format(values[1], currency) + ' (' + format(values[0], currency) + ' – ' + format(values[2], currency) + ')';
+  };
+  const {plan, confirmed, forecast} = snapshot.values;
+  const rateLabel = rate => {
+    if (!rate || !Number.isFinite(rate.rubPerUsd)) {
+      return rate?.source === 'cbr' ? 'Курс Банка России пока недоступен' : 'Курс не задан';
+    }
+    const value = new Intl.NumberFormat('ru-RU', {maximumFractionDigits: 8}).format(rate.rubPerUsd);
+    const source = rate.source === 'cbr' ? 'Банк России' : 'ручной ввод';
+    return '1 USD = ' + value + ' ₽ · ' + source + ' · ' + (rate.effectiveDate ?? 'дата курса не указана') +
+      (rate.state === 'stale' ? ' · обновление недоступно' : '');
+  };
+  const amount = (value, currency) => value === null ? 'Нет данных' : format(value, currency);
+  const rows = [
+    ['Исходный план', range(plan.totalRub, 'RUB') + ' / ' + range(plan.totalUsd, 'USD')],
+    ['Курс исходного плана', rateLabel(snapshot.exchange?.plan)],
+    ['Подтверждённый труд', amount(confirmed.laborRub, 'RUB')],
+    ['Подтверждённые расходы на ИИ', amount(confirmed.aiRub, 'RUB') + ' / ' + amount(confirmed.aiUsd, 'USD')],
+    ['Прогноз итого', range(forecast.totalRub, 'RUB') + ' / ' + range(forecast.totalUsd, 'USD')],
+    ['Курс прогноза', rateLabel(snapshot.exchange?.forecast)]
+  ];
+  const labels = {hours:'часы', ai:'расходы на ИИ', confirmedCost:'подтверждённые затраты', exchangeRate:'курс валют'};
+  const missing = [...new Set([...plan.missingInputs, ...forecast.missingInputs])];
+  status.textContent = 'Срез ' + snapshot.asOf + ' · Объём ' + snapshot.scopeVersion +
+    (missing.length ? ' · Не хватает данных: ' + missing.map(key => labels[key]).join(', ') : '');
+  for (const [label, value] of rows) {
+    const row = node('div');
+    row.append(node('dt', label), node('dd', value));
+    totals.append(row);
+  }
 }
 
 function renderRows() {
@@ -405,6 +600,7 @@ function restoreTaskFocus(button) {
 async function openCard(project, task) {
   activeCard = {projectId: project.id, taskId: task.id};
   const generation = ++viewGeneration;
+  let renderedDecisions = false;
   byId('card-title').textContent = task.id;
   const container = byId('versions');
   container.replaceChildren(...task.unreadable.map(path => node('p', 'Ошибка чтения · ' + path)));
@@ -484,11 +680,27 @@ async function openCard(project, task) {
     container.append(section);
     try {
       const params = new URLSearchParams({project:project.id, task:task.id, version:version.hash});
+      if (project.frame) params.set('frame', project.frame);
       const card = await request('card?' + params);
       if (generation !== viewGeneration) return;
+      if (project.frame && (card.frame !== project.frame || card.journalGeneration !== project.journal.generation)) {
+        throw new Error('FRAME_CHANGED');
+      }
       text.textContent = card.text;
-    } catch {
-      text.textContent = 'Не удалось загрузить версию. Обновите список задач.';
+      if (!renderedDecisions && card.ownerDecisions?.length) {
+        renderedDecisions = true;
+        const list = node('ul');
+        for (const decision of card.ownerDecisions) {
+          const label = decision.status === 'accepted' ? 'Результат принят' : 'Приёмка отозвана';
+          list.append(node('li', decision.itemId + ' · ' + label + ' · ' + new Date(decision.decidedAt).toLocaleString('ru')));
+        }
+        container.prepend(list);
+      }
+    } catch (error) {
+      if (generation !== viewGeneration) return;
+      text.textContent = error.message === 'FRAME_CHANGED'
+        ? 'Снимок обновился. Нажмите «Обновить».'
+        : 'Не удалось загрузить версию. Обновите список задач.';
     }
   }
 }
@@ -502,6 +714,7 @@ let periodSnapshot;
 let periodGeneration = 0;
 
 function clearPeriod() {
+  remainingObserver?.disconnect();
   periodGeneration++;
   periodSnapshot = undefined;
   byId('period-result').replaceChildren();
@@ -509,10 +722,120 @@ function clearPeriod() {
   byId('period-download').disabled = true;
 }
 
+let remainingObserver;
+function drawRemainingChart(canvas, points) {
+  const width = canvas.clientWidth;
+  if (width < 64) return;
+  const height = 180;
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = Math.round(width * ratio);
+  canvas.height = Math.round(height * ratio);
+  const context = canvas.getContext('2d');
+  context.scale(ratio, ratio);
+  const style = getComputedStyle(canvas);
+  const accent = style.getPropertyValue('--accent').trim();
+  const grid = style.getPropertyValue('--line').trim();
+  const max = Math.max(1, ...points.map(point => point.totalWeight ?? 0));
+  const pad = 18;
+  const x = i => points.length === 1 ? width / 2 : pad + i * (width - 2 * pad) / (points.length - 1);
+  const y = value => height - pad - value / max * (height - 2 * pad);
+  const line = (x1,y1,x2,y2,color) => {
+    context.strokeStyle = color;
+    context.beginPath();
+    context.moveTo(x1,y1);
+    context.lineTo(x2,y2);
+    context.stroke();
+  };
+  line(pad,y(0),width-pad,y(0),grid);
+  for (const [index, point] of points.entries()) {
+    if (point.scopeChanged) {
+      context.setLineDash([4,4]);
+      line(x(index),pad,x(index),y(0),grid);
+      context.setLineDash([]);
+    }
+    if (!Number.isFinite(point.remainingWeight)) continue;
+    const previous = points[index - 1]?.remainingWeight;
+    const vertical = y(point.remainingWeight);
+    if (Number.isFinite(previous) && !point.scopeChanged) line(x(index-1),y(previous),x(index),vertical,accent);
+    context.fillStyle = accent;
+    context.beginPath();
+    context.arc(x(index),vertical,3,0,2*Math.PI);
+    context.fill();
+  }
+}
+
+function renderRemainingWork(snapshot) {
+  const section = node('section');
+  section.setAttribute('aria-labelledby', 'remaining-work-title');
+  const heading = node('h4', 'Динамика остатка');
+  heading.id = 'remaining-work-title';
+  section.append(heading);
+  const messages = {
+    unconfigured: 'Утверждённый объём не подключён.',
+    incomplete: 'Нужны подтверждённые данные о приёмках и отзывах.',
+    before_period: 'За этот период нет подтверждённых снимков готовности.',
+    range_too_large: 'Для графика выберите период до 90 дней.',
+    invalid: 'Не удалось рассчитать остаток по истории проекта.'
+  };
+  if (snapshot?.state !== 'available') {
+    section.append(node('p', messages[snapshot?.state] ?? messages.unconfigured));
+    return section;
+  }
+  const table = node('table');
+  const header = node('tr');
+  for (const title of ['Дата', 'Версия', 'Всего', 'Принято', 'Остаток']) {
+    const cell = node('th', title);
+    cell.scope = 'col';
+    header.append(cell);
+  }
+  const head = node('thead');
+  head.append(header);
+  const rows = node('tbody');
+  for (const point of snapshot.points) {
+    const row = node('tr');
+    const version = point.scopeVersion ?? '—';
+    const values = [point.date, point.scopeChanged ? version + ' · новый объём' : version,
+      point.totalWeight ?? '—', point.acceptedWeight ?? '—', point.remainingWeight ?? 'Нет данных'];
+    for (const value of values) row.append(node('td', String(value)));
+    rows.append(row);
+  }
+  table.append(head, rows);
+  if (snapshot.points.some(point => Number.isFinite(point.remainingWeight))) {
+    const canvas = node('canvas');
+    canvas.className = 'remaining-chart';
+    canvas.setAttribute('aria-hidden', 'true');
+    section.append(canvas);
+    section.append(node('p', 'Пунктир отмечает смену объёма. Линия прерывается при смене версии или потере подтверждённых данных.'));
+    remainingObserver?.disconnect();
+    remainingObserver = new ResizeObserver(() => drawRemainingChart(canvas, snapshot.points));
+    remainingObserver.observe(canvas);
+  }
+  const changes = snapshot.points.flatMap(point => point.scopeChanges ?? []);
+  if (changes.length) {
+    const list = node('ul');
+    for (const change of changes) {
+      const delta = new Intl.NumberFormat('ru-RU', {signDisplay:'always'}).format(change.weightDelta);
+      const moment = change.approvedAt.slice(0,10) + ' ' + change.approvedAt.slice(11,16);
+      list.append(node('li', moment + ' · ' + change.previousScopeVersion + ' → ' + change.scopeVersion +
+        ' · ' + delta + ' ед. · ' + (change.reason ?? 'Причина не указана')));
+    }
+    section.append(node('h5', 'Изменения объёма'), list);
+  }
+  const container = node('div');
+  container.className = 'table';
+  container.tabIndex = 0;
+  container.setAttribute('role', 'region');
+  container.setAttribute('aria-label', 'Точки графика остатка');
+  container.append(table);
+  section.append(container);
+  return section;
+}
+
 function renderPeriod(snapshot) {
   const {period, report, historyState, coverage} = snapshot;
   const range = period.From + ' — ' + period.Through + ' · ' + period.TimeZone;
   const status = byId('period-status');
+  byId('period-result').append(renderRemainingWork(snapshot.remainingWork));
   if (!report) {
     status.textContent = range + ' · ' +
       (historyState === 'unconfigured' ? 'Источник истории не подключён' : 'История недоступна');
@@ -532,7 +855,8 @@ function renderPeriod(snapshot) {
   status.textContent += ' · История прочитана: ' + instant(snapshot.historyReadAt);
   const result = byId('period-result');
   const totals = node('ul');
-  for (const [type, label] of Object.entries(eventLabels)) {
+  const labels = snapshot.frame ? {...eventLabels, accepted:'Принято результатов', acceptance_revoked:'Отозвано приёмок результатов'} : eventLabels;
+  for (const [type, label] of Object.entries(labels)) {
     const metric = coverage[type];
     const item = node('li', label + ': ' + (metric.complete ? '' : 'подтверждено ') + report.totals[type]);
     if (!metric.complete) {
@@ -545,22 +869,31 @@ function renderPeriod(snapshot) {
     totals.append(item);
   }
   const chart = node('ul');
-  const daily = Object.entries(report.days).map(([day, metrics]) =>
-    [day, Object.values(metrics).reduce((total, count) => total + count, 0)]);
-  const peak = Math.max(1, ...daily.map(([, count]) => count));
-  for (const [day, count] of daily) {
-    const item = node('li', day + ' · ' + count + ' ');
-    const bar = node('meter');
-    bar.min = 0;
-    bar.max = peak;
-    bar.value = count;
-    bar.setAttribute('aria-label', day + ', учтено событий: ' + count);
-    item.append(bar);
+  chart.className = 'daily-chart';
+  const daily = Object.entries(report.days);
+  const series = [['accepted', labels.accepted], ['merged', labels.merged]];
+  const peak = daily.reduce((max, [, metrics]) => Math.max(max, metrics.accepted ?? 0, metrics.merged ?? 0), 1);
+  for (const [day, metrics] of daily) {
+    const total = Object.values(metrics).reduce((sum, count) => sum + count, 0);
+    const item = node('li');
+    item.append(node('strong', day + ' · Событий: ' + total));
+    for (const [type, label] of series) {
+      const count = metrics[type] ?? 0;
+      const caption = label + ': ' + (coverage[type].complete ? '' : 'подтверждено ') + count;
+      const column = node('span', caption);
+      const bar = node('meter');
+      bar.min = 0;
+      bar.max = peak;
+      bar.value = count;
+      bar.setAttribute('aria-label', day + ' · ' + caption);
+      column.append(bar);
+      item.append(column);
+    }
     chart.append(item);
   }
   const events = node('ul');
   for (const event of report.events) {
-    events.append(node('li', event.day + ' · ' + event.taskId + ' · ' + eventLabels[event.type] +
+    events.append(node('li', event.day + ' · ' + event.taskId + (event.itemId ? ' · ' + event.itemId : '') + ' · ' + labels[event.type] +
       (event.counted ? '' : ' · Не входит в итог')));
   }
   result.append(node('h4', 'Итоги'), totals, node('h4', 'События по дням'),
@@ -579,7 +912,10 @@ byId('period-form').addEventListener('submit', async event => {
   event.preventDefault();
   clearPeriod();
   const generation = periodGeneration;
-  const params = new URLSearchParams({project: selected});
+  const project = projects.find(item => item.id === selected);
+  if (!project) return;
+  const params = new URLSearchParams({project: project.id});
+  if (project.frame) params.set('frame', project.frame);
   const choice = byId('period-range').value;
   if (choice === 'custom') {
     const from = byId('period-from').value;
@@ -594,9 +930,18 @@ byId('period-form').addEventListener('submit', async event => {
   byId('period-status').textContent = 'Чтение истории…';
   try {
     const snapshot = await request('period?' + params);
-    if (generation === periodGeneration) renderPeriod(snapshot);
-  } catch {
-    if (generation === periodGeneration) byId('period-status').textContent = 'Не удалось построить отчёт. Проверь даты.';
+    if (generation !== periodGeneration) return;
+    if (project.frame && (snapshot.frame !== project.frame || snapshot.journalGeneration !== project.journal.generation)) {
+      throw new Error('FRAME_CHANGED');
+    }
+    renderPeriod(snapshot);
+    if (snapshot.journalState === 'stale') byId('period-status').textContent += ' · Снимок решений устарел';
+    if (snapshot.journalState === 'unavailable') byId('period-status').textContent += ' · Журнал решений недоступен';
+  } catch (error) {
+    if (generation !== periodGeneration) return;
+    byId('period-status').textContent = error.message === 'FRAME_CHANGED'
+      ? 'Снимок обновился. Нажмите «Обновить».'
+      : 'Не удалось построить отчёт. Проверь даты.';
   }
 });
 byId('period-download').addEventListener('click', () => {
@@ -632,6 +977,7 @@ async function load(refresh) {
     const focusedTask = document.activeElement?.matches('button.task') ? document.activeElement : null;
     projects = snapshot;
     render();
+    if (refresh && !byId('project').hidden) byId('period-form').requestSubmit();
     if (focusedTask && !byId('card').open && !focusedTask.isConnected) restoreTaskFocus(focusedTask);
     if (activeCard && byId('card').open) {
       const project = projects.find(item => item.id === activeCard.projectId);
@@ -642,7 +988,9 @@ async function load(refresh) {
         byId('versions').replaceChildren(node('p', 'Карточка отсутствует в текущем снимке.'));
       }
     }
-    byId('notice').textContent = projects.some(project => project.queue?.stale || project.sources.some(source => source.error))
+    byId('notice').textContent = projects.some(project =>
+      project.queue?.stale || project.sources.some(source => source.error) ||
+      project.journal?.state === 'stale' || project.journal?.state === 'unavailable')
       ? 'Часть источников прочитать не удалось.' : '';
   } catch {
     byId('notice').textContent = 'Обновление не удалось. Показаны данные последней загрузки.';

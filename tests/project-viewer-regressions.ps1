@@ -90,6 +90,23 @@ CI_HEAD_SHA: $old
         queue = @{ id = 'pilot'; path = 'queue' }
         projects = @(
             @{ id = 'first'; name = 'Первый'; roots = @('Проект А', 'copy')
+                progress = @{
+                    schemaVersion = 1; asOf = '2026-01-03T00:00:00Z'; decisionsComplete = $true
+                    baselines = @(@{ projectId = 'first'; version = 'v1'; approvedAt = '2026-01-01T00:00:00Z'
+                        items = @(@{id = 'A'; criteriaVersion = 'v1'; weight = 3}, @{id = 'B'; criteriaVersion = 'v1'; weight = 5})
+                    })
+                    decisions = @(@{projectId = 'first'; eventId = 'accept-a'; itemId = 'A'; scopeVersion = 'v1'
+                        criteriaVersion = 'v1'; at = '2026-01-02T00:00:00Z'; type = 'accepted'; evidenceId = 'synthetic'})
+                }
+                forecast = @{
+                    schemaVersion = 1; scopeVersion = 'v1'; unitsPerDayLow = 1; unitsPerDayHigh = 2
+                    workDays = @('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')
+                    planFinish = '2026-01-08'
+                }
+                cost = @{
+                    schemaVersion = 1; asOf = '2026-11-26'; scopeVersion = 'v1'
+                    planHours = @(40, 50, 60); planAiRub = @(5000, 5000, 5000); planAiUsd = @(0, 0, 0); planRubPerUsd = 100; planExchangeRateDate = '2026-01-01'; rubPerUsd = 80; exchangeRateDate = '2026-01-02'
+                }
                 historyPath = 'history.json'
                 evidenceSnapshotPath = 'evidence.json'
                 timeline = @{
@@ -115,6 +132,42 @@ CI_HEAD_SHA: $old
         $config.projects += @{ id = 'v2'; name = 'V2'; roots = @($V2Root) }
         $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $registry -Encoding utf8
     }
+    $badVersions = @($true, '1', [double]1)
+    $config = Get-Content -LiteralPath $registry -Raw | ConvertFrom-Json -AsHashtable
+    for ($i = 0; $i -lt $badVersions.Count; $i++) {
+        $cost = $config.projects[0].cost.Clone()
+        $cost.schemaVersion = $badVersions[$i]
+        $forecast = $config.projects[0].forecast.Clone()
+        $forecast.schemaVersion = $badVersions[$i]
+        $config.projects += @{ id = "bad-cost-$i"; name = "Снимок $i"; roots = @('other'); cost = $cost; forecast = $forecast }
+        $config.projects[-1].progress = $config.projects[0].progress | ConvertTo-Json -Depth 8 | ConvertFrom-Json -AsHashtable
+        $config.projects[-1].progress.baselines[0].projectId = "bad-cost-$i"
+        $config.projects[-1].progress.decisions[0].projectId = "bad-cost-$i"
+    }
+    $journalFixture = Join-Path $root 'owner-journal.json'
+    $journalBaseline = @{ projectId = 'journal'; version = 'v1'; approvedAt = '2026-01-01T00:00:00Z'
+        items = @(@{ id = 'result-a'; criteriaVersion = 'v1'; weight = 3 }, @{ id = 'result-b'; criteriaVersion = 'v1'; weight = 2 }) }
+    $journalEvent = @{ projectId = 'journal'; eventId = 'a.1'; itemId = 'result-a'; scopeVersion = 'v1'; criteriaVersion = 'v1'
+        type = 'accepted'; at = '2026-01-01T06:00:00Z'; evidenceId = 'synthetic' }
+    $journalDocument = @{ schemaVersion = 1; projectId = 'journal'; events = @($journalEvent); coverage = @(foreach ($type in 'accepted','acceptance_revoked') {
+        @{ type = $type; from = '2026-01-01T00:00:00Z'; until = '2026-01-02T00:00:00Z' }
+    }) }
+    [IO.File]::WriteAllText($journalFixture, ($journalDocument | ConvertTo-Json -Depth 8))
+    $config.projects += @{
+        id = 'journal'; name = 'Журнал'; roots = @('other'); decisionsPath = 'owner-journal.json'
+        decisionTaskByItem = @{ 'result-a' = 'T-001'; 'result-b' = 'T-001' }
+        progress = @{ schemaVersion = 1; asOf = '2026-01-01T08:00:00Z'; baselines = @($journalBaseline) }
+    }
+    $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $registry -Encoding utf8
+    $gapFixture = Join-Path $root 'gap.json'
+    $gapBaseline = $journalBaseline.Clone()
+    $gapBaseline.projectId = 'gap'
+    $gapExpanded = @{projectId='gap';version='v2';previousVersion='v1';approvedAt='2026-01-02T06:00:00Z'
+        reason='Добавлен отчёт';items=$gapBaseline.items + @(@{id='result-c';criteriaVersion='v1';weight=1})}
+    $gap = @{schemaVersion=1;projectId='gap';events=@();coverage=$journalDocument.coverage.Clone()}
+    [IO.File]::WriteAllText($gapFixture, ($gap | ConvertTo-Json -Depth 8))
+    $config.projects += @{id='gap';name='Gap';roots=@('other');decisionsPath='gap.json';progress=@{schemaVersion=1;asOf='2026-01-02T08:00:00Z';baselines=@($gapBaseline,$gapExpanded)}}
+    $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $registry -Encoding utf8
     $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $probe.Start()
     $port = $probe.LocalEndpoint.Port
@@ -133,6 +186,41 @@ CI_HEAD_SHA: $old
     $url = $pending.Result
     if (!$url) { throw ($process.StandardError.ReadToEnd()) }
     $origin = "http://127.0.0.1:$port"
+    $journalSummary = (Invoke-RestMethod ($url + 'summary') -TimeoutSec 10) | Where-Object id -CEQ 'journal'
+    Assert-That ($journalSummary.weightedProgress.percent -eq 60 -and $journalSummary.journal.state -ceq 'readable' -and
+        $journalSummary.journal.PSObject.Properties.Name -notcontains 'path') 'PRG-003 loads a confirmed journal snapshot without a path'
+    $frame = $journalSummary.frame
+    $periodPath = $url + 'period?project=journal&from=2026-01-01&through=2026-01-01'
+    $journalPeriod = Invoke-RestMethod ($periodPath + "&frame=$frame") -TimeoutSec 10
+    Assert-That ($journalPeriod.report.totals.accepted -eq 1 -and $journalPeriod.journalGeneration -ceq $journalSummary.journal.generation) 'PRG-003 projects journal history from the summary snapshot'
+    $cardVersion = $journalSummary.tasks[0].versions[0].hash
+    $journalCard = Invoke-RestMethod ($url + "card?project=journal&task=T-001&version=$cardVersion&frame=$frame") -TimeoutSec 10
+    Assert-That ($journalCard.ownerDecisions[0].status -ceq 'accepted' -and
+        $journalCard.ownerDecisions[0].itemId -ceq 'result-a') 'PRG-003 projects acceptance onto the bound task version'
+    $lateDecision = $journalEvent.Clone()
+    $lateDecision.eventId = 'r.1'; $lateDecision.type = 'acceptance_revoked'; $lateDecision.at = '2026-01-01T07:00:00Z'
+    $journalDocument.events += $lateDecision
+    [IO.File]::WriteAllText($journalFixture, ($journalDocument | ConvertTo-Json -Depth 8))
+    $unchanged = Invoke-RestMethod ($periodPath + "&frame=$frame") -TimeoutSec 10
+    Assert-That ($unchanged.journalGeneration -ceq $journalSummary.journal.generation -and $unchanged.report.totals.accepted -eq 1) 'PRG-003 preserves the displayed frame before refresh'
+    $nextFrame = (Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{Origin=$origin} -TimeoutSec 10) | Where-Object id -CEQ 'journal'
+    $oldFrame = Invoke-WebRequest ($periodPath + "&frame=$frame") -SkipHttpErrorCheck -TimeoutSec 10
+    Assert-That ($oldFrame.StatusCode -eq 409 -and $nextFrame.weightedProgress.percent -eq 0 -and
+        $nextFrame.journal.generation -cne $journalSummary.journal.generation) 'PRG-003 changes all projections together and refuses obsolete frame'
+    $gapSummary = (Invoke-RestMethod ($url + 'summary') -TimeoutSec 10) | Where-Object id -CEQ 'gap'
+    $gapPath = $url + 'period?project=gap&from=2026-01-01&through=2026-01-02&frame='
+    $points = (Invoke-RestMethod ($gapPath + $gapSummary.frame) -TimeoutSec 10).remainingWork.points
+    Assert-That ($gapSummary.weightedProgress.state -ceq 'incomplete' -and $points.Count -eq 2 -and
+        $points[0].remainingWeight -eq 5 -and $points[1].state -ceq 'incomplete' -and $points[1].scopeChanged -and $points[1].scopeChanges[0].reason -ceq 'Добавлен отчёт') 'PRG-008 HTTP preserves confirmed points before gap'
+    foreach ($interval in $gap.coverage) { $interval.until = '2026-01-03T00:00:00Z' }
+    [IO.File]::WriteAllText($gapFixture, ($gap | ConvertTo-Json -Depth 8))
+    $gapSummary = (Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{Origin=$origin} -TimeoutSec 10) | Where-Object id -CEQ 'gap'
+    $points = (Invoke-RestMethod ($gapPath + $gapSummary.frame) -TimeoutSec 10).remainingWork.points
+    Assert-That ($points[0].remainingWeight -eq 5 -and $points[1].remainingWeight -eq 6 -and $points[1].scopeChanged) 'PRG-008 HTTP restores points after gap backfill'
+    [IO.File]::Delete($journalFixture)
+    $staleJournal = (Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{Origin=$origin} -TimeoutSec 10) | Where-Object id -CEQ 'journal'
+    Assert-That ($staleJournal.journal.state -ceq 'stale' -and
+        $staleJournal.journal.generation -ceq $nextFrame.journal.generation) 'PRG-003 retains the previous journal when the source is unavailable'
     $periodUri = $url + 'period?project=first&from=2026-01-01&through=2026-01-01'
     $period = Invoke-RestMethod $periodUri -TimeoutSec 10
     $wire = (Invoke-WebRequest $periodUri -TimeoutSec 10).Content | ConvertFrom-Json -DateKind String
@@ -145,12 +233,19 @@ CI_HEAD_SHA: $old
         !$period.coverage.merged.complete -and $period.coverage.merged.gaps.Count -eq 1) 'PTR-VIS-005 distinguishes complete metric from missing history'
     $historyBytes = [IO.File]::ReadAllText($history)
     $completeHistory = $historyBytes | ConvertFrom-Json -AsHashtable -DateKind String
+    Assert-That ($period.remainingWork.points.Count -eq 1 -and
+        $period.remainingWork.points[0].state -ceq 'incomplete' -and
+        $null -eq $period.remainingWork.points[0].PSObject.Properties['remainingWeight']) 'PRG-008 refuses cumulative weight where revocation coverage is missing'
     $completeHistory.coverage += @{ type = 'acceptance_revoked'; from = '2026-01-01T00:00:00Z'; until = '2026-01-02T00:00:00Z' }
     try {
         [IO.File]::WriteAllText($history, ($completeHistory | ConvertTo-Json -Depth 6))
         $completePeriod = Invoke-RestMethod $periodUri -TimeoutSec 10
         Assert-That ($completePeriod.coverage.accepted.complete -and $completePeriod.coverage.accepted.gaps.Count -eq 0 -and
             $completePeriod.report.totals.accepted -eq 1) 'PTR-VIS-005 acceptance coverage includes revocations'
+        $point = $completePeriod.remainingWork.points[0]
+        Assert-That ($point.state -ceq 'available' -and $point.date -ceq '2026-01-01' -and
+            $point.totalWeight -eq 8 -and $point.remainingWeight -eq 8 -and
+            $point.acceptedWeight -eq 0) 'PRG-003 restores confirmed weight independently of merged or accepted event count'
     } finally {
         [IO.File]::WriteAllText($history, $historyBytes)
     }
@@ -170,6 +265,25 @@ CI_HEAD_SHA: $old
     $restoredPeriod = Invoke-RestMethod $periodUri -TimeoutSec 10
     Assert-That ($restoredPeriod.report.totals.accepted -eq 1) 'PTR-VIS-005 restored history does not duplicate events'
     $first = Invoke-RestMethod ($url + 'summary') -TimeoutSec 10
+    Assert-That ($first[0].weightedProgress.state -ceq 'available' -and $first[0].weightedProgress.percent -eq 37.5 -and
+        $first[0].weightedProgress.remainingWeight -eq 5 -and $first[1].weightedProgress.state -ceq 'unconfigured') 'PRG-003 weighted progress is isolated by project'
+    $forecast = $first[0].dateForecast
+    Assert-That ($forecast.state -ceq 'available' -and $forecast.method -ceq 'scenario' -and
+        $forecast.asOf -ceq '2026-01-03' -and $forecast.earliest -ceq '2026-01-07' -and
+        $forecast.latest -ceq '2026-01-09' -and $forecast.earliestDeltaDays -eq -1 -and
+        $forecast.latestDeltaDays -eq 1) 'PRG-007 scenario range and plan deltas reach the project summary'
+    Assert-That ($first[1].dateForecast.state -ceq 'not_assessed' -and
+        $first[1].dateForecast.reason -ceq 'configuration_unavailable') 'PRG-008 forecast settings are isolated by project'
+    $invalidCosts = @($first | Where-Object id -Like 'bad-cost-*')
+    Assert-That ($invalidCosts.Count -eq 3 -and @($invalidCosts | Where-Object { $_.cost.state -cne 'invalid' }).Count -eq 0) 'PRG-014 rejects boolean, string and floating-point JSON schema versions'
+    Assert-That (@($invalidCosts | Where-Object { $_.dateForecast.reason -cne 'invalid_configuration' }).Count -eq 0) 'PRG-011 forecast rejects non-integer schema versions'
+    Assert-That ($first[0].cost.state -ceq 'available' -and $first[0].cost.asOf -ceq '2026-11-26' -and
+        $first[0].cost.values.plan.totalRub[1] -eq 80000 -and $first[0].cost.values.plan.totalUsd[1] -eq 800 -and
+        $null -eq $first[0].cost.values.forecast.totalRub -and $first[1].cost.state -ceq 'unconfigured') 'PRG-012 cost snapshot is isolated by project'
+    $rates = $first[0].cost.exchange
+    Assert-That ($rates.plan.rubPerUsd -eq 100 -and $rates.plan.effectiveDate -ceq '2026-01-01' -and
+        $rates.plan.source -ceq 'manual' -and $rates.forecast.rubPerUsd -eq 80 -and
+        $rates.forecast.effectiveDate -ceq '2026-01-02' -and $rates.forecast.source -ceq 'manual') 'PRG-014 HTTP exposes independent plan and forecast rates'
     $view = $first[0].tasks[0].evidence
     Assert-That ($view.state -ceq 'readable' -and $view.record.ci.current -and $view.record.review.current -and
         !$view.record.ownerAcceptance -and $view.record.mergeSha -and !$first[1].tasks[0].evidence -and
@@ -198,7 +312,7 @@ CI_HEAD_SHA: $old
     Assert-That ($recovered[0].tasks[0].evidence.state -ceq 'readable' -and
         $recovered[0].tasks[0].evidence.record.ownerAcceptance.status -ceq 'accepted') 'PTR-VIS-007 recovery and explicit acceptance'
     Assert-That ($first[0].historyConfigured -and !$first[1].historyConfigured) 'PTR-VIS-005 summary distinguishes history configuration by project'
-    Assert-That ($first.Count -eq (2 + [int][bool]$V2Root) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
+    Assert-That ($first.Count -eq (4 + [int][bool]$V2Root + $badVersions.Count) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
     $timeline = $first[0].timeline
     Assert-That ($timeline.startDate -ceq '2026-11-20' -and $timeline.timeZone -ceq 'UTC' -and
         $timeline.today -in @([DateTime]::UtcNow.ToString('yyyy-MM-dd'), [DateTime]::UtcNow.AddDays(-1).ToString('yyyy-MM-dd')) -and

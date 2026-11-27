@@ -10,6 +10,10 @@ $ErrorActionPreference = 'Stop'
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 
 Import-Module (Join-Path $PSScriptRoot 'lib/ProjectPeriod.psm1')
+Import-Module (Join-Path $PSScriptRoot 'lib/ProjectProgress.psm1')
+Import-Module (Join-Path $PSScriptRoot 'lib/ProjectRemainingWork.psm1')
+Import-Module (Join-Path $PSScriptRoot 'lib/ProjectForecast.psm1')
+Import-Module (Join-Path $PSScriptRoot 'lib/ProjectCost.psm1')
 
 function Read-Field([string]$Card, [string]$Label) {
     $match = [regex]::Match($Card, '(?im)^[ \t]*(?:\*\*)?' + [regex]::Escape($Label) +
@@ -294,6 +298,40 @@ function Update-Evidence {
     }
 }
 
+function Test-DecisionFrame($Project, $Request, $Response) {
+    if (!$Project.decisionsPath) { return $true }
+    $frame = $Request.QueryString['frame']
+    if ($frame -ceq $Project.decisionFrame) { return $true }
+    $Response.StatusCode = if ($frame) { 409 } else { 400 }
+    return $false
+}
+
+function Update-DecisionJournals {
+    foreach ($project in $projects) {
+        if (!$project.decisionsPath) { continue }
+        $project.decisionFrame = [guid]::NewGuid().ToString('N')
+        try {
+            Assert-PlainPath $project.decisionsPath $false
+            $candidate = Read-ProjectDecisionJournal -Path $project.decisionsPath -ProjectId $project.id -Baselines $project.progressInput.baselines
+            $computed = Get-ProjectJournalProgress -Snapshot $candidate -ProjectId $project.id -Baselines $project.progressInput.baselines -AsOf $project.decisionAsOf
+            $active = @($project.progressInput.baselines | Where-Object {
+                (Read-ObservedInstant $_['approvedAt']) -le $project.decisionAsOf
+            } | Select-Object -Last 1)
+            $items = @(if ($active.Count) { $active[0]['items'] })
+            $viewArgs = @{ Snapshot = $candidate; TaskByItem = $project.decisionTaskByItem; AsOf = $project.decisionAsOf; ActiveItems = $items }
+            $project.decisionView = Get-ProjectDecisionView @viewArgs
+            $project.decisionSnapshot = $candidate
+            $project.decisionReadAt = [DateTimeOffset]::UtcNow
+            $project.decisionState = 'readable'
+            $project.weightedProgress = $computed
+        } catch {
+            $project.decisionState = if ($null -ne $project.decisionSnapshot) { 'stale' } else { 'unavailable' }
+            if ($null -eq $project.decisionSnapshot) { $project.weightedProgress = @{ state = 'incomplete' } }
+        }
+        $project.dateForecast = Read-ProjectDateForecast $project.registryEntry $project.weightedProgress $project.timeline
+    }
+}
+
 function Get-Summary {
     foreach ($project in $projects) {
         $tasks = @{}
@@ -322,10 +360,15 @@ function Get-Summary {
                 }
             }
         }
-        @{
+        $summary = @{
             id = $project.id
             name = $project.name
             historyConfigured = [bool]$project.historyPath
+            dateForecast = $project.dateForecast
+            weightedProgress = $project.weightedProgress
+            cost = if ($project.cost.ContainsKey('exchange') -and $project.cost.exchange.ContainsKey('forecast') -and $project.cost.exchange.forecast.source -ceq 'cbr') {
+                Read-ProjectCostSnapshot $project.registryEntry $fxState.latest
+            } else { $project.cost }
             timeline = if ($project.timeline) {
                 @{
                     startDate = $project.timeline.startDate
@@ -353,6 +396,16 @@ function Get-Summary {
                 }
             })
         }
+        if ($project.decisionsPath) {
+            $summary.frame = $project.decisionFrame
+            $summary.journal = @{
+                state = $project.decisionState
+                readAt = $project.decisionReadAt
+                unmappedCount = if ($null -ne $project.decisionView) { $project.decisionView.unmappedItems.Count } else { 0 }
+                generation = if ($null -ne $project.decisionSnapshot) { $project.decisionSnapshot.sha256 }
+            }
+        }
+        $summary
     }
 }
 
@@ -397,8 +450,160 @@ function Read-TimelineDate($Value) {
     return $Value
 }
 
+function Get-RemainingWorkView($Project, $Period, $Zone, $History) {
+    $data = $Project.progressInput
+    if ($null -eq $data) { return @{ state = 'unconfigured'; points = @() } }
+    if ($null -eq $History) { return @{ state = 'incomplete'; points = @() } }
+    if ($Project.decisionsPath) {
+        # A coverage gap at the current cutoff can coexist with verified earlier points.
+        if ($null -eq $Project.decisionSnapshot) { return @{ state = 'incomplete'; points = @() } }
+        $cutoff = $Project.decisionAsOf
+    } else {
+        if ($Project.weightedProgress.state -cne 'available') {
+            return @{ state = 'incomplete'; points = @() }
+        }
+        $cutoff = $Project.weightedProgress.asOf
+    }
+    if ($cutoff -gt $Period.SnapshotAt) { $cutoff = $Period.SnapshotAt }
+    $lastDate = [DateOnly]::FromDateTime([TimeZoneInfo]::ConvertTime($cutoff, $Zone).DateTime)
+    if ($lastDate -gt $Period.Through) { $lastDate = $Period.Through }
+    if ($lastDate -lt $Period.From) { return @{ state = 'before_period'; points = @() } }
+    $intervals = @($History.coverage | Where-Object { $_.type -cin 'accepted', 'acceptance_revoked' })
+    $decisions = @(if ($Project.decisionsPath) { $Project.decisionSnapshot.document.events } else { $data.decisions })
+    Get-ProjectRemainingWork -ProjectId $Project.id -From $Period.From -Through $lastDate -SnapshotAt $cutoff -TimeZone $Zone -Baselines $data.baselines -Decisions $decisions -Coverage $intervals -Checkpoint $data['checkpoint']
+}
+
+function Read-WeightedProgress($Entry) {
+    if (!$Entry.Contains('progress')) { return @{ state = 'unconfigured' } }
+    try {
+        $data = $Entry.progress
+        if ($data -isnot [Collections.IDictionary] -or $data.schemaVersion -cne 1 -or
+            $data.baselines -isnot [array] -or $data.decisions -isnot [array] -or
+            $data.decisionsComplete -isnot [bool]) { throw 'INVALID_PROGRESS_SNAPSHOT' }
+        if (!$data.decisionsComplete) { return @{ state = 'incomplete' } }
+        $asOf = Read-ObservedInstant $data.asOf
+        if ($null -eq $asOf) { throw 'INVALID_PROGRESS_CUTOFF' }
+        Get-ProjectProgress -ProjectId $Entry.id -AsOf $asOf -Baselines $data.baselines -Decisions $data.decisions
+    } catch {
+        @{ state = 'invalid' }
+    }
+}
+
+function Read-ProjectDateForecast($Entry, $Progress, $Timeline) {
+    if (!$Entry.Contains('forecast')) { return @{ state = 'not_assessed'; reason = 'configuration_unavailable' } }
+    if ($Progress.state -cne 'available') { return @{ state = 'not_assessed'; reason = 'scope_unavailable' } }
+    try {
+        $config = $Entry['forecast']
+        if ($config -isnot [Collections.IDictionary] -or
+            ($config['schemaVersion'] -isnot [int] -and $config['schemaVersion'] -isnot [long]) -or
+            $config['schemaVersion'] -ne 1) {
+            throw 'FORECAST_INVALID_CONFIGURATION'
+        }
+        if ($config['scopeVersion'] -cne $Progress.scopeVersion) {
+            return @{ state = 'not_assessed'; reason = 'scope_version_mismatch' }
+        }
+        $zone = if ($Timeline) { $Timeline.zone } else { [TimeZoneInfo]::Utc }
+        $date = [DateOnly]::FromDateTime([TimeZoneInfo]::ConvertTime($Progress.asOf, $zone).DateTime)
+        $arguments = @{ AsOf = $date; RemainingWeight = $Progress.remainingWeight }
+        foreach ($name in 'UnitsPerDayLow','UnitsPerDayHigh','WorkDays','DaysOff','PlanFinish','NotBefore','CompletedAt','UnresolvedBlocker') {
+            $key = $name.Substring(0,1).ToLowerInvariant() + $name.Substring(1)
+            if (!$config.Contains($key) -or $null -eq $config[$key]) { continue }
+            $value = $config[$key]
+            switch ($name) {
+                { $_ -in 'UnitsPerDayLow','UnitsPerDayHigh' } {
+                    if ($value -isnot [long] -and $value -isnot [double] -and $value -isnot [decimal]) {
+                        throw 'FORECAST_INVALID_PACE'
+                    }
+                }
+                'WorkDays' {
+                    $dayNames = [Enum]::GetNames([DayOfWeek])
+                    if ($value -isnot [array] -or @($value | Where-Object { $_ -isnot [string] -or $_ -cnotin $dayNames }).Count) {
+                        throw 'FORECAST_INVALID_WORK_DAYS'
+                    }
+                }
+                'DaysOff' {
+                    if ($value -isnot [array]) { throw 'FORECAST_INVALID_DAYS_OFF' }
+                    $value = @($value | ForEach-Object {
+                        [DateOnly]::ParseExact((Read-TimelineDate $_), 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+                    })
+                }
+                { $_ -in 'PlanFinish','NotBefore','CompletedAt' } {
+                    $value = [DateOnly]::ParseExact((Read-TimelineDate $value), 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+                }
+            }
+            $arguments[$name] = $value
+        }
+        if ($arguments.ContainsKey('UnresolvedBlocker') -and $arguments.UnresolvedBlocker -isnot [bool]) {
+            throw 'FORECAST_INVALID_BLOCKER'
+        }
+        $forecast = Get-ProjectDateForecast @arguments
+        foreach ($field in 'asOf','planFinish','earliest','latest','completedAt') {
+            if ($null -ne $forecast[$field]) {
+                $forecast[$field] = $forecast[$field].ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+            }
+        }
+        $forecast
+    } catch {
+        @{ state = 'not_assessed'; reason = 'invalid_configuration' }
+    }
+}
+
+function Read-ProjectCostSnapshot($Entry, $Fx = $null) {
+    if (!$Entry.Contains('cost')) { return @{ state = 'unconfigured' } }
+    try {
+        $cost = $Entry.cost
+        if ($cost -isnot [Collections.IDictionary]) { throw 'INVALID_COST_SNAPSHOT' }
+        $schemaVersion = $cost['schemaVersion']
+        if (($schemaVersion -isnot [int] -and $schemaVersion -isnot [long]) -or $schemaVersion -ne 1) {
+            throw 'INVALID_COST_SNAPSHOT'
+        }
+        $date = Read-TimelineDate $cost.asOf
+        $scope = $cost.scopeVersion
+        if ($scope -isnot [string] -or $scope -cnotmatch '\A[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}\z') { throw 'INVALID_COST_SCOPE' }
+
+        $inputs = @{}
+        foreach ($name in 'PlanHours','PlanAiRub','PlanAiUsd','RemainingHours','RemainingAiRub','RemainingAiUsd',
+            'PlanRateRub','PlanRubPerUsd','RateRub','RubPerUsd','ConfirmedLaborRub','ConfirmedAiRub','ConfirmedAiUsd') {
+            $key = $name.Substring(0,1).ToLowerInvariant() + $name.Substring(1)
+            if (!$cost.Contains($key) -or $null -eq $cost[$key]) { continue }
+            $value = $cost[$key]
+            if ($name -match 'RateRub|RubPerUsd|Confirmed' -and $value -isnot [long] -and
+                $value -isnot [double] -and $value -isnot [decimal]) { throw 'INVALID_COST_VALUE' }
+            $inputs[$name] = $value
+        }
+        $mode = $cost['exchangeRateMode']
+        if ($null -ne $mode -and $mode -cnotin @('manual', 'cbr')) { throw 'INVALID_COST_FX_MODE' }
+        $exchange = @{}
+        foreach ($kind in 'plan', 'forecast') {
+            $parameter = if ($kind -ceq 'plan') { 'PlanRubPerUsd' } else { 'RubPerUsd' }
+            $dateKey = if ($kind -ceq 'plan') { 'planExchangeRateDate' } else { 'exchangeRateDate' }
+            if ($inputs.ContainsKey($parameter) -and $inputs[$parameter] -gt 0) {
+                $exchange[$kind] = @{
+                    rubPerUsd = $inputs[$parameter]
+                    effectiveDate = Read-TimelineDate $cost[$dateKey]
+                    source = 'manual'
+                }
+            }
+        }
+        if (!$exchange.ContainsKey('forecast') -and $mode -ceq 'cbr') {
+            $exchange.forecast = @{ source = 'cbr'; state = 'unavailable' }
+            if ($null -ne $Fx -and $Fx.state -cin @('current', 'stale')) {
+                $inputs.RubPerUsd = $Fx.snapshot.ratePerUsd
+                $exchange.forecast = @{
+                    source = 'cbr'; state = $Fx.state; rubPerUsd = $inputs.RubPerUsd
+                    effectiveDate = $Fx.snapshot.effectiveDate
+                }
+            }
+        }
+        $result = Get-ProjectCost @inputs
+        @{ state = 'available'; asOf = $date; scopeVersion = $scope; values = $result; exchange = $exchange }
+    } catch {
+        @{ state = 'invalid' }
+    }
+}
+
 $registryFile = Get-Item -LiteralPath $RegistryPath
-$registry = [IO.File]::ReadAllText($registryFile.FullName, $utf8) | ConvertFrom-Json -AsHashtable
+$registry = [IO.File]::ReadAllText($registryFile.FullName, $utf8) | ConvertFrom-Json -AsHashtable -DateKind String
 $queue = $null
 if ($registry.Contains('queue')) {
     $entry = $registry.queue
@@ -431,11 +636,41 @@ $projects = @(foreach ($entry in $registry.projects) {
         $ownerActions[$action.taskId] = $action
     }
     foreach ($taskId in @($bindings.Keys)) { $bindings[$taskId] = @($bindings[$taskId] | Sort-Object -CaseSensitive) }
+    $decisionsPath = $null
+    $decisionAsOf = $null
+    if ($entry.Contains('decisionsPath')) {
+        $relative = $entry['decisionsPath']
+        $inputProgress = $entry['progress']
+        if ($relative -isnot [string] -or !$relative.Trim() -or [IO.Path]::IsPathRooted($relative) -or
+            $inputProgress -isnot [Collections.IDictionary] -or $inputProgress['baselines'] -isnot [array]) {
+            throw 'INVALID_PROJECT_DECISION_JOURNAL'
+        }
+        $decisionsPath = [IO.Path]::GetFullPath($relative, $registryFile.DirectoryName)
+        $decisionAsOf = Read-ObservedInstant $inputProgress['asOf']
+        if ($decisionsPath -notmatch '^[A-Za-z]:[\\/]' -or $null -eq $decisionAsOf) {
+            throw 'INVALID_PROJECT_DECISION_JOURNAL'
+        }
+    }
+    $progress = if ($decisionsPath) { @{ state = 'incomplete' } } else { Read-WeightedProgress $entry }
+    $timeline = Read-ProjectTimeline $entry
     $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     @{
         id = $entry.id
         name = $entry.name
-        timeline = Read-ProjectTimeline $entry
+        timeline = $timeline
+        weightedProgress = $progress
+        progressInput = $entry['progress']
+        registryEntry = $entry
+        decisionsPath = $decisionsPath
+        decisionAsOf = $decisionAsOf
+        decisionSnapshot = $null
+        decisionView = $null
+        decisionTaskByItem = if ($entry.Contains('decisionTaskByItem')) { $entry['decisionTaskByItem'] } else { @{} }
+        decisionFrame = $null
+        decisionReadAt = $null
+        decisionState = 'unavailable'
+        dateForecast = Read-ProjectDateForecast $entry $progress $timeline
+        cost = Read-ProjectCostSnapshot $entry
         historyPath = if ($entry.Contains('historyPath')) {
             $history = $entry['historyPath']
             if ($history -isnot [string] -or !$history.Trim() -or [IO.Path]::IsPathRooted($history)) {
@@ -465,16 +700,41 @@ $projects = @(foreach ($entry in $registry.projects) {
 })
 if (!$projects.Count) { throw 'EMPTY_PROJECT_REGISTRY' }
 
+if ($projects | Where-Object decisionsPath) {
+    Import-Module (Join-Path $PSScriptRoot 'lib/ProjectDecisionJournal.psm1')
+    Import-Module (Join-Path $PSScriptRoot 'lib/ProjectDecisionView.psm1')
+}
 $page = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'project-viewer.html'), $utf8)
 $origin = "http://127.0.0.1:$Port"
 $key = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
 $prefix = "/$key/"
 $listener = [Net.HttpListener]::new()
 $listener.Prefixes.Add("$origin/")
+$fxState = [hashtable]::Synchronized(@{ latest = $null })
+$fxWorker = $null
+$fxCancel = $null
+$fxPending = $null
 try {
+    if ($projects | Where-Object { $_.cost.ContainsKey('exchange') -and $_.cost.exchange.ContainsKey('forecast') -and
+            $_.cost.exchange.forecast.source -ceq 'cbr' }) {
+        $fxCancel = [Threading.CancellationTokenSource]::new()
+        $fxWorker = [PowerShell]::Create()
+        $fxModule = Join-Path $PSScriptRoot 'lib/ProjectCbrFx.psm1'
+        $fxPath = $registryFile.FullName + '.usd-rub.json'
+        $null = $fxWorker.AddScript({
+            param($Module, $Path, $State, $Token)
+            $ErrorActionPreference = 'Stop'
+            Import-Module -Name $Module
+            do {
+                $State.latest = Update-CbrUsdRateSnapshot -Path $Path -CancellationToken $Token
+            } while (!$Token.WaitHandle.WaitOne([TimeSpan]::FromHours(1)))
+        }).AddArgument($fxModule).AddArgument($fxPath).AddArgument($fxState).AddArgument($fxCancel.Token)
+        $fxPending = $fxWorker.BeginInvoke()
+    }
     Update-Projects
     Update-Queue
     Update-Evidence
+    Update-DecisionJournals
     $listener.Start()
     Write-Output "$origin$prefix"
     while ($listener.IsListening) {
@@ -499,11 +759,12 @@ try {
                 $body = $page
             } elseif (($method -eq 'GET' -and $route -eq 'summary') -or
                 ($method -eq 'POST' -and $route -eq 'refresh' -and $request.Headers['Origin'] -ceq $origin)) {
-                if ($method -eq 'POST') { Update-Projects; Update-Queue; Update-Evidence }
+                if ($method -eq 'POST') { Update-Projects; Update-Queue; Update-Evidence; Update-DecisionJournals }
                 $body = ConvertTo-Json -InputObject @(Get-Summary) -Depth 10 -Compress
             } elseif ($method -eq 'GET' -and $route -eq 'period') {
                 $project = $projects | Where-Object { $_.id -ceq $request.QueryString['project'] }
                 if (!$project) { $response.StatusCode = 404; continue }
+                if (!(Test-DecisionFrame $project $request $response)) { continue }
                 $zone = if ($project.timeline) { $project.timeline.zone } else { [TimeZoneInfo]::Utc }
                 $args = @{TimeZone = $zone; SnapshotAt = [DateTimeOffset]::UtcNow}
                 try {
@@ -525,6 +786,7 @@ try {
                     continue
                 }
                 $state = 'unconfigured'
+                $history = @{ events = @(); coverage = @() }
                 $result = $null
                 $coverage = $null
                 if ($project.historyPath) {
@@ -538,6 +800,25 @@ try {
                         $result = $null
                         $state = 'unavailable'
                     }
+                }
+                if ($project.decisionsPath) {
+                    $events = @($history.events | Where-Object Type -CNotIn 'accepted','acceptance_revoked')
+                    $intervals = @($history.coverage | Where-Object type -CNotIn 'accepted','acceptance_revoked')
+                    if ($null -ne $project.decisionView) {
+                        $events += @($project.decisionView.eventHistory)
+                        if (!$project.decisionView.unmappedItems.Count) { $intervals += @($project.decisionView.coverage) }
+                        $state = 'readable'
+                    }
+                    $history = @{ events = $events; coverage = $intervals }
+                    if ($state -ceq 'readable') {
+                        $result = Get-ProjectPeriodEvents -ProjectId $project.id -Period $period -Events $events
+                        $coverage = Get-ProjectHistoryCoverage $period $intervals @($result.totals.Keys)
+                    }
+                }
+                try {
+                    $remainingWork = Get-RemainingWorkView $project $period $zone $(if ($state -ceq 'readable') { $history })
+                } catch {
+                    $remainingWork = @{ state = 'invalid'; points = @() }
                 }
                 $periodView = @{
                     From = $period.From.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
@@ -553,8 +834,14 @@ try {
                     })
                     queue = if ($queue) { @{ updated = $queue.updated; stale = $queue.stale } } else { $null }
                 }
-                $body = @{ projectId = $project.id; sourceFreshness = $sourceFreshness; period = $periodView; historyState = $state; report = $result; coverage = $coverage; historyReadAt = if ($state -ceq 'readable') { [DateTimeOffset]::UtcNow } else { $null } } |
-                    ConvertTo-Json -Depth 10 -Compress
+                $periodResponse = @{ projectId = $project.id; sourceFreshness = $sourceFreshness; period = $periodView; historyState = $state; report = $result; coverage = $coverage; remainingWork = $remainingWork; historyReadAt = if ($state -ceq 'readable') { [DateTimeOffset]::UtcNow } else { $null } }
+                if ($project.decisionsPath) {
+                    $periodResponse.frame = $project.decisionFrame
+                    $periodResponse.journalState = $project.decisionState
+                    $periodResponse.journalReadAt = $project.decisionReadAt
+                    $periodResponse.journalGeneration = if ($null -ne $project.decisionSnapshot) { $project.decisionSnapshot.sha256 }
+                }
+                $body = $periodResponse | ConvertTo-Json -Depth 10 -Compress
             } elseif ($method -eq 'GET' -and $route -eq 'report' -and $queue) {
                 $id = $request.QueryString['assignment']
                 $kind = $request.QueryString['copy']
@@ -564,6 +851,7 @@ try {
             } elseif ($method -eq 'GET' -and $route -eq 'card') {
                 $project = $projects | Where-Object { $_.id -ceq $request.QueryString['project'] }
                 if ($null -eq $project) { $response.StatusCode = 404; continue }
+                if (!(Test-DecisionFrame $project $request $response)) { continue }
                 $record = foreach ($source in $project.sources) {
                     $source.cards.Values | Where-Object {
                         $_.id -ceq $request.QueryString['task'] -and $null -ne $_.version -and
@@ -572,7 +860,16 @@ try {
                 }
                 $first = @($record | Select-Object -First 1)
                 if (!$first.Count) { $response.StatusCode = 404; continue }
-                $body = @{ text = $first[0].version.text } | ConvertTo-Json -Compress
+                $cardResponse = @{ text = $first[0].version.text }
+                if ($project.decisionsPath) {
+                    $cardResponse.frame = $project.decisionFrame
+                    $cardResponse.journalGeneration = if ($null -ne $project.decisionSnapshot) { $project.decisionSnapshot.sha256 }
+                    $cardResponse.ownerDecisions = @(if ($null -ne $project.decisionView) {
+                        $project.decisionView.acceptanceByItem.Values | Where-Object taskId -CEQ $request.QueryString['task'] |
+                            Sort-Object itemId -CaseSensitive | Select-Object -Property itemId, status, decidedAt
+                    })
+                }
+                $body = $cardResponse | ConvertTo-Json -Depth 8 -Compress
             } else { $response.StatusCode = 404; continue }
             $bytes = $utf8.GetBytes($body)
             $response.ContentLength64 = $bytes.Length
@@ -585,4 +882,15 @@ try {
     }
 } finally {
     $listener.Close()
+    if ($fxWorker) {
+        $fxCancel.Cancel()
+        try {
+            if ($fxPending -and $fxPending.AsyncWaitHandle.WaitOne(5000)) {
+                $null = $fxWorker.EndInvoke($fxPending)
+            } else { $fxWorker.Stop() }
+        } finally {
+            $fxWorker.Dispose()
+            $fxCancel.Dispose()
+        }
+    }
 }
