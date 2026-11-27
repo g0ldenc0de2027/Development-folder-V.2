@@ -248,6 +248,10 @@ try {
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-progress-regressions.ps1')
     if ($LASTEXITCODE -ne 0) { throw "project-progress-regressions.ps1 failed with exit code $LASTEXITCODE" }
 
+    Write-Output 'QUALITY-GATE: running project merge history regressions'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-merge-history-regressions.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "project-merge-history-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
     Write-Output 'QUALITY-GATE: running project remaining work regressions'
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-remaining-work-regressions.ps1')
     if ($LASTEXITCODE -ne 0) { throw "project-remaining-work-regressions.ps1 failed with exit code $LASTEXITCODE" }
