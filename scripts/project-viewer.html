@@ -164,11 +164,12 @@ let viewGeneration = 0;
 
 async function request(path, method = 'GET') {
   const response = await fetch(path, {method, cache:'no-store'});
-  if (!response.ok) throw new Error('REQUEST_FAILED');
+  if (!response.ok) throw new Error(response.status === 409 ? 'FRAME_CHANGED' : 'REQUEST_FAILED');
   return response.json();
 }
 
 function showProject(id) {
+  if (activeCard && activeCard.projectId !== id) byId('close').click();
   selected = id;
   clearPeriod();
   boardFilter = '';
@@ -248,12 +249,20 @@ function render() {
   renderTimeline(project.timeline);
   renderDateForecast(project.dateForecast);
   renderWeightedProgress(project.weightedProgress);
+  if (project.journal?.state === 'stale') {
+    byId('weighted-status').textContent += ' · Снимок журнала устарел';
+  }
   renderCost(project.cost);
   const sources = project.sources.map(source =>
     node('li', source.path + ' · ' + sourceStatus(source.updated, source.error)));
   if (project.queue) {
     sources.push(node('li', 'Очередь ' + project.queue.id + ' · ' +
       sourceStatus(project.queue.updated, project.queue.stale ? 'Очередь недоступна' : '')));
+  }
+  if (project.journal) {
+    const warning = project.journal.state === 'stale' ? 'Снимок журнала устарел'
+      : project.journal.state === 'unavailable' ? 'Журнал недоступен' : '';
+    sources.push(node('li', 'Журнал решений · ' + sourceStatus(project.journal.readAt, warning)));
   }
   sources.push(node('li', project.historyConfigured
     ? 'Источник истории настроен · доступность и покрытие проверяются при построении отчёта'
@@ -580,6 +589,7 @@ function restoreTaskFocus(button) {
 async function openCard(project, task) {
   activeCard = {projectId: project.id, taskId: task.id};
   const generation = ++viewGeneration;
+  let renderedDecisions = false;
   byId('card-title').textContent = task.id;
   const container = byId('versions');
   container.replaceChildren(...task.unreadable.map(path => node('p', 'Ошибка чтения · ' + path)));
@@ -659,11 +669,27 @@ async function openCard(project, task) {
     container.append(section);
     try {
       const params = new URLSearchParams({project:project.id, task:task.id, version:version.hash});
+      if (project.frame) params.set('frame', project.frame);
       const card = await request('card?' + params);
       if (generation !== viewGeneration) return;
+      if (project.frame && (card.frame !== project.frame || card.journalGeneration !== project.journal.generation)) {
+        throw new Error('FRAME_CHANGED');
+      }
       text.textContent = card.text;
-    } catch {
-      text.textContent = 'Не удалось загрузить версию. Обновите список задач.';
+      if (!renderedDecisions && card.ownerDecisions?.length) {
+        renderedDecisions = true;
+        const list = node('ul');
+        for (const decision of card.ownerDecisions) {
+          const label = decision.status === 'accepted' ? 'Результат принят' : 'Приёмка отозвана';
+          list.append(node('li', decision.itemId + ' · ' + label + ' · ' + new Date(decision.decidedAt).toLocaleString('ru')));
+        }
+        container.prepend(list);
+      }
+    } catch (error) {
+      if (generation !== viewGeneration) return;
+      text.textContent = error.message === 'FRAME_CHANGED'
+        ? 'Снимок обновился. Нажмите «Обновить».'
+        : 'Не удалось загрузить версию. Обновите список задач.';
     }
   }
 }
@@ -818,7 +844,8 @@ function renderPeriod(snapshot) {
   status.textContent += ' · История прочитана: ' + instant(snapshot.historyReadAt);
   const result = byId('period-result');
   const totals = node('ul');
-  for (const [type, label] of Object.entries(eventLabels)) {
+  const labels = snapshot.frame ? {...eventLabels, accepted:'Принято результатов', acceptance_revoked:'Отозвано приёмок результатов'} : eventLabels;
+  for (const [type, label] of Object.entries(labels)) {
     const metric = coverage[type];
     const item = node('li', label + ': ' + (metric.complete ? '' : 'подтверждено ') + report.totals[type]);
     if (!metric.complete) {
@@ -833,7 +860,7 @@ function renderPeriod(snapshot) {
   const chart = node('ul');
   chart.className = 'daily-chart';
   const daily = Object.entries(report.days);
-  const series = [['accepted', 'Принято задач'], ['merged', 'Слито PR']];
+  const series = [['accepted', labels.accepted], ['merged', labels.merged]];
   const peak = daily.reduce((max, [, metrics]) => Math.max(max, metrics.accepted ?? 0, metrics.merged ?? 0), 1);
   for (const [day, metrics] of daily) {
     const total = Object.values(metrics).reduce((sum, count) => sum + count, 0);
@@ -855,7 +882,7 @@ function renderPeriod(snapshot) {
   }
   const events = node('ul');
   for (const event of report.events) {
-    events.append(node('li', event.day + ' · ' + event.taskId + ' · ' + eventLabels[event.type] +
+    events.append(node('li', event.day + ' · ' + event.taskId + (event.itemId ? ' · ' + event.itemId : '') + ' · ' + labels[event.type] +
       (event.counted ? '' : ' · Не входит в итог')));
   }
   result.append(node('h4', 'Итоги'), totals, node('h4', 'События по дням'),
@@ -874,7 +901,10 @@ byId('period-form').addEventListener('submit', async event => {
   event.preventDefault();
   clearPeriod();
   const generation = periodGeneration;
-  const params = new URLSearchParams({project: selected});
+  const project = projects.find(item => item.id === selected);
+  if (!project) return;
+  const params = new URLSearchParams({project: project.id});
+  if (project.frame) params.set('frame', project.frame);
   const choice = byId('period-range').value;
   if (choice === 'custom') {
     const from = byId('period-from').value;
@@ -889,9 +919,18 @@ byId('period-form').addEventListener('submit', async event => {
   byId('period-status').textContent = 'Чтение истории…';
   try {
     const snapshot = await request('period?' + params);
-    if (generation === periodGeneration) renderPeriod(snapshot);
-  } catch {
-    if (generation === periodGeneration) byId('period-status').textContent = 'Не удалось построить отчёт. Проверь даты.';
+    if (generation !== periodGeneration) return;
+    if (project.frame && (snapshot.frame !== project.frame || snapshot.journalGeneration !== project.journal.generation)) {
+      throw new Error('FRAME_CHANGED');
+    }
+    renderPeriod(snapshot);
+    if (snapshot.journalState === 'stale') byId('period-status').textContent += ' · Снимок решений устарел';
+    if (snapshot.journalState === 'unavailable') byId('period-status').textContent += ' · Журнал решений недоступен';
+  } catch (error) {
+    if (generation !== periodGeneration) return;
+    byId('period-status').textContent = error.message === 'FRAME_CHANGED'
+      ? 'Снимок обновился. Нажмите «Обновить».'
+      : 'Не удалось построить отчёт. Проверь даты.';
   }
 });
 byId('period-download').addEventListener('click', () => {
@@ -938,7 +977,9 @@ async function load(refresh) {
         byId('versions').replaceChildren(node('p', 'Карточка отсутствует в текущем снимке.'));
       }
     }
-    byId('notice').textContent = projects.some(project => project.queue?.stale || project.sources.some(source => source.error))
+    byId('notice').textContent = projects.some(project =>
+      project.queue?.stale || project.sources.some(source => source.error) ||
+      project.journal?.state === 'stale' || project.journal?.state === 'unavailable')
       ? 'Часть источников прочитать не удалось.' : '';
   } catch {
     byId('notice').textContent = 'Обновление не удалось. Показаны данные последней загрузки.';
