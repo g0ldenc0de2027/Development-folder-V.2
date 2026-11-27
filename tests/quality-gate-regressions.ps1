@@ -257,8 +257,15 @@ if (
     throw 'Quality gate must use relative worktree path exclusions and fail when no scripts are scanned'
 }
 $scopeRegressionPwsh = (Get-Command pwsh -ErrorAction Stop).Source
-$gitCommonDirectory = ((& git -C $repoRoot rev-parse --path-format=absolute --git-common-dir 2>$null) -join '').Trim()
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $gitCommonDirectory -PathType Container)) {
+$previousOutputEncoding = [Console]::OutputEncoding
+try {
+    [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+    $gitCommonDirectory = ((& git -C $repoRoot rev-parse --path-format=absolute --git-common-dir 2>$null) -join '').Trim()
+    $gitCommonDirectoryExit = $LASTEXITCODE
+} finally {
+    [Console]::OutputEncoding = $previousOutputEncoding
+}
+if ($gitCommonDirectoryExit -ne 0 -or -not (Test-Path -LiteralPath $gitCommonDirectory -PathType Container)) {
     throw 'Unable to locate the Git common directory for TempRoot safety regressions'
 }
 $unsafeScopeTempRoot = Join-Path $repoRoot ('temp/T-SCOPE-REJECT-' + [guid]::NewGuid().ToString('N'))
