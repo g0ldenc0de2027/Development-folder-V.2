@@ -52,3 +52,9 @@ try {
     if ($_.Exception.Message -cne 'STALE_REMAINING_WORK_CHECKPOINT') { throw }
     'PASS: PRG-008 changed checkpoint evidence cannot confirm history'
 }
+
+$moscow = [TimeZoneInfo]::FindSystemTimeZoneById('Russian Standard Time')
+$boundary = Decision midnight A v1 accepted '2026-11-21T00:00:00+03:00'
+$bounds = @(Coverage '2026-11-20T00:00:00Z' '2026-11-23T00:00:00Z')
+$daily = Get-ProjectRemainingWork -ProjectId demo -From '2026-11-20' -Through '2026-11-22' -SnapshotAt '2026-11-22T21:00:00Z' -TimeZone $moscow -Baselines @($first) -Decisions @($boundary) -Coverage $bounds
+Assert-That (($daily.points.remainingWeight -join ',') -ceq '20,16,16') 'PRG-008 local midnight changes exactly the following point'

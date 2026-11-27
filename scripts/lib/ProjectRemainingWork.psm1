@@ -62,10 +62,24 @@ function Get-ProjectRemainingWork {
         }
     }
     $types = @('accepted', 'acceptance_revoked')
+    $changeTicks = @(
+        foreach ($baseline in $Baselines) { ([DateTimeOffset]$baseline['approvedAt']).UtcTicks }
+        foreach ($decision in $Decisions) { ([DateTimeOffset]$decision['at']).UtcTicks }
+    ) | Sort-Object -Unique
+    $changeTicks = @($changeTicks)
+    $changeIndex = 0
+    $snapshot = $null
     $previousVersion = $null
     $points = @(for ($day = $period.From; $day -le $period.Through; $day = $day.AddDays(1)) {
         $dayPeriod = Get-ProjectPeriod -From $day -Through $day -SnapshotAt $SnapshotAt -TimeZone $TimeZone
-        $snapshot = Get-ProjectProgress -ProjectId $ProjectId -AsOf $dayPeriod.EndUtc.AddTicks(-1) -Baselines $Baselines -Decisions $Decisions
+        $endTicks = $dayPeriod.EndUtc.UtcTicks
+        $previousIndex = $changeIndex
+        while ($changeIndex -lt $changeTicks.Count -and $changeTicks[$changeIndex] -lt $endTicks) {
+            $changeIndex++
+        }
+        if ($null -eq $snapshot -or $changeIndex -ne $previousIndex) {
+            $snapshot = Get-ProjectProgress -ProjectId $ProjectId -AsOf $dayPeriod.EndUtc.AddTicks(-1) -Baselines $Baselines -Decisions $Decisions
+        }
         $point = @{ date = $day.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture); state = $snapshot.state }
         if ($snapshot.state -ceq 'available') {
             $point.scopeVersion = $snapshot.scopeVersion
