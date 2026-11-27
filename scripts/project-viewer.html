@@ -957,7 +957,15 @@ byId('period-download').addEventListener('click', () => {
 
 function validSnapshot(snapshot) {
   const ids = new Set();
+  const optionalText = value => value == null || typeof value === 'string';
   const sourceValid = source => source && typeof source.path === 'string';
+  const projectSourceValid = source => sourceValid(source) && optionalText(source.error) && optionalText(source.updated);
+  const versionSourceValid = source => sourceValid(source) && typeof source.stale === 'boolean';
+  const strings = values => Array.isArray(values) && values.every(value => typeof value === 'string');
+  const versionValid = version => version && typeof version.title === 'string' && typeof version.hash === 'string' &&
+    ['status', 'assignee', 'blocker', 'nextAction'].every(key => optionalText(version[key])) &&
+    typeof version.needsDecision === 'boolean' && strings(version.links) &&
+    Array.isArray(version.sources) && version.sources.every(versionSourceValid);
   const projectIdentityValid = project => {
     if (!project || typeof project.id !== 'string' || !project.id || typeof project.name !== 'string') return false;
     const id = project.id.toLowerCase();
@@ -966,14 +974,12 @@ function validSnapshot(snapshot) {
     return true;
   };
   return Array.isArray(snapshot) && snapshot.every(project =>
-    projectIdentityValid(project) && Array.isArray(project.sources) && project.sources.every(sourceValid) && Array.isArray(project.tasks) &&
+    projectIdentityValid(project) && Array.isArray(project.sources) && project.sources.every(projectSourceValid) && Array.isArray(project.tasks) &&
     Array.isArray(project.unlinkedAssignments) &&
     (!project.timeline || (Array.isArray(project.timeline.stages) &&
       project.timeline.stages.every(stage => stage && Array.isArray(stage.taskIds)))) &&
-    project.tasks.every(task => task && typeof task.id === 'string' && Array.isArray(task.unreadable) &&
-      Array.isArray(task.versions) && task.versions.every(version =>
-        version && typeof version.title === 'string' && Array.isArray(version.sources) && version.sources.every(sourceValid) &&
-        Array.isArray(version.links) && version.links.every(link => typeof link === 'string'))));
+    project.tasks.every(task => task && typeof task.id === 'string' && strings(task.unreadable) &&
+      Array.isArray(task.versions) && task.versions.every(versionValid)));
 }
 async function load(refresh) {
   const button = byId('refresh');
