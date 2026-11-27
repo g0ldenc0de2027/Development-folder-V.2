@@ -69,7 +69,27 @@ function Get-ProjectRemainingWork {
     $changeTicks = @($changeTicks)
     $changeIndex = 0
     $snapshot = $null
-    $previousVersion = $null
+    $previousBaseline = $null
+    $transitions = @(foreach ($baseline in $Baselines) {
+        [decimal]$total = 0
+        foreach ($item in $baseline['items']) { $total += [decimal]$item['weight'] }
+        $approvedAt = [DateTimeOffset]$baseline['approvedAt']
+        if ($null -ne $previousBaseline -and $approvedAt -ge $period.StartUtc -and $approvedAt -lt $period.EndUtc) {
+            $reason = $baseline['reason']
+            if ($null -ne $reason -and ($reason -isnot [string] -or $reason.Length -gt 240)) {
+                throw 'INVALID_SCOPE_CHANGE_REASON'
+            }
+            @{
+                approvedAt = [TimeZoneInfo]::ConvertTime($approvedAt, $TimeZone).ToString('o')
+                previousScopeVersion = $previousBaseline.version
+                scopeVersion = $baseline['version']
+                weightDelta = $total - $previousBaseline.weight
+                reason = if (![string]::IsNullOrWhiteSpace($reason)) { $reason.Trim() } else { $null }
+            }
+        }
+        $previousBaseline = @{version = $baseline['version']; weight = $total}
+    })
+    $transitionIndex = 0
     $points = @(for ($day = $period.From; $day -le $period.Through; $day = $day.AddDays(1)) {
         $dayPeriod = Get-ProjectPeriod -From $day -Through $day -SnapshotAt $SnapshotAt -TimeZone $TimeZone
         $endTicks = $dayPeriod.EndUtc.UtcTicks
@@ -83,8 +103,12 @@ function Get-ProjectRemainingWork {
         $point = @{ date = $day.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture); state = $snapshot.state }
         if ($snapshot.state -ceq 'available') {
             $point.scopeVersion = $snapshot.scopeVersion
-            $point.scopeChanged = $null -ne $previousVersion -and $previousVersion -cne $snapshot.scopeVersion
-            $previousVersion = $snapshot.scopeVersion
+            $point.scopeChanges = @(while ($transitionIndex -lt $transitions.Count -and
+                [DateTimeOffset]$transitions[$transitionIndex].approvedAt -lt $dayPeriod.EndUtc) {
+                $transitions[$transitionIndex]
+                $transitionIndex++
+            })
+            $point.scopeChanged = $point.scopeChanges.Count -gt 0
             $point.totalWeight = $snapshot.totalWeight
             $cumulative = @{StartUtc = $origin.ToUniversalTime(); EndUtc = $dayPeriod.EndUtc}
             if ($null -ne $verifiedAt -and $verifiedAt -lt $dayPeriod.EndUtc) {
