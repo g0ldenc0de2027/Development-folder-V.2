@@ -256,6 +256,10 @@ try {
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-remaining-work-regressions.ps1')
     if ($LASTEXITCODE -ne 0) { throw "project-remaining-work-regressions.ps1 failed with exit code $LASTEXITCODE" }
 
+    Write-Output 'QUALITY-GATE: running owner decision journal regressions'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-decision-journal-regressions.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "project-decision-journal-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
     Write-Output 'QUALITY-GATE: running project date forecast regressions'
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-forecast-regressions.ps1')
     if ($LASTEXITCODE -ne 0) { throw "project-forecast-regressions.ps1 failed with exit code $LASTEXITCODE" }
