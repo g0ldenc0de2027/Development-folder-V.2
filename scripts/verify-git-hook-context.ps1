@@ -12,5 +12,6 @@ try {
 } catch {
     $message = [string]$_.Exception.Message
     [Console]::Error.WriteLine($message)
+    if ($message -in 'GIT_IDENTITY_PROCESS_START_FAILED','GIT_IDENTITY_PROCESS_TIMEOUT','GIT_IDENTITY_PROCESS_OUTPUT_TIMEOUT','GIT_IDENTITY_PROCESS_OUTPUT_FAILED') { exit 1 }
     exit 23
 }

@@ -237,8 +237,39 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Task-scope regressions failed' }
 
     $manifest = Get-Content -LiteralPath (Join-Path $repoRoot 'config/security/tools.json') -Raw | ConvertFrom-Json
+    Write-Output 'QUALITY-GATE: checking automatic project exchange rate'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-cbr-fx-regressions.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "project-cbr-fx-regressions.ps1 failed with exit code $LASTEXITCODE" }
+    Write-Output 'QUALITY-GATE: running project cost regressions'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-cost-regressions.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "project-cost-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
     & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-viewer-regressions.ps1') -TempRoot $temporaryRoot
     if ($LASTEXITCODE -ne 0) { throw "project-viewer-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
+    Write-Output 'QUALITY-GATE: validating result identity in period reports'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-period-result-regressions.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "project-period-result-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
+    Write-Output 'QUALITY-GATE: running weighted progress regressions'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-progress-regressions.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "project-progress-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
+    Write-Output 'QUALITY-GATE: running project merge history regressions'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-merge-history-regressions.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "project-merge-history-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
+    Write-Output 'QUALITY-GATE: running project remaining work regressions'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-remaining-work-regressions.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "project-remaining-work-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
+    Write-Output 'QUALITY-GATE: running owner decision journal regressions'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-decision-journal-regressions.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "project-decision-journal-regressions.ps1 failed with exit code $LASTEXITCODE" }
+
+    Write-Output 'QUALITY-GATE: running project date forecast regressions'
+    & $pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tests/project-forecast-regressions.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "project-forecast-regressions.ps1 failed with exit code $LASTEXITCODE" }
 
     $actionlint = Get-PinnedExecutable -Tool $manifest.tools.actionlint -Name 'actionlint'
     $gitleaks = Get-PinnedExecutable -Tool $manifest.tools.gitleaks -Name 'gitleaks'

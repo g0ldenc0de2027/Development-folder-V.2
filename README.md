@@ -21,7 +21,7 @@
 
     pwsh -NoProfile -File scripts/quality-gate.ps1
 
-Перед первым push настройте локальный Git hook: pwsh -NoProfile -File scripts/github/configure-local.ps1. Порядок веток, PR и проверок: docs/github-workflow.md. Цель и границы V2: spec/ТЗ.md и spec/СОСТОЯНИЕ.md.
+После клонирования настройте Git в зарегистрированном рабочем дереве до первого коммита. Повторите настройку в каждом новом linked worktree командой pwsh -NoProfile -File scripts/github/configure-local.ps1. Порядок веток, PR и проверок: docs/github-workflow.md. Цель и границы V2: spec/ТЗ.md и spec/СОСТОЯНИЕ.md.
 
 ## Правила и знания
 
