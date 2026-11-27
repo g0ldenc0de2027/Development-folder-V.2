@@ -773,6 +773,17 @@ function renderRemainingWork(snapshot) {
     remainingObserver = new ResizeObserver(() => drawRemainingChart(canvas, snapshot.points));
     remainingObserver.observe(canvas);
   }
+  const changes = snapshot.points.flatMap(point => point.scopeChanges ?? []);
+  if (changes.length) {
+    const list = node('ul');
+    for (const change of changes) {
+      const delta = new Intl.NumberFormat('ru-RU', {signDisplay:'always'}).format(change.weightDelta);
+      const moment = change.approvedAt.slice(0,10) + ' ' + change.approvedAt.slice(11,16);
+      list.append(node('li', moment + ' · ' + change.previousScopeVersion + ' → ' + change.scopeVersion +
+        ' · ' + delta + ' ед. · ' + (change.reason ?? 'Причина не указана')));
+    }
+    section.append(node('h5', 'Изменения объёма'), list);
+  }
   const container = node('div');
   container.className = 'table';
   container.tabIndex = 0;

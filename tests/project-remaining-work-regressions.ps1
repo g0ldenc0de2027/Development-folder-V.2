@@ -58,3 +58,13 @@ $boundary = Decision midnight A v1 accepted '2026-11-21T00:00:00+03:00'
 $bounds = @(Coverage '2026-11-20T00:00:00Z' '2026-11-23T00:00:00Z')
 $daily = Get-ProjectRemainingWork -ProjectId demo -From '2026-11-20' -Through '2026-11-22' -SnapshotAt '2026-11-22T21:00:00Z' -TimeZone $moscow -Baselines @($first) -Decisions @($boundary) -Coverage $bounds
 Assert-That (($daily.points.remainingWeight -join ',') -ceq '20,16,16') 'PRG-008 local midnight changes exactly the following point'
+
+$expanded.reason = 'Добавлен отчёт по остатку'
+$third = @{ projectId = 'demo'; version = 'v3'; previousVersion = 'v2'
+    approvedAt = '2026-11-24T14:00:00Z'; items = $items + @((Item D 5), (Item E 2)) }
+$changes = Get-ProjectRemainingWork -ProjectId demo -From '2026-11-24' -Through '2026-11-24' -SnapshotAt '2026-11-25T00:00:00Z' -TimeZone ([TimeZoneInfo]::Utc) -Baselines @($first, $expanded, $third)
+$point = $changes.points[0]
+Assert-That ($point.state -ceq 'incomplete' -and $point.scopeChanged -and $point.scopeChanges.Count -eq 2 -and
+    $point.scopeChanges[0].previousScopeVersion -ceq 'v1' -and $point.scopeChanges[0].scopeVersion -ceq 'v2' -and
+    $point.scopeChanges[0].weightDelta -eq 5 -and $point.scopeChanges[0].reason -ceq 'Добавлен отчёт по остатку' -and
+    $point.scopeChanges[1].weightDelta -eq 2 -and $null -eq $point.scopeChanges[1].reason) 'PRG-004 explains multiple scope changes starting on the first day despite missing acceptance coverage'
