@@ -51,8 +51,17 @@ function Get-ProjectPeriodEvents {
     $counted = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
     foreach ($event in $Events) {
         if ($event.ProjectId -cne $ProjectId) { continue }
+        $property = $event.PSObject.Properties['ItemId']
+        $itemId = if ($null -ne $property) { $property.Value }
+        if ($null -ne $itemId -and ($itemId -isnot [string] -or
+            $itemId -cnotmatch '\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z' -or
+            $event.Type -cnotin 'accepted', 'acceptance_revoked')) {
+            throw 'PROJECT_HISTORY_INVALID_EVENT'
+        }
+        $eventIdPattern = if ($null -ne $itemId) { '\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z' }
+                          else { '\A[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}\z' }
         if ($event.SourceId -cnotmatch '\A[a-z0-9][a-z0-9_-]{0,63}\z' -or
-            $event.EventId -cnotmatch '\A[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}\z' -or
+            $event.EventId -cnotmatch $eventIdPattern -or
             $event.TaskId -cnotmatch '\AT-[0-9]{3,}\z' -or
             $event.Type -cnotin $knownTypes -or $event.At -isnot [DateTimeOffset]) {
             throw 'PROJECT_HISTORY_INVALID_EVENT'
@@ -62,24 +71,26 @@ function Get-ProjectPeriodEvents {
             SourceId = $event.SourceId
             EventId = $event.EventId
             TaskId = $event.TaskId
+            ItemId = $itemId
+            OutcomeKey = if ($null -ne $itemId) { "item/$itemId" } else { "task/$($event.TaskId)" }
             Type = $event.Type
             At = $event.At.ToUniversalTime()
         }
         if ($unique.ContainsKey($key)) {
             $previous = $unique[$key]
-            if ($previous.TaskId -cne $row.TaskId -or $previous.Type -cne $row.Type -or $previous.At -ne $row.At) {
+            if ($previous.TaskId -cne $row.TaskId -or $previous.Type -cne $row.Type -or $previous.ItemId -cne $row.ItemId -or $previous.At -ne $row.At) {
                 throw 'PROJECT_HISTORY_CONFLICTING_EVENT'
             }
             continue
         }
         $unique.Add($key, $row)
         if ($row.At -ge $Period.EndUtc -or $row.Type -cnotin 'accepted', 'acceptance_revoked') { continue }
-        $previous = $counted[$row.TaskId]
+        $previous = $counted[$row.OutcomeKey]
         if (!$previous -or $row.At -gt $previous.At -or
             ($row.At -eq $previous.At -and (
                 ($row.Type -ceq 'acceptance_revoked' -and $previous.Type -cne 'acceptance_revoked') -or
                 ($row.Type -ceq $previous.Type -and [StringComparer]::Ordinal.Compare($key, ($previous.SourceId + '/' + $previous.EventId)) -lt 0)))) {
-            $counted[$row.TaskId] = $row
+            $counted[$row.OutcomeKey] = $row
         }
     }
 
@@ -88,9 +99,9 @@ function Get-ProjectPeriodEvents {
         if ($row.At -ge $Period.StartUtc -and $row.At -lt $Period.EndUtc) { $row }
     })
     $rows = @(foreach ($row in ($visible | Sort-Object At, SourceId, EventId -CaseSensitive)) {
-        $last = $counted[$row.TaskId]
+        $last = $counted[$row.OutcomeKey]
         $included = $row.Type -cne 'accepted' -or ($last.SourceId -ceq $row.SourceId -and $last.EventId -ceq $row.EventId)
-        [pscustomobject]@{
+        $view = [pscustomobject]@{
             sourceId = $row.SourceId
             eventId = $row.EventId
             taskId = $row.TaskId
@@ -99,6 +110,8 @@ function Get-ProjectPeriodEvents {
             day = [TimeZoneInfo]::ConvertTime($row.At, $zone).ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
             counted = $included
         }
+        if ($null -ne $row.ItemId) { $view | Add-Member -NotePropertyName itemId -NotePropertyValue $row.ItemId }
+        $view
     })
     $totals = [ordered]@{}
     foreach ($type in $knownTypes) { $totals[$type] = 0 }
