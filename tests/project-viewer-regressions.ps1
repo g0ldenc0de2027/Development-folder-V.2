@@ -144,6 +144,29 @@ CI_HEAD_SHA: $old
         $config.projects[-1].progress.baselines[0].projectId = "bad-cost-$i"
         $config.projects[-1].progress.decisions[0].projectId = "bad-cost-$i"
     }
+    $journalFixture = Join-Path $root 'owner-journal.json'
+    $journalBaseline = @{ projectId = 'journal'; version = 'v1'; approvedAt = '2026-01-01T00:00:00Z'
+        items = @(@{ id = 'result-a'; criteriaVersion = 'v1'; weight = 3 }, @{ id = 'result-b'; criteriaVersion = 'v1'; weight = 2 }) }
+    $journalEvent = @{ projectId = 'journal'; eventId = 'a.1'; itemId = 'result-a'; scopeVersion = 'v1'; criteriaVersion = 'v1'
+        type = 'accepted'; at = '2026-01-01T06:00:00Z'; evidenceId = 'synthetic' }
+    $journalDocument = @{ schemaVersion = 1; projectId = 'journal'; events = @($journalEvent); coverage = @(foreach ($type in 'accepted','acceptance_revoked') {
+        @{ type = $type; from = '2026-01-01T00:00:00Z'; until = '2026-01-02T00:00:00Z' }
+    }) }
+    [IO.File]::WriteAllText($journalFixture, ($journalDocument | ConvertTo-Json -Depth 8))
+    $config.projects += @{
+        id = 'journal'; name = 'Журнал'; roots = @('other'); decisionsPath = 'owner-journal.json'
+        decisionTaskByItem = @{ 'result-a' = 'T-001'; 'result-b' = 'T-001' }
+        progress = @{ schemaVersion = 1; asOf = '2026-01-01T08:00:00Z'; baselines = @($journalBaseline) }
+    }
+    $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $registry -Encoding utf8
+    $gapFixture = Join-Path $root 'gap.json'
+    $gapBaseline = $journalBaseline.Clone()
+    $gapBaseline.projectId = 'gap'
+    $gapExpanded = @{projectId='gap';version='v2';previousVersion='v1';approvedAt='2026-01-02T06:00:00Z'
+        reason='Добавлен отчёт';items=$gapBaseline.items + @(@{id='result-c';criteriaVersion='v1';weight=1})}
+    $gap = @{schemaVersion=1;projectId='gap';events=@();coverage=$journalDocument.coverage.Clone()}
+    [IO.File]::WriteAllText($gapFixture, ($gap | ConvertTo-Json -Depth 8))
+    $config.projects += @{id='gap';name='Gap';roots=@('other');decisionsPath='gap.json';progress=@{schemaVersion=1;asOf='2026-01-02T08:00:00Z';baselines=@($gapBaseline,$gapExpanded)}}
     $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $registry -Encoding utf8
     $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $probe.Start()
@@ -163,6 +186,41 @@ CI_HEAD_SHA: $old
     $url = $pending.Result
     if (!$url) { throw ($process.StandardError.ReadToEnd()) }
     $origin = "http://127.0.0.1:$port"
+    $journalSummary = (Invoke-RestMethod ($url + 'summary') -TimeoutSec 10) | Where-Object id -CEQ 'journal'
+    Assert-That ($journalSummary.weightedProgress.percent -eq 60 -and $journalSummary.journal.state -ceq 'readable' -and
+        $journalSummary.journal.PSObject.Properties.Name -notcontains 'path') 'PRG-003 loads a confirmed journal snapshot without a path'
+    $frame = $journalSummary.frame
+    $periodPath = $url + 'period?project=journal&from=2026-01-01&through=2026-01-01'
+    $journalPeriod = Invoke-RestMethod ($periodPath + "&frame=$frame") -TimeoutSec 10
+    Assert-That ($journalPeriod.report.totals.accepted -eq 1 -and $journalPeriod.journalGeneration -ceq $journalSummary.journal.generation) 'PRG-003 projects journal history from the summary snapshot'
+    $cardVersion = $journalSummary.tasks[0].versions[0].hash
+    $journalCard = Invoke-RestMethod ($url + "card?project=journal&task=T-001&version=$cardVersion&frame=$frame") -TimeoutSec 10
+    Assert-That ($journalCard.ownerDecisions[0].status -ceq 'accepted' -and
+        $journalCard.ownerDecisions[0].itemId -ceq 'result-a') 'PRG-003 projects acceptance onto the bound task version'
+    $lateDecision = $journalEvent.Clone()
+    $lateDecision.eventId = 'r.1'; $lateDecision.type = 'acceptance_revoked'; $lateDecision.at = '2026-01-01T07:00:00Z'
+    $journalDocument.events += $lateDecision
+    [IO.File]::WriteAllText($journalFixture, ($journalDocument | ConvertTo-Json -Depth 8))
+    $unchanged = Invoke-RestMethod ($periodPath + "&frame=$frame") -TimeoutSec 10
+    Assert-That ($unchanged.journalGeneration -ceq $journalSummary.journal.generation -and $unchanged.report.totals.accepted -eq 1) 'PRG-003 preserves the displayed frame before refresh'
+    $nextFrame = (Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{Origin=$origin} -TimeoutSec 10) | Where-Object id -CEQ 'journal'
+    $oldFrame = Invoke-WebRequest ($periodPath + "&frame=$frame") -SkipHttpErrorCheck -TimeoutSec 10
+    Assert-That ($oldFrame.StatusCode -eq 409 -and $nextFrame.weightedProgress.percent -eq 0 -and
+        $nextFrame.journal.generation -cne $journalSummary.journal.generation) 'PRG-003 changes all projections together and refuses obsolete frame'
+    $gapSummary = (Invoke-RestMethod ($url + 'summary') -TimeoutSec 10) | Where-Object id -CEQ 'gap'
+    $gapPath = $url + 'period?project=gap&from=2026-01-01&through=2026-01-02&frame='
+    $points = (Invoke-RestMethod ($gapPath + $gapSummary.frame) -TimeoutSec 10).remainingWork.points
+    Assert-That ($gapSummary.weightedProgress.state -ceq 'incomplete' -and $points.Count -eq 2 -and
+        $points[0].remainingWeight -eq 5 -and $points[1].state -ceq 'incomplete' -and $points[1].scopeChanged -and $points[1].scopeChanges[0].reason -ceq 'Добавлен отчёт') 'PRG-008 HTTP preserves confirmed points before gap'
+    foreach ($interval in $gap.coverage) { $interval.until = '2026-01-03T00:00:00Z' }
+    [IO.File]::WriteAllText($gapFixture, ($gap | ConvertTo-Json -Depth 8))
+    $gapSummary = (Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{Origin=$origin} -TimeoutSec 10) | Where-Object id -CEQ 'gap'
+    $points = (Invoke-RestMethod ($gapPath + $gapSummary.frame) -TimeoutSec 10).remainingWork.points
+    Assert-That ($points[0].remainingWeight -eq 5 -and $points[1].remainingWeight -eq 6 -and $points[1].scopeChanged) 'PRG-008 HTTP restores points after gap backfill'
+    [IO.File]::Delete($journalFixture)
+    $staleJournal = (Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{Origin=$origin} -TimeoutSec 10) | Where-Object id -CEQ 'journal'
+    Assert-That ($staleJournal.journal.state -ceq 'stale' -and
+        $staleJournal.journal.generation -ceq $nextFrame.journal.generation) 'PRG-003 retains the previous journal when the source is unavailable'
     $periodUri = $url + 'period?project=first&from=2026-01-01&through=2026-01-01'
     $period = Invoke-RestMethod $periodUri -TimeoutSec 10
     $wire = (Invoke-WebRequest $periodUri -TimeoutSec 10).Content | ConvertFrom-Json -DateKind String
@@ -250,7 +308,7 @@ CI_HEAD_SHA: $old
     Assert-That ($recovered[0].tasks[0].evidence.state -ceq 'readable' -and
         $recovered[0].tasks[0].evidence.record.ownerAcceptance.status -ceq 'accepted') 'PTR-VIS-007 recovery and explicit acceptance'
     Assert-That ($first[0].historyConfigured -and !$first[1].historyConfigured) 'PTR-VIS-005 summary distinguishes history configuration by project'
-    Assert-That ($first.Count -eq (2 + [int][bool]$V2Root + $badVersions.Count) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
+    Assert-That ($first.Count -eq (4 + [int][bool]$V2Root + $badVersions.Count) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
     $timeline = $first[0].timeline
     Assert-That ($timeline.startDate -ceq '2026-11-20' -and $timeline.timeZone -ceq 'UTC' -and
         $timeline.today -in @([DateTime]::UtcNow.ToString('yyyy-MM-dd'), [DateTime]::UtcNow.AddDays(-1).ToString('yyyy-MM-dd')) -and

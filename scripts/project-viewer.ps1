@@ -298,6 +298,40 @@ function Update-Evidence {
     }
 }
 
+function Test-DecisionFrame($Project, $Request, $Response) {
+    if (!$Project.decisionsPath) { return $true }
+    $frame = $Request.QueryString['frame']
+    if ($frame -ceq $Project.decisionFrame) { return $true }
+    $Response.StatusCode = if ($frame) { 409 } else { 400 }
+    return $false
+}
+
+function Update-DecisionJournals {
+    foreach ($project in $projects) {
+        if (!$project.decisionsPath) { continue }
+        $project.decisionFrame = [guid]::NewGuid().ToString('N')
+        try {
+            Assert-PlainPath $project.decisionsPath $false
+            $candidate = Read-ProjectDecisionJournal -Path $project.decisionsPath -ProjectId $project.id -Baselines $project.progressInput.baselines
+            $computed = Get-ProjectJournalProgress -Snapshot $candidate -ProjectId $project.id -Baselines $project.progressInput.baselines -AsOf $project.decisionAsOf
+            $active = @($project.progressInput.baselines | Where-Object {
+                (Read-ObservedInstant $_['approvedAt']) -le $project.decisionAsOf
+            } | Select-Object -Last 1)
+            $items = @(if ($active.Count) { $active[0]['items'] })
+            $viewArgs = @{ Snapshot = $candidate; TaskByItem = $project.decisionTaskByItem; AsOf = $project.decisionAsOf; ActiveItems = $items }
+            $project.decisionView = Get-ProjectDecisionView @viewArgs
+            $project.decisionSnapshot = $candidate
+            $project.decisionReadAt = [DateTimeOffset]::UtcNow
+            $project.decisionState = 'readable'
+            $project.weightedProgress = $computed
+        } catch {
+            $project.decisionState = if ($null -ne $project.decisionSnapshot) { 'stale' } else { 'unavailable' }
+            if ($null -eq $project.decisionSnapshot) { $project.weightedProgress = @{ state = 'incomplete' } }
+        }
+        $project.dateForecast = Read-ProjectDateForecast $project.registryEntry $project.weightedProgress $project.timeline
+    }
+}
+
 function Get-Summary {
     foreach ($project in $projects) {
         $tasks = @{}
@@ -326,7 +360,7 @@ function Get-Summary {
                 }
             }
         }
-        @{
+        $summary = @{
             id = $project.id
             name = $project.name
             historyConfigured = [bool]$project.historyPath
@@ -360,6 +394,16 @@ function Get-Summary {
                 }
             })
         }
+        if ($project.decisionsPath) {
+            $summary.frame = $project.decisionFrame
+            $summary.journal = @{
+                state = $project.decisionState
+                readAt = $project.decisionReadAt
+                unmappedCount = if ($null -ne $project.decisionView) { $project.decisionView.unmappedItems.Count } else { 0 }
+                generation = if ($null -ne $project.decisionSnapshot) { $project.decisionSnapshot.sha256 }
+            }
+        }
+        $summary
     }
 }
 
@@ -407,16 +451,24 @@ function Read-TimelineDate($Value) {
 function Get-RemainingWorkView($Project, $Period, $Zone, $History) {
     $data = $Project.progressInput
     if ($null -eq $data) { return @{ state = 'unconfigured'; points = @() } }
-    if ($Project.weightedProgress.state -cne 'available' -or $null -eq $History) {
-        return @{ state = 'incomplete'; points = @() }
+    if ($null -eq $History) { return @{ state = 'incomplete'; points = @() } }
+    if ($Project.decisionsPath) {
+        # A coverage gap at the current cutoff can coexist with verified earlier points.
+        if ($null -eq $Project.decisionSnapshot) { return @{ state = 'incomplete'; points = @() } }
+        $cutoff = $Project.decisionAsOf
+    } else {
+        if ($Project.weightedProgress.state -cne 'available') {
+            return @{ state = 'incomplete'; points = @() }
+        }
+        $cutoff = $Project.weightedProgress.asOf
     }
-    $cutoff = $Project.weightedProgress.asOf
     if ($cutoff -gt $Period.SnapshotAt) { $cutoff = $Period.SnapshotAt }
     $lastDate = [DateOnly]::FromDateTime([TimeZoneInfo]::ConvertTime($cutoff, $Zone).DateTime)
     if ($lastDate -gt $Period.Through) { $lastDate = $Period.Through }
     if ($lastDate -lt $Period.From) { return @{ state = 'before_period'; points = @() } }
     $intervals = @($History.coverage | Where-Object { $_.type -cin 'accepted', 'acceptance_revoked' })
-    Get-ProjectRemainingWork -ProjectId $Project.id -From $Period.From -Through $lastDate -SnapshotAt $cutoff -TimeZone $Zone -Baselines $data.baselines -Decisions $data.decisions -Coverage $intervals -Checkpoint $data['checkpoint']
+    $decisions = @(if ($Project.decisionsPath) { $Project.decisionSnapshot.document.events } else { $data.decisions })
+    Get-ProjectRemainingWork -ProjectId $Project.id -From $Period.From -Through $lastDate -SnapshotAt $cutoff -TimeZone $Zone -Baselines $data.baselines -Decisions $decisions -Coverage $intervals -Checkpoint $data['checkpoint']
 }
 
 function Read-WeightedProgress($Entry) {
@@ -558,7 +610,22 @@ $projects = @(foreach ($entry in $registry.projects) {
         $ownerActions[$action.taskId] = $action
     }
     foreach ($taskId in @($bindings.Keys)) { $bindings[$taskId] = @($bindings[$taskId] | Sort-Object -CaseSensitive) }
-    $progress = Read-WeightedProgress $entry
+    $decisionsPath = $null
+    $decisionAsOf = $null
+    if ($entry.Contains('decisionsPath')) {
+        $relative = $entry['decisionsPath']
+        $inputProgress = $entry['progress']
+        if ($relative -isnot [string] -or !$relative.Trim() -or [IO.Path]::IsPathRooted($relative) -or
+            $inputProgress -isnot [Collections.IDictionary] -or $inputProgress['baselines'] -isnot [array]) {
+            throw 'INVALID_PROJECT_DECISION_JOURNAL'
+        }
+        $decisionsPath = [IO.Path]::GetFullPath($relative, $registryFile.DirectoryName)
+        $decisionAsOf = Read-ObservedInstant $inputProgress['asOf']
+        if ($decisionsPath -notmatch '^[A-Za-z]:[\\/]' -or $null -eq $decisionAsOf) {
+            throw 'INVALID_PROJECT_DECISION_JOURNAL'
+        }
+    }
+    $progress = if ($decisionsPath) { @{ state = 'incomplete' } } else { Read-WeightedProgress $entry }
     $timeline = Read-ProjectTimeline $entry
     $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     @{
@@ -567,6 +634,15 @@ $projects = @(foreach ($entry in $registry.projects) {
         timeline = $timeline
         weightedProgress = $progress
         progressInput = $entry['progress']
+        registryEntry = $entry
+        decisionsPath = $decisionsPath
+        decisionAsOf = $decisionAsOf
+        decisionSnapshot = $null
+        decisionView = $null
+        decisionTaskByItem = if ($entry.Contains('decisionTaskByItem')) { $entry['decisionTaskByItem'] } else { @{} }
+        decisionFrame = $null
+        decisionReadAt = $null
+        decisionState = 'unavailable'
         dateForecast = Read-ProjectDateForecast $entry $progress $timeline
         cost = Read-ProjectCostSnapshot $entry
         historyPath = if ($entry.Contains('historyPath')) {
@@ -598,6 +674,10 @@ $projects = @(foreach ($entry in $registry.projects) {
 })
 if (!$projects.Count) { throw 'EMPTY_PROJECT_REGISTRY' }
 
+if ($projects | Where-Object decisionsPath) {
+    Import-Module (Join-Path $PSScriptRoot 'lib/ProjectDecisionJournal.psm1')
+    Import-Module (Join-Path $PSScriptRoot 'lib/ProjectDecisionView.psm1')
+}
 $page = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'project-viewer.html'), $utf8)
 $origin = "http://127.0.0.1:$Port"
 $key = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
@@ -608,6 +688,7 @@ try {
     Update-Projects
     Update-Queue
     Update-Evidence
+    Update-DecisionJournals
     $listener.Start()
     Write-Output "$origin$prefix"
     while ($listener.IsListening) {
@@ -632,11 +713,12 @@ try {
                 $body = $page
             } elseif (($method -eq 'GET' -and $route -eq 'summary') -or
                 ($method -eq 'POST' -and $route -eq 'refresh' -and $request.Headers['Origin'] -ceq $origin)) {
-                if ($method -eq 'POST') { Update-Projects; Update-Queue; Update-Evidence }
+                if ($method -eq 'POST') { Update-Projects; Update-Queue; Update-Evidence; Update-DecisionJournals }
                 $body = ConvertTo-Json -InputObject @(Get-Summary) -Depth 10 -Compress
             } elseif ($method -eq 'GET' -and $route -eq 'period') {
                 $project = $projects | Where-Object { $_.id -ceq $request.QueryString['project'] }
                 if (!$project) { $response.StatusCode = 404; continue }
+                if (!(Test-DecisionFrame $project $request $response)) { continue }
                 $zone = if ($project.timeline) { $project.timeline.zone } else { [TimeZoneInfo]::Utc }
                 $args = @{TimeZone = $zone; SnapshotAt = [DateTimeOffset]::UtcNow}
                 try {
@@ -658,6 +740,7 @@ try {
                     continue
                 }
                 $state = 'unconfigured'
+                $history = @{ events = @(); coverage = @() }
                 $result = $null
                 $coverage = $null
                 if ($project.historyPath) {
@@ -670,6 +753,20 @@ try {
                     } catch {
                         $result = $null
                         $state = 'unavailable'
+                    }
+                }
+                if ($project.decisionsPath) {
+                    $events = @($history.events | Where-Object Type -CNotIn 'accepted','acceptance_revoked')
+                    $intervals = @($history.coverage | Where-Object type -CNotIn 'accepted','acceptance_revoked')
+                    if ($null -ne $project.decisionView) {
+                        $events += @($project.decisionView.eventHistory)
+                        if (!$project.decisionView.unmappedItems.Count) { $intervals += @($project.decisionView.coverage) }
+                        $state = 'readable'
+                    }
+                    $history = @{ events = $events; coverage = $intervals }
+                    if ($state -ceq 'readable') {
+                        $result = Get-ProjectPeriodEvents -ProjectId $project.id -Period $period -Events $events
+                        $coverage = Get-ProjectHistoryCoverage $period $intervals @($result.totals.Keys)
                     }
                 }
                 try {
@@ -691,8 +788,14 @@ try {
                     })
                     queue = if ($queue) { @{ updated = $queue.updated; stale = $queue.stale } } else { $null }
                 }
-                $body = @{ projectId = $project.id; sourceFreshness = $sourceFreshness; period = $periodView; historyState = $state; report = $result; coverage = $coverage; remainingWork = $remainingWork; historyReadAt = if ($state -ceq 'readable') { [DateTimeOffset]::UtcNow } else { $null } } |
-                    ConvertTo-Json -Depth 10 -Compress
+                $periodResponse = @{ projectId = $project.id; sourceFreshness = $sourceFreshness; period = $periodView; historyState = $state; report = $result; coverage = $coverage; remainingWork = $remainingWork; historyReadAt = if ($state -ceq 'readable') { [DateTimeOffset]::UtcNow } else { $null } }
+                if ($project.decisionsPath) {
+                    $periodResponse.frame = $project.decisionFrame
+                    $periodResponse.journalState = $project.decisionState
+                    $periodResponse.journalReadAt = $project.decisionReadAt
+                    $periodResponse.journalGeneration = if ($null -ne $project.decisionSnapshot) { $project.decisionSnapshot.sha256 }
+                }
+                $body = $periodResponse | ConvertTo-Json -Depth 10 -Compress
             } elseif ($method -eq 'GET' -and $route -eq 'report' -and $queue) {
                 $id = $request.QueryString['assignment']
                 $kind = $request.QueryString['copy']
@@ -702,6 +805,7 @@ try {
             } elseif ($method -eq 'GET' -and $route -eq 'card') {
                 $project = $projects | Where-Object { $_.id -ceq $request.QueryString['project'] }
                 if ($null -eq $project) { $response.StatusCode = 404; continue }
+                if (!(Test-DecisionFrame $project $request $response)) { continue }
                 $record = foreach ($source in $project.sources) {
                     $source.cards.Values | Where-Object {
                         $_.id -ceq $request.QueryString['task'] -and $null -ne $_.version -and
@@ -710,7 +814,16 @@ try {
                 }
                 $first = @($record | Select-Object -First 1)
                 if (!$first.Count) { $response.StatusCode = 404; continue }
-                $body = @{ text = $first[0].version.text } | ConvertTo-Json -Compress
+                $cardResponse = @{ text = $first[0].version.text }
+                if ($project.decisionsPath) {
+                    $cardResponse.frame = $project.decisionFrame
+                    $cardResponse.journalGeneration = if ($null -ne $project.decisionSnapshot) { $project.decisionSnapshot.sha256 }
+                    $cardResponse.ownerDecisions = @(if ($null -ne $project.decisionView) {
+                        $project.decisionView.acceptanceByItem.Values | Where-Object taskId -CEQ $request.QueryString['task'] |
+                            Sort-Object itemId -CaseSensitive | Select-Object -Property itemId, status, decidedAt
+                    })
+                }
+                $body = $cardResponse | ConvertTo-Json -Depth 8 -Compress
             } else { $response.StatusCode = 404; continue }
             $bytes = $utf8.GetBytes($body)
             $response.ContentLength64 = $bytes.Length
