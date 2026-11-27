@@ -366,7 +366,9 @@ function Get-Summary {
             historyConfigured = [bool]$project.historyPath
             dateForecast = $project.dateForecast
             weightedProgress = $project.weightedProgress
-            cost = $project.cost
+            cost = if ($project.cost.ContainsKey('exchange') -and $project.cost.exchange.ContainsKey('forecast') -and $project.cost.exchange.forecast.source -ceq 'cbr') {
+                Read-ProjectCostSnapshot $project.registryEntry $fxState.latest
+            } else { $project.cost }
             timeline = if ($project.timeline) {
                 @{
                     startDate = $project.timeline.startDate
@@ -546,7 +548,7 @@ function Read-ProjectDateForecast($Entry, $Progress, $Timeline) {
     }
 }
 
-function Read-ProjectCostSnapshot($Entry) {
+function Read-ProjectCostSnapshot($Entry, $Fx = $null) {
     if (!$Entry.Contains('cost')) { return @{ state = 'unconfigured' } }
     try {
         $cost = $Entry.cost
@@ -569,8 +571,32 @@ function Read-ProjectCostSnapshot($Entry) {
                 $value -isnot [double] -and $value -isnot [decimal]) { throw 'INVALID_COST_VALUE' }
             $inputs[$name] = $value
         }
+        $mode = $cost['exchangeRateMode']
+        if ($null -ne $mode -and $mode -cnotin @('manual', 'cbr')) { throw 'INVALID_COST_FX_MODE' }
+        $exchange = @{}
+        foreach ($kind in 'plan', 'forecast') {
+            $parameter = if ($kind -ceq 'plan') { 'PlanRubPerUsd' } else { 'RubPerUsd' }
+            $dateKey = if ($kind -ceq 'plan') { 'planExchangeRateDate' } else { 'exchangeRateDate' }
+            if ($inputs.ContainsKey($parameter) -and $inputs[$parameter] -gt 0) {
+                $exchange[$kind] = @{
+                    rubPerUsd = $inputs[$parameter]
+                    effectiveDate = Read-TimelineDate $cost[$dateKey]
+                    source = 'manual'
+                }
+            }
+        }
+        if (!$exchange.ContainsKey('forecast') -and $mode -ceq 'cbr') {
+            $exchange.forecast = @{ source = 'cbr'; state = 'unavailable' }
+            if ($null -ne $Fx -and $Fx.state -cin @('current', 'stale')) {
+                $inputs.RubPerUsd = $Fx.snapshot.ratePerUsd
+                $exchange.forecast = @{
+                    source = 'cbr'; state = $Fx.state; rubPerUsd = $inputs.RubPerUsd
+                    effectiveDate = $Fx.snapshot.effectiveDate
+                }
+            }
+        }
         $result = Get-ProjectCost @inputs
-        @{ state = 'available'; asOf = $date; scopeVersion = $scope; values = $result }
+        @{ state = 'available'; asOf = $date; scopeVersion = $scope; values = $result; exchange = $exchange }
     } catch {
         @{ state = 'invalid' }
     }
@@ -684,7 +710,27 @@ $key = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::Get
 $prefix = "/$key/"
 $listener = [Net.HttpListener]::new()
 $listener.Prefixes.Add("$origin/")
+$fxState = [hashtable]::Synchronized(@{ latest = $null })
+$fxWorker = $null
+$fxCancel = $null
+$fxPending = $null
 try {
+    if ($projects | Where-Object { $_.cost.ContainsKey('exchange') -and $_.cost.exchange.ContainsKey('forecast') -and
+            $_.cost.exchange.forecast.source -ceq 'cbr' }) {
+        $fxCancel = [Threading.CancellationTokenSource]::new()
+        $fxWorker = [PowerShell]::Create()
+        $fxModule = Join-Path $PSScriptRoot 'lib/ProjectCbrFx.psm1'
+        $fxPath = $registryFile.FullName + '.usd-rub.json'
+        $null = $fxWorker.AddScript({
+            param($Module, $Path, $State, $Token)
+            $ErrorActionPreference = 'Stop'
+            Import-Module -Name $Module
+            do {
+                $State.latest = Update-CbrUsdRateSnapshot -Path $Path -CancellationToken $Token
+            } while (!$Token.WaitHandle.WaitOne([TimeSpan]::FromHours(1)))
+        }).AddArgument($fxModule).AddArgument($fxPath).AddArgument($fxState).AddArgument($fxCancel.Token)
+        $fxPending = $fxWorker.BeginInvoke()
+    }
     Update-Projects
     Update-Queue
     Update-Evidence
@@ -836,4 +882,15 @@ try {
     }
 } finally {
     $listener.Close()
+    if ($fxWorker) {
+        $fxCancel.Cancel()
+        try {
+            if ($fxPending -and $fxPending.AsyncWaitHandle.WaitOne(5000)) {
+                $null = $fxWorker.EndInvoke($fxPending)
+            } else { $fxWorker.Stop() }
+        } finally {
+            $fxWorker.Dispose()
+            $fxCancel.Dispose()
+        }
+    }
 }

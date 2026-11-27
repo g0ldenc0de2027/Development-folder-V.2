@@ -507,12 +507,23 @@ function renderCost(snapshot) {
     return format(values[1], currency) + ' (' + format(values[0], currency) + ' – ' + format(values[2], currency) + ')';
   };
   const {plan, confirmed, forecast} = snapshot.values;
+  const rateLabel = rate => {
+    if (!rate || !Number.isFinite(rate.rubPerUsd)) {
+      return rate?.source === 'cbr' ? 'Курс Банка России пока недоступен' : 'Курс не задан';
+    }
+    const value = new Intl.NumberFormat('ru-RU', {maximumFractionDigits: 8}).format(rate.rubPerUsd);
+    const source = rate.source === 'cbr' ? 'Банк России' : 'ручной ввод';
+    return '1 USD = ' + value + ' ₽ · ' + source + ' · ' + (rate.effectiveDate ?? 'дата курса не указана') +
+      (rate.state === 'stale' ? ' · обновление недоступно' : '');
+  };
   const amount = (value, currency) => value === null ? 'Нет данных' : format(value, currency);
   const rows = [
     ['Исходный план', range(plan.totalRub, 'RUB') + ' / ' + range(plan.totalUsd, 'USD')],
+    ['Курс исходного плана', rateLabel(snapshot.exchange?.plan)],
     ['Подтверждённый труд', amount(confirmed.laborRub, 'RUB')],
     ['Подтверждённые расходы на ИИ', amount(confirmed.aiRub, 'RUB') + ' / ' + amount(confirmed.aiUsd, 'USD')],
-    ['Прогноз итого', range(forecast.totalRub, 'RUB') + ' / ' + range(forecast.totalUsd, 'USD')]
+    ['Прогноз итого', range(forecast.totalRub, 'RUB') + ' / ' + range(forecast.totalUsd, 'USD')],
+    ['Курс прогноза', rateLabel(snapshot.exchange?.forecast)]
   ];
   const labels = {hours:'часы', ai:'расходы на ИИ', confirmedCost:'подтверждённые затраты', exchangeRate:'курс валют'};
   const missing = [...new Set([...plan.missingInputs, ...forecast.missingInputs])];

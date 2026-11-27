@@ -158,7 +158,11 @@ Add optional `timeline` metadata to a project as shown above. The time zone cont
 }
 ~~~
 
-Диапазоны задаются в порядке минимум, центральная оценка, максимум. Ставки `planRateRub` и `rateRub` по умолчанию равны 1 500 ₽/ч. Для прогноза укажите `remainingHours`, `remainingAiRub`, `remainingAiUsd`, `rubPerUsd`, `confirmedLaborRub`, `confirmedAiRub` и `confirmedAiUsd`. Явный ноль означает подтверждённое отсутствие расходов. Пропущенные значения показываются как недостающие данные. Курс указывается в рублях за 1 USD.
+Диапазоны задаются в порядке минимум, центральная оценка, максимум. Ставки `planRateRub` и `rateRub` по умолчанию равны 1 500 ₽/ч. Для прогноза укажите `remainingHours`, `remainingAiRub`, `remainingAiUsd`, `rubPerUsd`, `confirmedLaborRub`, `confirmedAiRub` и `confirmedAiUsd`. Явный ноль означает подтверждённое отсутствие расходов. Пропущенные значения показываются как недостающие данные. Курс указывается в рублях за 1 USD. Укажите `planExchangeRateDate` для исходного курса и `exchangeRateDate` для ручного курса прогноза, если дата известна.
+
+Чтобы автоматически пересчитывать текущий прогноз, добавьте `"exchangeRateMode": "cbr"` в `cost` и уберите ручное значение `rubPerUsd`. Официальный курс Банка России загружается в фоне при запуске и проверяется раз в час. Снимок хранится рядом с выбранным реестром в файле с суффиксом `.usd-rub.json`. При сбое показан последний проверенный курс с датой и предупреждением. Пока снимка нет, видны суммы в исходных валютах. Исходный план сохраняет `planRubPerUsd`. В режиме по умолчанию используются локальные значения курса.
+
+To enable automatic USD/RUB for the current estimate, set `cost.exchangeRateMode` to `cbr` and omit the manual `rubPerUsd`. The Bank of Russia quote is fetched in the background on startup and hourly. The last verified quote is stored beside the registry with a `.usd-rub.json` suffix. An outage keeps the last verified quote and its effective date visible. Without a cached quote, the dashboard shows available native amounts. The original plan retains its pinned `planRubPerUsd`.
 
 ## Сценарный прогноз завершения
 

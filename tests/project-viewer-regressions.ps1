@@ -105,7 +105,7 @@ CI_HEAD_SHA: $old
                 }
                 cost = @{
                     schemaVersion = 1; asOf = '2026-11-26'; scopeVersion = 'v1'
-                    planHours = @(40, 50, 60); planAiRub = @(5000, 5000, 5000); planAiUsd = @(0, 0, 0); planRubPerUsd = 100
+                    planHours = @(40, 50, 60); planAiRub = @(5000, 5000, 5000); planAiUsd = @(0, 0, 0); planRubPerUsd = 100; planExchangeRateDate = '2026-01-01'; rubPerUsd = 80; exchangeRateDate = '2026-01-02'
                 }
                 historyPath = 'history.json'
                 evidenceSnapshotPath = 'evidence.json'
@@ -280,6 +280,10 @@ CI_HEAD_SHA: $old
     Assert-That ($first[0].cost.state -ceq 'available' -and $first[0].cost.asOf -ceq '2026-11-26' -and
         $first[0].cost.values.plan.totalRub[1] -eq 80000 -and $first[0].cost.values.plan.totalUsd[1] -eq 800 -and
         $null -eq $first[0].cost.values.forecast.totalRub -and $first[1].cost.state -ceq 'unconfigured') 'PRG-012 cost snapshot is isolated by project'
+    $rates = $first[0].cost.exchange
+    Assert-That ($rates.plan.rubPerUsd -eq 100 -and $rates.plan.effectiveDate -ceq '2026-01-01' -and
+        $rates.plan.source -ceq 'manual' -and $rates.forecast.rubPerUsd -eq 80 -and
+        $rates.forecast.effectiveDate -ceq '2026-01-02' -and $rates.forecast.source -ceq 'manual') 'PRG-014 HTTP exposes independent plan and forecast rates'
     $view = $first[0].tasks[0].evidence
     Assert-That ($view.state -ceq 'readable' -and $view.record.ci.current -and $view.record.review.current -and
         !$view.record.ownerAcceptance -and $view.record.mergeSha -and !$first[1].tasks[0].evidence -and
