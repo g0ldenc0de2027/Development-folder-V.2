@@ -210,7 +210,7 @@ function Get-TrackerAction($Task, $Project, $Assignments) {
         return @{ text = $instruction.text; blocked = [bool]$missing.Count; assignments = $missing }
     }
     $versions = @($Task.versions.Values | Where-Object { $_.sources.stale -contains $false })
-    if (!$versions.Count -or @($versions | Where-Object status -NotIn 'merged','closed','accepted','done').Count -eq 0) { return }
+    if (!$versions.Count -or @($versions | Where-Object status -NotIn 'merged','closed','accepted','done','completed').Count -eq 0) { return }
     if ($versions.needsDecision -contains $true) { return @{ text = 'Получить решение владельца' } }
     if (!$queue.stale) {
         $conflicts = @($Assignments | Where-Object comparison -EQ 'conflict')
