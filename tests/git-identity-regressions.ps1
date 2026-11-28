@@ -400,10 +400,12 @@ try {
         $range = $base + '..' + $script:good
         $rangePath = Join-Path $worktree $range
         WriteText $rangePath 'Synthetic file named like a revision range.'
+        $commitPath = Join-Path $worktree $script:good
+        WriteText $commitPath 'Synthetic file named like a commit SHA.'
         try {
             $null = Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @($range)
         } finally {
-            Remove-Item -LiteralPath $rangePath -ErrorAction Stop
+            Remove-Item -LiteralPath $rangePath,$commitPath -ErrorAction Stop
         }
         $null = Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @($script:good) -RemoteName 'origin' -PublishedMainSha $base
         $null = Assert-GitCommitIdentity -RepositoryRoot $worktree -CommitRange @(($base+'..'+$script:good)+[Environment]::NewLine+($base+'..'+$script:good))
