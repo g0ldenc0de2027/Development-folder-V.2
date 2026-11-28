@@ -14,7 +14,17 @@ function Assert-Journal($Condition, [string]$Message) {
 }
 
 try {
-    [IO.File]::WriteAllText($path, '{"schemaVersion":1,"projectId":"demo","events":[],"coverage":[]}')
+    $emptyJournal = '{"schemaVersion":1,"projectId":"demo","events":[],"coverage":[]}'
+    [IO.File]::WriteAllText($path, $emptyJournal, [Text.UTF8Encoding]::new($true))
+    try {
+        $withBom = Read-ProjectDecisionJournal -Path $path -ProjectId demo
+    } catch {
+        throw "PRG-003 journal with UTF-8 BOM: $($_.Exception.Message)"
+    }
+    [IO.File]::WriteAllText($path, $emptyJournal)
+    $withoutBom = Read-ProjectDecisionJournal -Path $path -ProjectId demo
+    Assert-Journal (($withBom.document | ConvertTo-Json -Depth 8 -Compress) -ceq
+        ($withoutBom.document | ConvertTo-Json -Depth 8 -Compress)) 'PRG-003 journal changes document when encoded with BOM'
     $baselines = @(@{
         projectId = 'demo'; version = 'v1'; approvedAt = '2026-11-27T08:00:00Z'
         items = @(@{ id = 'one'; criteriaVersion = 'v1'; weight = 3 }, @{ id = 'two'; criteriaVersion = 'v1'; weight = 2 },
