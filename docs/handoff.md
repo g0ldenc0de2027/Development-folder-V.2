@@ -4,6 +4,7 @@
 - Текущие ревизии, обсуждения и статусы проверяйте в [списке PR V2](https://github.com/g0ldenc0de2027/Development-folder-V.2/pulls).
 - Состояние проверок сверяйте в [GitHub Actions V2](https://github.com/g0ldenc0de2027/Development-folder-V.2/actions) по точной ревизии.
 - Перед интеграцией применяйте [штатный GitHub workflow](github-workflow.md).
+- Контракт типов JSON и проверки истории, доказательств, прогресса и кэша курса описаны в [T-154](../tasks/T-154-viewer-json-types.md).
 - Подключение сценарного прогноза к локальной панели описано в [T-120](../tasks/T-120-viewer-forecast-display.md).
 - Динамика подтверждённого остатка по датам и условия воспроизведения описаны в [T-121](../tasks/T-121-viewer-remaining-work.md).
 
