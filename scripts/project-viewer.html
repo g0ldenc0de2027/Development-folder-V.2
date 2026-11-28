@@ -469,11 +469,11 @@ function renderWeightedProgress(snapshot) {
     status.textContent = messages[snapshot?.state] ?? messages.unconfigured;
     return;
   }
-  const {percent, acceptedWeight, remainingWeight, totalWeight, scopeVersion, asOf} = snapshot;
+  const {percent, acceptedWeight, remainingWeight, totalWeight, scopeVersion, localDate} = snapshot;
   const format = value => new Intl.NumberFormat('ru-RU', {maximumFractionDigits: 3}).format(value);
   const caption = format(percent) + '% · Принято ' + format(acceptedWeight) + ' из ' +
     format(totalWeight) + ' · Осталось ' + format(remainingWeight);
-  status.textContent = caption + ' · Объём ' + scopeVersion + ' · Срез ' + asOf.slice(0, 10);
+  status.textContent = caption + ' · Объём ' + scopeVersion + ' · Срез ' + localDate;
   const track = node('div');
   track.className = 'weighted-track';
   track.setAttribute('role', 'meter');
