@@ -739,9 +739,18 @@ try {
     $listener.Start()
     Write-Output "$origin$prefix"
     while ($listener.IsListening) {
-        $context = $listener.GetContext()
+        try {
+            $context = $listener.GetContext()
+        } catch [Net.HttpListenerException] {
+            if (!$listener.IsListening) { break }
+            # Windows сообщает об обрыве соединения до передачи контекста.
+            if ($_.Exception.NativeErrorCode -notin 64, 995, 1236) { throw }
+            Write-Verbose 'HTTP request disconnected before dispatch.'
+            continue
+        }
         $request = $context.Request
         $response = $context.Response
+        $writeStarted = $false
         try {
             $response.Headers['Cache-Control'] = 'no-store'
             $response.Headers['X-Content-Type-Options'] = 'nosniff'
@@ -874,11 +883,22 @@ try {
             } else { $response.StatusCode = 404; continue }
             $bytes = $utf8.GetBytes($body)
             $response.ContentLength64 = $bytes.Length
+            $writeStarted = $true
             $response.OutputStream.Write($bytes, 0, $bytes.Length)
         } catch {
-            if ($response.OutputStream.CanWrite) { $response.StatusCode = 500 }
+            Write-Verbose ('HTTP request failed: ' + $_.Exception.GetType().Name)
+            try {
+                if ($writeStarted) { $response.Abort() }
+                else {
+                    $response.ContentLength64 = 0
+                    $response.StatusCode = 500
+                }
+            } catch {
+                Write-Verbose ('HTTP error response could not be sent: ' + $_.Exception.GetType().Name)
+            }
         } finally {
-            $response.Close()
+            try { $response.Close() }
+            catch { Write-Verbose ('HTTP response could not be closed: ' + $_.Exception.GetType().Name) }
         }
     }
 } finally {
