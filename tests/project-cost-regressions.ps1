@@ -51,3 +51,17 @@ $zeroForecast = Get-ProjectCost -RemainingHours $zero -RemainingAiRub $zero -Rem
 Assert-Equal $zeroForecast.forecast.totalRub $zero 'PRG-014 zero RUB without exchange rate'
 Assert-Equal $zeroForecast.forecast.totalUsd $zero 'PRG-014 zero USD without exchange rate'
 if ('exchangeRate' -cin $zeroForecast.forecast.missingInputs) { throw 'Zero totals do not require FX.' }
+
+$mixedFx = Get-ProjectCost -RemainingHours $zero -RemainingAiRub $zero -RemainingAiUsd $zero `
+    -RubPerUsd 82.1265 -ConfirmedLaborRub 360000 -ConfirmedAiRub 0 -ConfirmedAiUsd 200
+Assert-Equal ([math]::Round($mixedFx.forecast.totalRub[0], 2)) 376425.30 'PRG-016 confirmed 240h x 1500 RUB + 200 USD at 82.1265'
+Assert-Equal ([math]::Round($mixedFx.forecast.totalUsd[0], 2)) 4583.48 'PRG-016 mixed total in USD at 82.1265'
+Assert-Equal $mixedFx.confirmed.aiUsd @(200) 'PRG-016 source USD preserved with FX'
+$mixedNoFx = Get-ProjectCost -RemainingHours $zero -RemainingAiRub $zero -RemainingAiUsd $zero `
+    -ConfirmedLaborRub 360000 -ConfirmedAiRub 0 -ConfirmedAiUsd 200
+Assert-Equal $mixedNoFx.confirmed.aiUsd @(200) 'PRG-016 source USD preserved without FX'
+if ($null -ne $mixedNoFx.forecast.totalRub -or $null -ne $mixedNoFx.forecast.totalUsd -or
+    'exchangeRate' -cnotin $mixedNoFx.forecast.missingInputs) {
+    throw 'Mixed confirmed cost without FX must remain unknown.'
+}
+Write-Output 'PASS: mixed confirmed RUB/USD totals and source USD preservation'
