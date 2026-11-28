@@ -1030,6 +1030,7 @@ byId('stage').addEventListener('change', renderRows);
 byId('back').addEventListener('click', () => showProject(undefined));
 byId('close').addEventListener('click', () => byId('card').close());
 byId('card').addEventListener('close', () => {
+  if (byId('card').open) return;
   viewGeneration++;
   activeCard = undefined;
   const opener = cardOpener;

@@ -16,3 +16,7 @@
 - Один Tab из поиска переводит фокус на «К результатам». Enter и пробел переводят фокус на первую задачу в активном виде.
 - При пустой выдаче фокус переходит к сообщению о результате. Обычный ввод не перемещает фокус.
 - Enter на задаче, закрытие карточки и возврат фокуса продолжают работать по существующему контракту.
+
+## Browser verification
+
+Chrome with a synthetic one-task registry: list and board navigation, empty results, and Escape after card refresh. Rapid reopen exposed a delayed close event that cleared the new card opener. Ignore the close event if the dialog is already open again. The patched HTML passed the same browser scenario.
