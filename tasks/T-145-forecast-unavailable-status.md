@@ -1,8 +1,10 @@
 # T-145 — Явно обозначить отсутствие прогноза
 
-Статус: in_progress.
+Статус: merged.
 Исполнитель: Codex.
 Основание: PRG-007.
+
+Слияние: [PR #133](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/133), squash-коммит `172ce4bc42425b049562adf09af58826be7fde32` в main.
 
 ## Зона файлов
 
