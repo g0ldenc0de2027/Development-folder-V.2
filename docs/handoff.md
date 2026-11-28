@@ -9,6 +9,13 @@
 
 - Исправления по аудиту V2 начаты с жизненного цикла временного каталога gate. Зона, приёмка и оставшиеся части замечания описаны в [T-058](../tasks/T-058-gate-temp-ownership.md).
 
+## Исторический Handoff — восстановление T-016, 2026-11-18
+
+- Owner-approved T-013 disposition completed: seven raw files are in archive Development-Folder-V2_T-013-source-snapshot-2026-11-18_91bb56d5.zip (archive SHA-256 734f27b8027e4a0aaa2f1aeca5868ba242249766fca26e975fcb718c60602d99; manifest SHA-256 91bb56d5de1822cfb64a9fad0270c83d41d5b00c110e6740d2804c9e96c2d4f3).
+- T-013 is clean at its original HEAD 88342060af7c6c18a163d3b6fa6727ab5c17fd7e; backup ref backup/2026-11-18-T013-source-base preserves that commit. Branch and published history were not rewritten.
+- This supersedes the prior no-reset disposition for the one explicitly approved action. Historical provenance remains UNKNOWN; T-016 remains the distinct recovery derivative.
+- The PR #15 hosted CI/review tuple in the historical text predates this status correction. Refresh both against the eventual PR head before merge.
+
 ## Исторический Handoff — T-014
 
 - T-014 обновляется на актуальной main. Зона, результаты прошлых проверок и критерии приёмки сохранены в карточке задачи.
