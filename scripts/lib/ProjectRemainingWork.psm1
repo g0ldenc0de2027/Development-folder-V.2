@@ -46,6 +46,10 @@ function Get-ProjectRemainingWork {
     if ($Through.DayNumber - $From.DayNumber -ge 90) { return @{ state = 'range_too_large'; points = @() } }
     if (!$Baselines.Count) { return @{ state = 'unconfigured'; points = @() } }
 
+    # Для текущего дня снимок включителен, для прошедшего следующая полночь исключена.
+    $today = [DateOnly]::FromDateTime([TimeZoneInfo]::ConvertTime($SnapshotAt, $TimeZone).DateTime)
+    $periodEnd = $period.EndUtc
+    if ($Through -eq $today) { $periodEnd = $periodEnd.AddTicks(1) }
     $origin = [DateTimeOffset]::Parse($Baselines[0]['approvedAt'], [Globalization.CultureInfo]::InvariantCulture)
     $verifiedAt = $null
     if ($null -ne $Checkpoint) {
@@ -74,7 +78,7 @@ function Get-ProjectRemainingWork {
         [decimal]$total = 0
         foreach ($item in $baseline['items']) { $total += [decimal]$item['weight'] }
         $approvedAt = [DateTimeOffset]$baseline['approvedAt']
-        if ($null -ne $previousBaseline -and $approvedAt -ge $period.StartUtc -and $approvedAt -lt $period.EndUtc) {
+        if ($null -ne $previousBaseline -and $approvedAt -ge $period.StartUtc -and $approvedAt -lt $periodEnd) {
             $reason = $baseline['reason']
             if ($null -ne $reason -and ($reason -isnot [string] -or $reason.Length -gt 240)) {
                 throw 'INVALID_SCOPE_CHANGE_REASON'
@@ -92,26 +96,28 @@ function Get-ProjectRemainingWork {
     $transitionIndex = 0
     $points = @(for ($day = $period.From; $day -le $period.Through; $day = $day.AddDays(1)) {
         $dayPeriod = Get-ProjectPeriod -From $day -Through $day -SnapshotAt $SnapshotAt -TimeZone $TimeZone
-        $endTicks = $dayPeriod.EndUtc.UtcTicks
+        $dayEnd = $dayPeriod.EndUtc
+        if ($day -eq $today) { $dayEnd = $dayEnd.AddTicks(1) }
+        $endTicks = $dayEnd.UtcTicks
         $previousIndex = $changeIndex
         while ($changeIndex -lt $changeTicks.Count -and $changeTicks[$changeIndex] -lt $endTicks) {
             $changeIndex++
         }
         if ($null -eq $snapshot -or $changeIndex -ne $previousIndex) {
-            $snapshot = Get-ProjectProgress -ProjectId $ProjectId -AsOf $dayPeriod.EndUtc.AddTicks(-1) -Baselines $Baselines -Decisions $Decisions
+            $snapshot = Get-ProjectProgress -ProjectId $ProjectId -AsOf $dayEnd.AddTicks(-1) -Baselines $Baselines -Decisions $Decisions
         }
         $point = @{ date = $day.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture); state = $snapshot.state }
         if ($snapshot.state -ceq 'available') {
             $point.scopeVersion = $snapshot.scopeVersion
             $point.scopeChanges = @(while ($transitionIndex -lt $transitions.Count -and
-                [DateTimeOffset]$transitions[$transitionIndex].approvedAt -lt $dayPeriod.EndUtc) {
+                [DateTimeOffset]$transitions[$transitionIndex].approvedAt -lt $dayEnd) {
                 $transitions[$transitionIndex]
                 $transitionIndex++
             })
             $point.scopeChanged = $point.scopeChanges.Count -gt 0
             $point.totalWeight = $snapshot.totalWeight
-            $cumulative = @{StartUtc = $origin.ToUniversalTime(); EndUtc = $dayPeriod.EndUtc}
-            if ($null -ne $verifiedAt -and $verifiedAt -lt $dayPeriod.EndUtc) {
+            $cumulative = @{StartUtc = $origin.ToUniversalTime(); EndUtc = $dayEnd}
+            if ($null -ne $verifiedAt -and $verifiedAt -lt $dayEnd) {
                 $cumulative.StartUtc = $verifiedAt.AddTicks(1).ToUniversalTime()
             }
             $confirmed = $cumulative.StartUtc -ge $cumulative.EndUtc -or
