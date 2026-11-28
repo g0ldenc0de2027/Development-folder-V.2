@@ -147,6 +147,8 @@ CI_HEAD_SHA: $old
     $journalFixture = Join-Path $root 'owner-journal.json'
     $journalBaseline = @{ projectId = 'journal'; version = 'v1'; approvedAt = '2026-01-01T00:00:00Z'
         items = @(@{ id = 'result-a'; criteriaVersion = 'v1'; weight = 3 }, @{ id = 'result-b'; criteriaVersion = 'v1'; weight = 2 }) }
+    $futureBaseline = @{ projectId = 'journal'; version = 'v2'; previousVersion = 'v1'
+        approvedAt = '2099-01-01T00:00:00Z'; items = @(@{ id = 'result-b'; criteriaVersion = 'v1'; weight = 2 }) }
     $journalEvent = @{ projectId = 'journal'; eventId = 'a.1'; itemId = 'result-a'; scopeVersion = 'v1'; criteriaVersion = 'v1'
         type = 'accepted'; at = '2026-01-01T06:00:00Z'; evidenceId = 'synthetic' }
     $journalDocument = @{ schemaVersion = 1; projectId = 'journal'; events = @($journalEvent); coverage = @(foreach ($type in 'accepted','acceptance_revoked') {
@@ -156,7 +158,7 @@ CI_HEAD_SHA: $old
     $config.projects += @{
         id = 'journal'; name = 'Журнал'; roots = @('other'); decisionsPath = 'owner-journal.json'
         decisionTaskByItem = @{ 'result-a' = 'T-001'; 'result-b' = 'T-001' }
-        progress = @{ schemaVersion = 1; asOf = '2026-01-01T08:00:00Z'; baselines = @($journalBaseline) }
+        progress = @{ schemaVersion = 1; asOf = '2026-01-01T08:00:00Z'; baselines = @($journalBaseline, $futureBaseline) }
     }
     $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $registry -Encoding utf8
     $gapFixture = Join-Path $root 'gap.json'

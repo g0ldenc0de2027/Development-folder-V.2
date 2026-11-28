@@ -316,7 +316,8 @@ function Update-DecisionJournals {
             $candidate = Read-ProjectDecisionJournal -Path $project.decisionsPath -ProjectId $project.id -Baselines $project.progressInput.baselines
             $computed = Get-ProjectJournalProgress -Snapshot $candidate -ProjectId $project.id -Baselines $project.progressInput.baselines -AsOf $project.decisionAsOf
             $active = @($project.progressInput.baselines | Where-Object {
-                (Read-ObservedInstant $_['approvedAt']) -le $project.decisionAsOf
+                $approvedAt = Read-ObservedInstant $_['approvedAt']
+                $null -ne $approvedAt -and $approvedAt -le $project.decisionAsOf
             } | Select-Object -Last 1)
             $items = @(if ($active.Count) { $active[0]['items'] })
             $viewArgs = @{ Snapshot = $candidate; TaskByItem = $project.decisionTaskByItem; AsOf = $project.decisionAsOf; ActiveItems = $items }
