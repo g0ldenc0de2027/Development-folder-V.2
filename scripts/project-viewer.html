@@ -510,12 +510,12 @@ function renderCost(snapshot) {
   const {plan, confirmed, forecast} = snapshot.values;
   const rateLabel = rate => {
     if (!rate || !Number.isFinite(rate.rubPerUsd)) {
-      return rate?.source === 'cbr' ? 'Курс Банка России пока недоступен' : 'Курс не задан';
+      return rate?.source === 'cbr' ? 'Курс Банка России недоступен · проверенного значения нет' : 'Курс не задан';
     }
     const value = new Intl.NumberFormat('ru-RU', {maximumFractionDigits: 8}).format(rate.rubPerUsd);
     const source = rate.source === 'cbr' ? 'Банк России' : 'ручной ввод';
     return '1 USD = ' + value + ' ₽ · ' + source + ' · ' + (rate.effectiveDate ?? 'дата курса не указана') +
-      (rate.state === 'stale' ? ' · обновление недоступно' : '');
+      (rate.state === 'stale' ? ' · последний проверенный курс, обновить не удалось' : '');
   };
   const amount = (value, currency) => value === null ? 'Нет данных' : format(value, currency);
   const rows = [
