@@ -46,6 +46,8 @@ CI_HEAD_SHA: $old
 "@
     [IO.File]::WriteAllText($a, $sample)
     [IO.File]::WriteAllText($b, $sample)
+    [IO.File]::WriteAllText((Join-Path $root 'other/tasks/T-002-completed.md'),
+        ("# T-002 Completed" + [char]10 + "Статус: completed" + [char]10 + "Блокер: CI"))
     [IO.File]::WriteAllText($c, ('# T-001 — Другой проект' + [char]10 + '- **Статус:** merged · **Исполнитель и координатор:** Kimi.'))
     [void](New-Item -ItemType Junction -Path $junction -Target (Join-Path $root 'other'))
     foreach ($folder in 'tasks','reports','accepted') {
@@ -314,6 +316,9 @@ CI_HEAD_SHA: $old
     Assert-That ($first[0].historyConfigured -and !$first[1].historyConfigured) 'PTR-VIS-005 summary distinguishes history configuration by project'
     Assert-That ($first.Count -eq (4 + [int][bool]$V2Root + $badVersions.Count) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
     $timeline = $first[0].timeline
+    $completed = @($first[1].tasks | Where-Object id -CEQ 'T-002')
+    Assert-That ($completed.Count -eq 1 -and $completed[0].versions[0].status -ceq 'completed' -and
+        $completed[0].versions[0].blocker -ceq 'CI' -and $null -eq $completed[0].action) 'LOW-03 completed task has no inferred action'
     Assert-That ($timeline.startDate -ceq '2026-11-20' -and $timeline.timeZone -ceq 'UTC' -and
         $timeline.today -in @([DateTime]::UtcNow.ToString('yyyy-MM-dd'), [DateTime]::UtcNow.AddDays(-1).ToString('yyyy-MM-dd')) -and
         $timeline.stages -is [array] -and $timeline.stages.Count -eq 1 -and
