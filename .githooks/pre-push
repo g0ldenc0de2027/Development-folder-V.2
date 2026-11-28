@@ -122,7 +122,7 @@ if [ "$bootstrap" = true ]; then
 fi
 
 if [ -z "$outgoing_sha" ]; then
-    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name"
+    pwsh -NoLogo -NoProfile -File "$repo_root/scripts/verify-git-identity.ps1" -RepositoryRoot "$repo_root" -HookContext -RemoteName "$remote_name" -RemoteUrl "$remote_url"
     exec pwsh -NoLogo -NoProfile -File "$repo_root/scripts/quality-gate.ps1" -RemoteName "$remote_name" -RemoteUrl "$remote_url"
 fi
 

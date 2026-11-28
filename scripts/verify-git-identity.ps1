@@ -16,15 +16,26 @@ try {
         Remove-Item -LiteralPath ('Env:' + [string]$name) -ErrorAction SilentlyContinue
     }
     $null = Assert-GitWorktreeIdentity -RepositoryRoot $RepositoryRoot
+    $checkPushDestination = $HookContext -and ($RemoteName -or $RemoteUrl)
+    if ($checkPushDestination) {
+        $config = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'config/github/repository.json') -Raw | ConvertFrom-Json
+        $slug = [string]$config.repository
+        $expectedUrl = "https://github.com/$slug.git"
+        if ($slug -notmatch '^[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$' -or $RemoteName -cne 'origin' -or $RemoteUrl -cne $expectedUrl) {
+            throw 'GIT_IDENTITY_PUSH_DESTINATION_MISMATCH'
+        }
+        $fetchUrls = @(& git -C $RepositoryRoot remote get-url --all origin 2>$null)
+        $fetchExit = $LASTEXITCODE
+        $pushUrls = @(& git -C $RepositoryRoot remote get-url --push --all origin 2>$null)
+        $pushExit = $LASTEXITCODE
+        if ($fetchExit -ne 0 -or $pushExit -ne 0 -or $fetchUrls.Count -ne 1 -or $pushUrls.Count -ne 1 -or
+            $fetchUrls[0] -cne $expectedUrl -or $pushUrls[0] -cne $expectedUrl) {
+            throw 'GIT_IDENTITY_PUSH_DESTINATION_MISMATCH'
+        }
+    }
     $publishedMain = ''
     if ($CommitRange.Count -gt 0) {
-        if ($HookContext -and $RemoteName) {
-            $config = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'config/github/repository.json') -Raw | ConvertFrom-Json
-            $slug = [string]$config.repository
-            if ($slug -notmatch '^[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$' -or
-                $RemoteName -cne 'origin' -or $RemoteUrl -cne ('https://github.com/' + $slug + '.git')) {
-                throw 'GIT_IDENTITY_PUSH_DESTINATION_MISMATCH'
-            }
+        if ($checkPushDestination) {
             # Query GitHub directly so a stale tracking ref cannot exempt local commits.
             $publishedMain = & gh api --hostname github.com "repos/$slug/git/ref/heads/main" --jq '.object.sha' 2>$null
             if ($LASTEXITCODE -ne 0 -or $publishedMain -isnot [string] -or $publishedMain -cnotmatch '^[0-9a-f]{40}$') {

@@ -606,6 +606,21 @@ try {
 
             $setupPwsh = (Get-Command pwsh -ErrorAction Stop).Source
             $setupPath = Join-Path $testTree 'scripts/github/configure-local.ps1'
+            $verifyPath = Join-Path $testTree 'scripts/verify-git-identity.ps1'
+            $verifyArgs = @('-NoLogo','-NoProfile','-File',$verifyPath,'-RepositoryRoot',$testTree,
+                '-HookContext','-RemoteName','origin','-RemoteUrl',$originUrl)
+            $validOrigin = Invoke-NativeProcess $setupPwsh $verifyArgs -HookProcess -WorkingDirectory $testTree
+            if ($validOrigin.ExitCode -ne 0) { throw ('CANONICAL_PUSH_ORIGIN_REJECTED:' + $validOrigin.Error) }
+            $extraUrl = 'https://example.invalid/extra.git'
+            Invoke-Git $admin @('remote','set-url','--add','--push','origin',$extraUrl) | Out-Null
+            try {
+                $multipleUrls = Invoke-NativeProcess $setupPwsh $verifyArgs -HookProcess -WorkingDirectory $testTree
+                if ($multipleUrls.ExitCode -ne 1 -or $multipleUrls.Error -notlike '*GIT_IDENTITY_PUSH_DESTINATION_MISMATCH*') {
+                    throw ('MULTIPLE_PUSH_URLS_NOT_REJECTED:' + $multipleUrls.Error)
+                }
+            } finally {
+                Invoke-Git $admin @('config','--local','--fixed-value','--unset-all','remote.origin.pushurl',$extraUrl) | Out-Null
+            }
             foreach ($scenario in @(
                 @{ Options = @(); Url = ($originUrl + '/') }
                 @{ Options = @('--push'); Url = $originUrl.Replace('github.com','GITHUB.com') }
@@ -613,6 +628,10 @@ try {
                 $setOrigin = @('remote','set-url') + $scenario.Options + @('origin')
                 Invoke-Git $admin ($setOrigin + @($scenario.Url)) | Out-Null
                 try {
+                    $invalidOrigin = Invoke-NativeProcess $setupPwsh $verifyArgs -HookProcess -WorkingDirectory $testTree
+                    if ($invalidOrigin.ExitCode -ne 1 -or $invalidOrigin.Error -notlike '*GIT_IDENTITY_PUSH_DESTINATION_MISMATCH*') {
+                        throw ('NONCANONICAL_PUSH_ORIGIN_NOT_REJECTED:' + $invalidOrigin.Error)
+                    }
                     $setupResult = Invoke-NativeProcess $setupPwsh @('-NoLogo','-NoProfile','-File',$setupPath,'-IdentityOnly') -HookProcess
                     if ($setupResult.ExitCode -eq 0 -or $setupResult.Error -notlike '*origin fetch and push URLs must both match*') {
                         throw ('NONCANONICAL_ORIGIN_WAS_NOT_REJECTED:' + $setupResult.Output + $setupResult.Error)
