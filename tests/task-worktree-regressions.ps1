@@ -215,10 +215,46 @@ try {
         }
     }
     Case 'audit subprocess isolates system and global Git config' {
+        $indexPath = Invoke-Git $mainTree @('rev-parse','--path-format=absolute','--git-path','index')
+        $metadataPaths = @((Join-Path $admin 'config'),$indexPath)
+        $metadataHashes = @(Get-FileHash -LiteralPath $metadataPaths -Algorithm SHA256 | ForEach-Object Hash) -join ':'
+        $refsBefore = Invoke-Git $admin @('show-ref','--head')
+        $poison = Join-Path $scratch 'invalid-git.config'
+        Write-Text $poison '[unterminated'
+        $names = @('GIT_CONFIG_GLOBAL','GIT_CONFIG_SYSTEM','GIT_CONFIG_NOSYSTEM','GIT_CONFIG_PARAMETERS')
+        $saved = @{}
+        foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
+        try {
+            foreach ($setting in @('GIT_CONFIG_GLOBAL','GIT_CONFIG_SYSTEM','GIT_CONFIG_PARAMETERS')) {
+                [Environment]::SetEnvironmentVariable('GIT_CONFIG_GLOBAL',$fixtureEmptyConfig,'Process')
+                [Environment]::SetEnvironmentVariable('GIT_CONFIG_SYSTEM',$fixtureEmptyConfig,'Process')
+                [Environment]::SetEnvironmentVariable('GIT_CONFIG_NOSYSTEM',$null,'Process')
+                [Environment]::SetEnvironmentVariable('GIT_CONFIG_PARAMETERS',$null,'Process')
+                $badValue = if ($setting -ceq 'GIT_CONFIG_PARAMETERS') { 'invalid-parameter' } else { $poison }
+                $diagnostic = if ($setting -ceq 'GIT_CONFIG_PARAMETERS') { $setting } else { [IO.Path]::GetFileName($poison) }
+                [Environment]::SetEnvironmentVariable($setting,$badValue,'Process')
+                $control = Invoke-NativeProcess 'git' @('--no-optional-locks','-C',$mainTree,'status','--porcelain') -PreserveGitContext -HookProcess
+                if ($control.ExitCode -eq 0 -or $control.Error -notmatch [regex]::Escape($diagnostic)) {
+                    throw "AUDIT_CONFIG_CONTROL_DID_NOT_FAIL: $setting"
+                }
+                $argsList = @('-NoLogo','-NoProfile','-File',$scriptPath,'-Mode','Audit',
+                    '-RepositoryRoot',$mainTree,'-QuarantineConfigPath',$configPath)
+                $result = Invoke-NativeProcess (Get-Command pwsh -ErrorAction Stop).Source $argsList -PreserveGitContext -HookProcess
+                if ($result.ExitCode -ne 0 -or $result.Output -notmatch 'WORKTREE-AUDIT=PASS') {
+                    throw "AUDIT_CONFIG_ISOLATION_FAILED: $setting; $($result.Output)$($result.Error)"
+                }
+            }
+        } finally {
+            foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name,$saved[$name],'Process') }
+        }
+
+        $afterHashes = @(Get-FileHash -LiteralPath $metadataPaths -Algorithm SHA256 | ForEach-Object Hash) -join ':'
+        if ($afterHashes -cne $metadataHashes -or (Invoke-Git $admin @('show-ref','--head')) -cne $refsBefore) {
+            throw 'AUDIT_CONFIG_ISOLATION_CHANGED_GIT_METADATA'
+        }
+
+        # Structural checks for independent controls, pending their own behavioral fixtures.
         $auditSource = [IO.File]::ReadAllText($scriptPath)
-        if ($auditSource -notmatch "GIT_CONFIG_NOSYSTEM.*1") { throw 'AUDIT_SYSTEM_GIT_CONFIG_ISOLATION_MISSING' }
-        if (-not $auditSource.Contains('$emptyConfig = Join-Path $scriptRepositoryRoot ''config/git-empty.config''')) { throw 'AUDIT_EMPTY_GIT_CONFIG_PATH_MISSING' }
-        if (-not $auditSource.Contains('$start.Environment[''GIT_CONFIG_GLOBAL''] = $emptyConfig')) { throw 'AUDIT_GLOBAL_GIT_CONFIG_ISOLATION_MISSING' }
         if ($auditSource -notmatch "--no-pager") { throw 'AUDIT_PAGER_ISOLATION_MISSING' }
         if ($auditSource -notmatch "--no-optional-locks") { throw 'AUDIT_OPTIONAL_LOCK_ISOLATION_MISSING' }
         if ($auditSource -notmatch "'-c','core\.fsmonitor=false'") { throw 'AUDIT_REPOSITORY_FSMONITOR_ISOLATION_MISSING' }
