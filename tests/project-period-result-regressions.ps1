@@ -46,3 +46,18 @@ try {
     if ($_.Exception.Message -cne 'PROJECT_HISTORY_CONFLICTING_EVENT') { throw }
 }
 'PASS: distinct results, historical slice and legacy task aggregation'
+
+
+$empty = Get-ProjectPeriodEvents -ProjectId demo -Period $after -Events @()
+$types = @('accepted', 'acceptance_revoked')
+$acceptedCoverage = @{type = 'accepted'; from = '2026-11-27T00:00:00Z'; until = '2026-11-28T00:00:00Z'}
+$revokedCoverage = @{type = 'acceptance_revoked'; from = '2026-11-27T00:00:00Z'; until = '2026-11-28T00:00:00Z'}
+$incomplete = Get-ProjectHistoryCoverage -Period $after -Coverage @($acceptedCoverage) -Types $types
+$complete = Get-ProjectHistoryCoverage -Period $after -Coverage @($acceptedCoverage, $revokedCoverage) -Types $types
+$gaps = $incomplete.accepted.gaps
+if ($empty.totals.accepted -ne 0 -or $incomplete.accepted.complete -or $gaps.Count -ne 1 -or
+    $gaps[0].eventType -cne 'acceptance_revoked' -or $gaps[0].from -ne $after.StartUtc -or
+    $gaps[0].until -ne $after.EndUtc -or !$complete.accepted.complete -or $complete.accepted.gaps.Count -ne 0) {
+    throw 'Zero known acceptances must preserve coverage and the exact missing revocation interval'
+}
+'PASS: zero known acceptances distinguish incomplete from complete coverage'
