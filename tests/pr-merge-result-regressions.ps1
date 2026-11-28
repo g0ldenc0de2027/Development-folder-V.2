@@ -38,26 +38,11 @@ if (-not (Test-Path -LiteralPath $validator -PathType Leaf)) {
     throw 'PR merge-result validator is missing'
 }
 
-$systemTemp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
-if ([string]::IsNullOrWhiteSpace($TempRoot)) {
-    $tempParent = $systemTemp
-} else {
-    $tempParent = [IO.Path]::GetFullPath($TempRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
-    $tempPrefix = $systemTemp + [IO.Path]::DirectorySeparatorChar
-    if (
-        -not $tempParent.Equals($systemTemp, [StringComparison]::OrdinalIgnoreCase) -and
-        -not $tempParent.StartsWith($tempPrefix, [StringComparison]::OrdinalIgnoreCase)
-    ) {
-        throw 'Regression TempRoot must be inside the system temporary directory'
-    }
-}
-if (-not [IO.Directory]::Exists($tempParent)) {
-    throw 'Regression TempRoot is unavailable'
-}
+. (Join-Path $PSScriptRoot 'git-fixture-temp.ps1')
+$tempParent = if ([string]::IsNullOrWhiteSpace($TempRoot)) { [IO.Path]::GetTempPath() } else { $TempRoot }
+$tempParent = [IO.Path]::GetFullPath($tempParent)
 $fixtureRoot = Join-Path $tempParent ('pr-merge-result-' + [guid]::NewGuid().ToString('N'))
-if (Test-Path -LiteralPath $fixtureRoot) {
-    throw 'Regression fixture path already exists'
-}
+$fixtureOwned = $false
 
 $oldEnvironment = @{}
 foreach ($entry in [Environment]::GetEnvironmentVariables('Process').GetEnumerator()) {
@@ -127,7 +112,8 @@ function Invoke-ValidatorCase {
 }
 
 try {
-    New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
+    New-GitFixtureTempDirectory $fixtureRoot
+    $fixtureOwned = $true
     $globalConfig = Join-Path $fixtureRoot 'empty.gitconfig'
     [IO.File]::WriteAllText($globalConfig, '', [Text.UTF8Encoding]::new($false))
     foreach ($name in $oldEnvironment.Keys) {
@@ -191,19 +177,5 @@ try {
     foreach ($name in $oldEnvironment.Keys) {
         [Environment]::SetEnvironmentVariable($name, $oldEnvironment[$name], 'Process')
     }
-    if (Test-Path -LiteralPath $fixtureRoot) {
-        $fixtureRootFull = [IO.Path]::GetFullPath($fixtureRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
-        $allowedPrefix = [IO.Path]::GetFullPath($tempParent).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
-        if (
-            -not $fixtureRootFull.StartsWith($allowedPrefix, [StringComparison]::OrdinalIgnoreCase) -or
-            $fixtureRootFull.Equals([IO.Path]::GetFullPath($tempParent).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar), [StringComparison]::OrdinalIgnoreCase)
-        ) {
-            throw 'Refusing to remove a fixture outside its unique temporary directory'
-        }
-        $fixtureItem = Get-Item -LiteralPath $fixtureRootFull -Force
-        if (($fixtureItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-            throw 'Refusing to remove a reparse-point fixture'
-        }
-        Remove-Item -LiteralPath $fixtureRootFull -Recurse -Force
-    }
+    if ($fixtureOwned) { Remove-GitFixtureTempDirectory $fixtureRoot }
 }
