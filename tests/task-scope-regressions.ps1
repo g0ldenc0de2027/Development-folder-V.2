@@ -478,7 +478,15 @@ try {
     $passed++
     Write-Output 'PASS: scope rejects a committed out-of-scope path'
 
-    if ($passed -ne 10) { throw ('Expected 10 task-scope cases; found ' + $passed) }
+    $cardPath = 'tasks/T-008-scope-fixture.md'
+    Write-Text (Join-Path $taskWorktree $cardPath) ($fixtureCard + '- `docs/*.md`' + "`n")
+    $null = Invoke-Git $taskWorktree @('add', '--', $cardPath)
+    $null = Invoke-Git $taskWorktree @('commit', '-m', 'test(scope): reject wildcard syntax')
+    Assert-Scope 1 'Task card contains an invalid scope path'
+    $passed++
+    Write-Output 'PASS: scope rejects wildcard syntax in a task card'
+
+    if ($passed -ne 11) { throw ('Expected 11 task-scope cases; found ' + $passed) }
     Write-Output ("TASK-SCOPE-REGRESSIONS: {0} passed, 0 failed" -f $passed)
 } finally {
     try {

@@ -46,13 +46,13 @@ if ($taskFiles.Count -ne 1) { throw 'Task scope requires exactly one matching ta
 $card = (Invoke-Git @('-C',$repoRoot,'show',"${head}:$($taskFiles[0])")) -join [char]10
 $section = [regex]::Match($card,'(?ms)^## Зона файлов\s*\r?\n(?<body>.*?)(?=^## |\z)')
 if (-not $section.Success) { throw 'Task card has no file-scope section' }
-$scope = [Collections.Generic.List[string]]::new()
+$scope = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($match in [regex]::Matches($section.Groups['body'].Value,'(?m)^\s*-\s+`(?<path>[^`]+)`\s*$')) {
     $path = $match.Groups['path'].Value.Replace('\','/').Trim()
-    if (-not $path -or $path.StartsWith('/') -or $path -match '(^|/)\.\.?(/|$)' -or $path.Contains('//') -or $path -notmatch '^[\p{L}\p{M}\p{N}._/*?-]+$') {
+    if (-not $path -or $path.StartsWith('/') -or $path -match '(^|/)\.\.?(/|$)' -or $path.Contains('//') -or $path -notmatch '^[\p{L}\p{M}\p{N}._/-]+$') {
         throw 'Task card contains an invalid scope path'
     }
-    $scope.Add($path)
+    [void]$scope.Add($path)
 }
 if ($scope.Count -eq 0) { throw 'Task card scope is empty' }
 $changes = @(Invoke-Git @('-C',$repoRoot,'-c','core.quotepath=false','diff','--no-renames','--name-only','--diff-filter=ACDMRTUXB',"$base...$head"))
@@ -60,11 +60,7 @@ if ($changes.Count -eq 0) { throw 'Task branch contains no changes relative to i
 $outside = [Collections.Generic.List[string]]::new()
 foreach ($change in $changes) {
     $normalized = $change.Replace('\','/')
-    $allowed = $false
-    foreach ($pattern in $scope) {
-        if ($normalized -like $pattern) { $allowed = $true; break }
-    }
-    if (-not $allowed) { $outside.Add($normalized) }
+    if (-not $scope.Contains($normalized)) { $outside.Add($normalized) }
 }
 if ($outside.Count -gt 0) { throw ('Out-of-scope paths: ' + ($outside -join ', ')) }
 $status = @(Invoke-Git @('-C',$repoRoot,'--no-optional-locks','status','--porcelain=v1','--untracked-files=all','--ignore-submodules=none'))
