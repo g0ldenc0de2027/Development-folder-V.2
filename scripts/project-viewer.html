@@ -853,6 +853,7 @@ function renderPeriod(snapshot) {
       return date.toISOString();
     }
   };
+  if (historyState === 'partial') status.textContent += ' · Файл истории активности недоступен';
   status.textContent += ' · История прочитана: ' + instant(snapshot.historyReadAt);
   const result = byId('period-result');
   const totals = node('ul');

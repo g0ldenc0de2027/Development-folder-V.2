@@ -794,8 +794,6 @@ try {
                     try {
                         Assert-PlainPath $project.historyPath $false
                         $history = Read-ProjectHistory -Path $project.historyPath -ProjectId $project.id
-                        $result = Get-ProjectPeriodEvents -ProjectId $project.id -Period $period -Events $history.events
-                        $coverage = Get-ProjectHistoryCoverage $period $history.coverage @($result.totals.Keys)
                         $state = 'readable'
                     } catch {
                         $result = $null
@@ -808,16 +806,22 @@ try {
                     if ($null -ne $project.decisionView) {
                         $events += @($project.decisionView.eventHistory)
                         if (!$project.decisionView.unmappedItems.Count) { $intervals += @($project.decisionView.coverage) }
-                        $state = 'readable'
+                        $state = if ($state -ceq 'unavailable') { 'partial' } else { 'readable' }
                     }
                     $history = @{ events = $events; coverage = $intervals }
-                    if ($state -ceq 'readable') {
-                        $result = Get-ProjectPeriodEvents -ProjectId $project.id -Period $period -Events $events
-                        $coverage = Get-ProjectHistoryCoverage $period $intervals @($result.totals.Keys)
+                }
+                if ($state -cin 'readable','partial') {
+                    try {
+                        $result = Get-ProjectPeriodEvents -ProjectId $project.id -Period $period -Events $history.events
+                        $coverage = Get-ProjectHistoryCoverage $period $history.coverage @($result.totals.Keys)
+                    } catch {
+                        $result = $null
+                        $coverage = $null
+                        $state = 'unavailable'
                     }
                 }
                 try {
-                    $remainingWork = Get-RemainingWorkView $project $period $zone $(if ($state -ceq 'readable') { $history })
+                    $remainingWork = Get-RemainingWorkView $project $period $zone $(if ($state -cin 'readable','partial') { $history })
                 } catch {
                     $remainingWork = @{ state = 'invalid'; points = @() }
                 }
@@ -835,7 +839,7 @@ try {
                     })
                     queue = if ($queue) { @{ updated = $queue.updated; stale = $queue.stale } } else { $null }
                 }
-                $periodResponse = @{ projectId = $project.id; sourceFreshness = $sourceFreshness; period = $periodView; historyState = $state; report = $result; coverage = $coverage; remainingWork = $remainingWork; historyReadAt = if ($state -ceq 'readable') { [DateTimeOffset]::UtcNow } else { $null } }
+                $periodResponse = @{ projectId = $project.id; sourceFreshness = $sourceFreshness; period = $periodView; historyState = $state; report = $result; coverage = $coverage; remainingWork = $remainingWork; historyReadAt = if ($state -cin 'readable','partial') { [DateTimeOffset]::UtcNow } else { $null } }
                 if ($project.decisionsPath) {
                     $periodResponse.frame = $project.decisionFrame
                     $periodResponse.journalState = $project.decisionState
