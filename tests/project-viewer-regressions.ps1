@@ -144,6 +144,9 @@ CI_HEAD_SHA: $old
         $config.projects[-1].progress.baselines[0].projectId = "bad-cost-$i"
         $config.projects[-1].progress.decisions[0].projectId = "bad-cost-$i"
     }
+    $localDateProject = $config.projects | Where-Object id -CEQ 'bad-cost-0'
+    $localDateProject.timeline = @{ timeZone = 'Russian Standard Time'; stages = @() }
+    $localDateProject.progress.asOf = '2026-01-02T22:00:00Z'
     $journalFixture = Join-Path $root 'owner-journal.json'
     $journalBaseline = @{ projectId = 'journal'; version = 'v1'; approvedAt = '2026-01-01T00:00:00Z'
         items = @(@{ id = 'result-a'; criteriaVersion = 'v1'; weight = 3 }, @{ id = 'result-b'; criteriaVersion = 'v1'; weight = 2 }) }
@@ -277,6 +280,8 @@ CI_HEAD_SHA: $old
     Assert-That ($first[1].dateForecast.state -ceq 'not_assessed' -and
         $first[1].dateForecast.reason -ceq 'configuration_unavailable') 'PRG-008 forecast settings are isolated by project'
     $invalidCosts = @($first | Where-Object id -Like 'bad-cost-*')
+    Assert-That (($invalidCosts | Where-Object id -CEQ 'bad-cost-0').weightedProgress.localDate -ceq '2026-01-03' -and
+        ($invalidCosts | Where-Object id -CEQ 'bad-cost-1').weightedProgress.localDate -ceq '2026-01-03') 'LOW-04 weighted progress uses project-local date with UTC fallback'
     Assert-That ($invalidCosts.Count -eq 3 -and @($invalidCosts | Where-Object { $_.cost.state -cne 'invalid' }).Count -eq 0) 'PRG-014 rejects boolean, string and floating-point JSON schema versions'
     Assert-That (@($invalidCosts | Where-Object { $_.dateForecast.reason -cne 'invalid_configuration' }).Count -eq 0) 'PRG-011 forecast rejects non-integer schema versions'
     Assert-That ($first[0].cost.state -ceq 'available' -and $first[0].cost.asOf -ceq '2026-11-26' -and

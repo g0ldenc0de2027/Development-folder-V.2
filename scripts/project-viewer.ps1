@@ -361,12 +361,19 @@ function Get-Summary {
                 }
             }
         }
+        $progress = $project.weightedProgress
+        if ($progress.state -ceq 'available') {
+            $progress = $progress.Clone()
+            $zone = if ($project.timeline) { $project.timeline.zone } else { [TimeZoneInfo]::Utc }
+            $local = [TimeZoneInfo]::ConvertTime($progress.asOf, $zone)
+            $progress.localDate = $local.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+        }
         $summary = @{
             id = $project.id
             name = $project.name
             historyConfigured = [bool]$project.historyPath
             dateForecast = $project.dateForecast
-            weightedProgress = $project.weightedProgress
+            weightedProgress = $progress
             cost = if ($project.cost.ContainsKey('exchange') -and $project.cost.exchange.ContainsKey('forecast') -and $project.cost.exchange.forecast.source -ceq 'cbr') {
                 Read-ProjectCostSnapshot $project.registryEntry $fxState.latest
             } else { $project.cost }
