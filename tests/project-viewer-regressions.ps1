@@ -193,6 +193,10 @@ CI_HEAD_SHA: $old
     $periodPath = $url + 'period?project=journal&from=2026-01-01&through=2026-01-01'
     $journalPeriod = Invoke-RestMethod ($periodPath + "&frame=$frame") -TimeoutSec 10
     Assert-That ($journalPeriod.report.totals.accepted -eq 1 -and $journalPeriod.journalGeneration -ceq $journalSummary.journal.generation) 'PRG-003 projects journal history from the summary snapshot'
+    $longPeriod = Invoke-RestMethod ($url + "period?project=journal&from=2026-01-01&through=2026-01-02&frame=$frame") -TimeoutSec 10
+    Assert-That ($longPeriod.remainingWork.state -ceq 'available' -and $longPeriod.remainingWork.points.Count -eq 1 -and
+        $longPeriod.remainingWork.points[0].date -ceq '2026-01-01' -and
+        $longPeriod.remainingWork.points[0].remainingWeight -eq 2) 'PRG-008 journal cutoff bounds the chart when the requested period extends past the snapshot'
     $cardVersion = $journalSummary.tasks[0].versions[0].hash
     $journalCard = Invoke-RestMethod ($url + "card?project=journal&task=T-001&version=$cardVersion&frame=$frame") -TimeoutSec 10
     Assert-That ($journalCard.ownerDecisions[0].status -ceq 'accepted' -and

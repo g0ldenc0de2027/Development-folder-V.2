@@ -458,7 +458,7 @@ function Get-RemainingWorkView($Project, $Period, $Zone, $History) {
     if ($Project.decisionsPath) {
         # A coverage gap at the current cutoff can coexist with verified earlier points.
         if ($null -eq $Project.decisionSnapshot) { return @{ state = 'incomplete'; points = @() } }
-        $cutoff = $Project.decisionAsOf
+        $cutoff = [DateTimeOffset]::Parse($Project.decisionAsOf, [Globalization.CultureInfo]::InvariantCulture)
     } else {
         if ($Project.weightedProgress.state -cne 'available') {
             return @{ state = 'incomplete'; points = @() }
