@@ -68,6 +68,19 @@ Null или отсутствие knowledge_base означает not_configured;
 Environment имеет приоритет; явно недоступный environment не заменяется marker.
 После переноса БЗ обновите только настройку, затем повторите doctor и check.
 
+В linked worktree CLI использует маркер выбранного корня проекта. Маркер в
+административном bare-корне автоматически не читается. Если `doctor` сообщает
+`not_configured`, задайте проверенный абсолютный путь для текущего сеанса PowerShell:
+
+~~~powershell
+$env:ETALON_KNOWLEDGE_BASE = 'D:\Example\Shared KB'
+pwsh -NoProfile -File scripts/kb.ps1 doctor
+~~~
+
+`KB_SHARED_UNAVAILABLE` означает, что указанный каталог недоступен. Проверьте путь
+и доступ к диску. `available_not_validated` означает, что каталог найден; для
+проверки коллекции выполните `pwsh -NoProfile -File scripts/kb.ps1 check -ProjectRoot $env:ETALON_KNOWLEDGE_BASE`.
+
 ### Назначение общей базы и обязательный preflight
 
 Локальная БЗ принадлежит одному проекту и сохраняет его подробный контекст. Общая БЗ
