@@ -39,6 +39,18 @@ Assert-That ($gap.points[3].remainingWeight -eq 16 -and $gap.points[4].scopeChan
 $complete = Get-ProjectRemainingWork @period -Baselines @($first, $expanded) -Decisions $later -Coverage ($initial + $resumed + $filled)
 Assert-That (($complete.points.remainingWeight -join ',') -ceq '20,16,10,16,21,11') 'PRG-003 restores cumulative weight after backfill'
 
+$reduced = @{ projectId = 'demo'; version = 'v2'; previousVersion = 'v1'
+    approvedAt = '2026-11-22T21:00:00Z'; items = @((Item A 4), (Item C 10)); reason = 'Результат B исключён из объёма' }
+$reduction = Get-ProjectRemainingWork -ProjectId demo -From '2026-11-22' -Through '2026-11-23' -SnapshotAt '2026-11-24T00:00:00Z' -TimeZone ([TimeZoneInfo]::FindSystemTimeZoneById('Russian Standard Time')) -Baselines @($first, $reduced) -Decisions $early -Coverage $initial
+$beforeReduction = $reduction.points[0]
+$afterReduction = $reduction.points[1]
+Assert-That (!$beforeReduction.scopeChanged -and $beforeReduction.totalWeight -eq 20 -and
+    $beforeReduction.remainingWeight -eq 10 -and $afterReduction.scopeChanged -and
+    $afterReduction.totalWeight -eq 14 -and $afterReduction.remainingWeight -eq 10 -and
+    $afterReduction.scopeChanges.Count -eq 1 -and $afterReduction.scopeChanges[0].weightDelta -eq -6 -and
+    $afterReduction.scopeChanges[0].approvedAt -like '2026-11-23T00:00:00*+03:00' -and
+    $afterReduction.scopeChanges[0].reason -ceq $reduced.reason) 'PRG-004 scope reduction is distinct from completed work and belongs to the new local day'
+
 $verifiedAt = [DateTimeOffset]'2026-11-25T00:00:00Z'
 $pin = @{ asOf = $verifiedAt.ToString('o'); evidenceId = 'synthetic-checkpoint'
     inputSha256 = Get-RemainingWorkInputHash -ProjectId demo -AsOf $verifiedAt -Baselines @($first, $expanded) -Decisions $later }
