@@ -231,7 +231,8 @@ function Get-TrackerAction($Task, $Project, $Assignments) {
 function Read-EvidenceSnapshot($Project) {
     $path = $Project.evidencePath
     Assert-PlainPath $path $false
-    $stream = [IO.File]::OpenRead($path)
+    $share = [IO.FileShare]::Read -bor [IO.FileShare]::Delete
+    $stream = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
     try {
         if ($stream.Length -gt 4MB) { throw 'EVIDENCE_SIZE_LIMIT' }
         $bytes = [byte[]]::new([int]$stream.Length)
