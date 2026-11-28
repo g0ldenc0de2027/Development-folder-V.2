@@ -104,6 +104,20 @@ jobs:
           } else {
             Write-Output 'NOT APPLICABLE: current event is not pull_request'
           }
+      - name: Check project viewer JavaScript syntax
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $html = Get-Content -LiteralPath scripts/project-viewer.html -Raw -Encoding utf8
+          $scripts = [regex]::Matches($html, '(?is)<script\b[^>]*>(.*?)</script\s*>')
+          if ($scripts.Count -ne 1 -or [string]::IsNullOrWhiteSpace($scripts[0].Groups[1].Value)) {
+            throw 'Expected exactly one non-empty inline script in project-viewer.html'
+          }
+          $node = (Get-Command node -CommandType Application -TotalCount 1 -ErrorAction Stop).Source
+          $scripts[0].Groups[1].Value | & $node --check -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Output 'PASS: project viewer JavaScript syntax'
+
       - name: Run quality gate and record tested revisions
         shell: pwsh
         env:
