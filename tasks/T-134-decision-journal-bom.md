@@ -6,9 +6,9 @@
 
 ## Зона файлов
 
-- scripts/lib/ProjectDecisionJournal.psm1
-- tests/project-decision-journal-regressions.ps1
-- tasks/T-134-decision-journal-bom.md
+- `scripts/lib/ProjectDecisionJournal.psm1`
+- `tests/project-decision-journal-regressions.ps1`
+- `tasks/T-134-decision-journal-bom.md`
 
 ## Приёмка
 
