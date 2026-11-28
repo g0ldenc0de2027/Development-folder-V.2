@@ -532,7 +532,8 @@ function renderCost(snapshot) {
   ];
   const labels = {hours:'часы', ai:'расходы на ИИ', confirmedCost:'подтверждённые затраты', exchangeRate:'курс валют'};
   const missing = [...new Set([...plan.missingInputs, ...forecast.missingInputs])];
-  status.textContent = 'Срез ' + snapshot.asOf + ' · Объём ' + snapshot.scopeVersion +
+  const dateLabel = snapshot.asOf ? 'Срез ' + snapshot.asOf : 'Дата среза не указана';
+  status.textContent = dateLabel + ' · Объём ' + snapshot.scopeVersion +
     (missing.length ? ' · Не хватает данных: ' + missing.map(key => labels[key]).join(', ') : '');
   for (const [label, value] of rows) {
     const row = node('div');
