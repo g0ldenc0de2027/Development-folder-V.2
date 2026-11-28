@@ -34,6 +34,7 @@ function Read-ProjectDecisionJournal {
     }
 
     $json = [Text.UTF8Encoding]::new($false, $true).GetString($bytes)
+    if ($json.StartsWith([char]0xFEFF)) { $json = $json.Substring(1) }
     $options = [Text.Json.JsonDocumentOptions]::new()
     $options.AllowDuplicateProperties = $false
     [Text.Json.JsonDocument]::Parse($json, $options).Dispose()
