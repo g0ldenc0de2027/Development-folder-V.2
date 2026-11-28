@@ -1,7 +1,9 @@
 # T-137 — Видимый отказ файла истории активности
 
-Статус: in_progress. Исполнитель: Codex.
+Статус: merged. Исполнитель: Codex.
 Основание: BUG-05 аудита Gemini 4 Neon от 2026-11-28.
+
+Слияние: [PR #125](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/125), squash-коммит `7013b20046e16d55dd138be2c1eb2b8feab73be5` в main.
 
 ## Зона файлов
 

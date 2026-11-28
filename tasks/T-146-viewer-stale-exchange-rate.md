@@ -1,7 +1,9 @@
 # T-146 — Различать недоступный и последний проверенный курс
 
-Статус: in_progress.
+Статус: merged.
 Исполнитель: Codex.
+
+Слияние: [PR #134](https://github.com/g0ldenc0de2027/Development-folder-V.2/pull/134), squash-коммит `dfb47dfa0757f7f44585974472e7ed3b9664ced2` в main.
 
 ## Зона файлов
 
