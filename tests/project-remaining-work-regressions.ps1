@@ -68,3 +68,18 @@ Assert-That ($point.state -ceq 'incomplete' -and $point.scopeChanged -and $point
     $point.scopeChanges[0].previousScopeVersion -ceq 'v1' -and $point.scopeChanges[0].scopeVersion -ceq 'v2' -and
     $point.scopeChanges[0].weightDelta -eq 5 -and $point.scopeChanges[0].reason -ceq 'Добавлен отчёт по остатку' -and
     $point.scopeChanges[1].weightDelta -eq 2 -and $null -eq $point.scopeChanges[1].reason) 'PRG-004 explains multiple scope changes starting on the first day despite missing acceptance coverage'
+
+
+$exact = [DateTimeOffset]'2026-11-20T12:00:00Z'
+$exactDecision = Decision at-cutoff A v1 accepted $exact.ToString('o')
+$laterDecision = Decision after-cutoff B v1 accepted $exact.AddTicks(1).ToString('o')
+$current = @{ ProjectId = 'demo'; From = '2026-11-20'; Through = '2026-11-20'
+    SnapshotAt = $exact; TimeZone = [TimeZoneInfo]::Utc
+    Baselines = @($first); Decisions = @($exactDecision, $laterDecision) }
+$confirmed = Get-ProjectRemainingWork @current -Coverage @(Coverage $first.approvedAt $exact.AddTicks(1).ToString('o'))
+Assert-That ($confirmed.points[0].acceptedWeight -eq 4 -and $confirmed.points[0].remainingWeight -eq 16) 'PRG-008 includes the exact snapshot tick and excludes the next tick'
+$unconfirmed = Get-ProjectRemainingWork @current -Coverage @(Coverage $first.approvedAt $exact.ToString('o'))
+Assert-That ($unconfirmed.points[0].state -ceq 'incomplete' -and !$unconfirmed.points[0].ContainsKey('acceptedWeight')) 'PRG-008 requires coverage of the exact snapshot tick'
+
+$atMidnight = Get-ProjectRemainingWork -ProjectId demo -From '2026-11-20' -Through '2026-11-21' -SnapshotAt $boundary.at -TimeZone $moscow -Baselines @($first) -Decisions @($boundary) -Coverage $bounds
+Assert-That (($atMidnight.points.remainingWeight -join ',') -ceq '20,16') 'PRG-008 a midnight snapshot includes the decision on the new day only'
