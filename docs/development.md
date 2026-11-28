@@ -19,6 +19,8 @@
 
 Git for Windows и GitHub CLI нужны для GitHub workflow. Интернет нужен для загрузки SHA-256-проверенного PowerShell в CI и pinned actionlint/Gitleaks во временную папку локального gate.
 ## Проверки
+
+Откройте в IDE зарегистрированное рабочее дерево. Локальный quality gate запускайте из рабочего дерева задачи или из чистой main. В V2 путь к чистой main — .worktrees/main, к задаче — .worktrees/T-NNN. Административный корень хранит общие Git-метаданные.
 После clone настройте репозиторий и каждую новую linked worktree отдельной командой. Команда сверяет origin и текущий GitHub account, включает безопасную worktree-конфигурацию и записывает identity только в выбранную worktree:
 
     pwsh -NoProfile -File scripts/github/configure-local.ps1
@@ -39,6 +41,20 @@ Git for Windows и GitHub CLI нужны для GitHub workflow. Интерне�
 
     pwsh -NoProfile -File scripts/quality-gate.ps1
 
+Если встроенный PowerShell ниже минимальной версии, проверьте все варианты через `Get-Command pwsh -All`. В отдельной сессии поставьте каталог поддерживаемого `pwsh.exe` первым в `PATH`: этот порядок используют также дочерние тесты и Git-хуки. Сверьте версию именно найденной команды.
+
+При сообщении о лимите `GIT_DIR` используйте существующий короткий каталог вне всех репозиториев. Для одного запуска согласуйте `TEMP`, `TMP` и `-TemporaryRoot`, чтобы вложенные тесты видели тот же корень. Пример для отдельной сессии, в которой оба указанных пути уже существуют:
+
+    $pwsh = (Resolve-Path -LiteralPath (Read-Host 'Путь к поддерживаемому pwsh.exe')).ProviderPath
+    $tempRoot = (Resolve-Path -LiteralPath (Read-Host 'Короткий временный каталог')).ProviderPath
+    $env:PATH = (Split-Path -Parent $pwsh) + ';' + $env:PATH
+    $env:TEMP = $tempRoot
+    $env:TMP = $tempRoot
+    pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+    pwsh -NoProfile -File scripts/quality-gate.ps1 -TemporaryRoot $tempRoot
+
+При `GIT_IDENTITY_CONFIG_ENVIRONMENT_OVERRIDE` или `GIT_IDENTITY_REPOSITORY_CONTEXT_OVERRIDE` повторите прямой запуск из отдельной среды без указанных в диагностике Git-переопределений. Изменения окружения в примере действуют только в текущем процессе и его потомках. Gate удаляет созданную им подпапку, а общий временный каталог сохраняется.
+
 Read-only сверка live GitHub settings с versioned config (repository, ruleset, Actions, Dependabot и security):
 
     pwsh -NoProfile -File scripts/github/verify-settings.ps1 -RequireStatusCheck
@@ -56,6 +72,14 @@ Read-only сверка live GitHub settings с versioned config (repository, rul
 
 Финальный результат `scripts/quality-gate.ps1` печатается в stdout только при нулевом внутреннем коде `$gateExit` и после успешного завершения блока очистки: это точная строка `QUALITY-GATE=PASS`, после чего сценарий завершается с кодом выхода 0. Если исключение возникает в основном теле проверок, перехватчик пишет в stderr `QUALITY-GATE=FAIL: <сообщение>`, устанавливает `$gateExit = 1`, и маркер успеха не выводится. Ошибки очистки временного каталога (проверка владельца и reparse points, удаление, отсутствие остатка каталога) дают отдельный stderr-маркер `QUALITY-GATE=FAIL: cleanup of '<TemporaryRoot>/gate-<runId>': <сообщение>` и тоже код 1, даже когда сами проверки прошли. Отказы, произошедшие до входа в основной блок (parameter binding, разбор скрипта, инициализация путей), не имеют собственного маркера quality gate и диагностируются стандартными сообщениями PowerShell. Для автоматической проверки используйте пару: stdout-строка `QUALITY-GATE=PASS` плюс exit code 0; любое `QUALITY-GATE=FAIL:` в stderr или ненулевой код означают отказ проверки. Если отказ ещё не подтверждён и процесс продолжает работать, итог ожидается. Если оператор подтвердил отмену, фиксируйте её отдельно. Код выхода 0 без точного маркера успеха означает неполное подтверждение результата. Если наблюдение прервалось или процесс завершился, а итоговый маркер и код выхода недоступны, результат неизвестен до повторной сверки.
 
+## Слияние проверенного PR и аудит worktree
+
+- [check-squash-preflight.ps1](../scripts/github/check-squash-preflight.ps1) выполняет read-only проверку PR, переведённого в Ready. Передайте параметры -Number, -HeadSha, -BaseSha, -MergeResultSha и -RunId успешного CI.
+- [merge-reviewed-pr.ps1](../scripts/github/merge-reviewed-pr.ps1) без -Execute запускает тот же preflight. При -Execute передайте -AcceptedHeadSha, равный принятому владельцем -HeadSha. Порядок допуска владельца, squash и проверки результата описан в [GitHub workflow](github-workflow.md).
+- [task-worktree-audit.ps1](../scripts/task-worktree-audit.ps1) запускайте с -Mode Audit из зарегистрированного рабочего дерева. [Реестр карантина](../config/worktree-quarantine.json) содержит утверждённые исключения для проверяемых снимков. При блокировке сначала проверьте содержимое рабочего дерева и причину отказа.
+- [verify-bootstrap-push.ps1](../scripts/github/verify-bootstrap-push.ps1) вызывается хуком pre-push при первичной публикации в пустой remote. Проверяемые параметры — -RemoteName, -RemoteUrl и -CommitSha.
+- [git-empty.config](../config/git-empty.config) — пустой глобальный Git-конфиг для изолированных проверок. Пользовательские настройки Git в него не добавляйте.
+
 ## Обновления
 Обновление toolchain требует старой версии, официального источника, проверки совместимости, rollback plan и post-update gate. Не меняйте dependency manifests будущего проекта как часть обновления среды.
 
@@ -68,7 +92,7 @@ Python не нужен этому срезу. Это inventory, а не pin targ
     pwsh -NoProfile -File scripts/kb.ps1 check
     pwsh -NoProfile -File tests/kb-regressions.ps1
 
-Сценарии пользователя и подключения общей БЗ: local-knowledge.md.
+Сценарии работы с локальной БЗ и подключения общей БЗ описаны в [руководстве](local-knowledge.md).
 Gate запускает integrity check текущего корпуса и KB-регрессии.
 Каталог, Markdown и rules lock проверяются вместе. Inbox data/knowledge/inbox игнорируется Git.
 
