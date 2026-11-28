@@ -134,7 +134,8 @@ function Get-ProjectPeriodEvents {
 function Read-ProjectHistory {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$ProjectId)
 
-    $stream = [IO.File]::OpenRead($Path)
+    $share = [IO.FileShare]::Read -bor [IO.FileShare]::Delete
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
     try {
         if ($stream.Length -gt 4MB) { throw 'PROJECT_HISTORY_TOO_LARGE' }
         $bytes = [byte[]]::new([int]$stream.Length)
