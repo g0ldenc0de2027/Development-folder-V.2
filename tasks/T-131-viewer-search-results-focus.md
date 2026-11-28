@@ -1,0 +1,22 @@
+# T-131 — Быстрый переход к результатам поиска
+
+Статус: in_progress.
+Исполнитель: Codex.
+Основание: PTR-VIS-003 и отчёт V2-PTR-KEYBOARD-NAVIGATION-001.
+
+## Зона файлов
+
+- `scripts/project-viewer.html`
+- `docs/project-viewer.md`
+- `spec/project-progress-panel.md`
+- `tasks/T-131-viewer-search-results-focus.md`
+
+## Приёмка
+
+- Один Tab из поиска переводит фокус на «К результатам». Enter и пробел переводят фокус на первую задачу в активном виде.
+- При пустой выдаче фокус переходит к сообщению о результате. Обычный ввод не перемещает фокус.
+- Enter на задаче, закрытие карточки и возврат фокуса продолжают работать по существующему контракту.
+
+## Browser verification
+
+Chrome with a synthetic one-task registry: list and board navigation, empty results, and Escape after card refresh. Rapid reopen exposed a delayed close event that cleared the new card opener. Ignore the close event if the dialog is already open again. The patched HTML passed the same browser scenario.

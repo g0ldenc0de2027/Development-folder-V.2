@@ -93,13 +93,14 @@ li,.task-evidence{overflow-wrap:anywhere} .badge{font-weight:600}
 <div class="tools">
 <label>Этап <select id="stage"><option value="">Все этапы</option></select></label>
 <label>Поиск <input id="query" type="search" placeholder="Номер или название"></label>
+<button id="focus-results" type="button">К результатам</button>
 <label>Состояние <select id="state"></select></label>
 <label><input id="blocked" type="checkbox"> Заблокировано</label>
 <label><input id="decision" type="checkbox"> Требует моего решения</label>
 </div>
 
 <label>Вид <select id="view"><option value="list">Список</option><option value="board">Доска</option></select></label>
-<p id="count" aria-live="polite"></p>
+<p id="count" aria-live="polite" tabindex="-1"></p>
 <div class="table" id="list-view"><table><thead><tr><th>Задача</th><th>Состояние</th><th>Исполнитель</th><th>Блокер</th><th>Следующее действие</th></tr></thead><tbody id="rows"></tbody></table></div><div class="board" id="board" hidden></div>
 </section>
 <section id="queue" hidden aria-labelledby="queue-title">
@@ -555,7 +556,7 @@ function renderRows() {
   const visible = matching.filter(task =>
     (!stageTasks || stageTasks.has(task.id)) && (!boardFilter || states.get(task.id) === boardFilter));
   renderOverview(project, states);
-  byId('count').textContent = visible.length + ' из ' + project.tasks.length;
+  byId('count').textContent = (visible.length ? '' : 'Нет результатов · ') + visible.length + ' из ' + project.tasks.length;
   const boardVisible = byId('view').value === 'board';
   byId('list-view').hidden = boardVisible;
   byId('board').hidden = !boardVisible;
@@ -1021,10 +1022,15 @@ async function load(refresh) {
 byId('refresh').addEventListener('click', () => load(true));
 byId('refresh-card').addEventListener('click', () => load(true));
 byId('view').addEventListener('change', renderRows);
+byId('focus-results').addEventListener('click', () => {
+  const results = byId('list-view').hidden ? byId('board') : byId('list-view');
+  (results.querySelector('button.task') ?? byId('count')).focus();
+});
 byId('stage').addEventListener('change', renderRows);
 byId('back').addEventListener('click', () => showProject(undefined));
 byId('close').addEventListener('click', () => byId('card').close());
 byId('card').addEventListener('close', () => {
+  if (byId('card').open) return;
   viewGeneration++;
   activeCard = undefined;
   const opener = cardOpener;
