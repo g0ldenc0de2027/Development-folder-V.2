@@ -49,7 +49,17 @@ function Read-ObservedInstant($value) {
 
 function Read-Card([IO.FileInfo]$File, [string]$Source) {
     Assert-PlainPath $File.FullName $false
-    $bytes = [IO.File]::ReadAllBytes($File.FullName)
+    $share = [IO.FileShare]::Read -bor [IO.FileShare]::Delete
+    $stream = [IO.File]::Open($File.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
+    try {
+        $length = $stream.Length
+        if ($length -gt 1MB) { throw 'CARD_SIZE_LIMIT' }
+        $bytes = [byte[]]::new([int]$length)
+        $stream.ReadExactly($bytes)
+        if ($stream.ReadByte() -ne -1) { throw 'CARD_SIZE_CHANGED' }
+    } finally {
+        $stream.Dispose()
+    }
     $card = $utf8.GetString($bytes).TrimStart([char]0xFEFF)
     $title = [regex]::Match($card, '(?m)^# (.+)').Groups[1].Value.Trim()
     $head = Read-Field $card 'PR_HEAD_SHA'

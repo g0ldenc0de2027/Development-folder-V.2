@@ -400,6 +400,18 @@ CI_HEAD_SHA: $old
     Assert-That (!$restored[0].queue.stale -and $restored[0].tasks[0].assignments[0].comparison -eq 'match') 'T-101 queue recovered'
     Assert-That (!$restored[0].sources[0].error -and $restored[0].tasks[0].versions.Count -eq 2 -and
         $restored[0].tasks[0].versions.sources.stale -notcontains $true) 'PTR-005 source recovered'
+
+    $limitCard = "# T-001 — Граница размера`nСтатус: in_progress`n"
+    $limitCard += 'x' * (1MB - [Text.Encoding]::UTF8.GetByteCount($limitCard))
+    [IO.File]::WriteAllText($a, $limitCard)
+    $atLimit = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
+    $limitVersion = $atLimit[0].tasks[0].versions | Where-Object title -CEQ 'T-001 — Граница размера'
+    Assert-That ($null -ne $limitVersion -and !$atLimit[0].sources[0].error) 'LOW-01 reads a card at the byte limit'
+    [IO.File]::AppendAllText($a, 'x')
+    $oversized = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{ Origin = $origin } -TimeoutSec 10
+    $retained = $oversized[0].tasks[0].versions | Where-Object hash -CEQ $limitVersion.hash
+    Assert-That ($oversized[0].sources[0].error -and $null -ne $retained -and
+        $retained.sources.stale -contains $true) 'LOW-01 preserves the last valid version when a card exceeds the byte limit'
 } finally {
     if ($process) {
         if (!$process.HasExited) { $process.Kill(); $process.WaitForExit() }
