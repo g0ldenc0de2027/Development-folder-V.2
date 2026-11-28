@@ -857,7 +857,9 @@ function renderPeriod(snapshot) {
       return date.toISOString();
     }
   };
-  status.textContent += ' · История прочитана: ' + instant(snapshot.historyReadAt);
+  if (historyState === 'partial') status.textContent += ' · Файл истории активности недоступен';
+  const readLabel = historyState === 'partial' ? 'Доступные данные обработаны' : 'История прочитана';
+  status.textContent += ' · ' + readLabel + ': ' + instant(snapshot.historyReadAt);
   const result = byId('period-result');
   const totals = node('ul');
   const labels = snapshot.frame ? {...eventLabels, accepted:'Принято результатов', acceptance_revoked:'Отозвано приёмок результатов'} : eventLabels;

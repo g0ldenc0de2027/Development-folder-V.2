@@ -154,7 +154,7 @@ CI_HEAD_SHA: $old
     }) }
     [IO.File]::WriteAllText($journalFixture, ($journalDocument | ConvertTo-Json -Depth 8))
     $config.projects += @{
-        id = 'journal'; name = 'Журнал'; roots = @('other'); decisionsPath = 'owner-journal.json'
+        id = 'journal'; name = 'Журнал'; roots = @('other'); decisionsPath = 'owner-journal.json'; historyPath = 'journal-activity.json'
         decisionTaskByItem = @{ 'result-a' = 'T-001'; 'result-b' = 'T-001' }
         progress = @{ schemaVersion = 1; asOf = '2026-01-01T08:00:00Z'; baselines = @($journalBaseline) }
     }
@@ -193,6 +193,8 @@ CI_HEAD_SHA: $old
     $periodPath = $url + 'period?project=journal&from=2026-01-01&through=2026-01-01'
     $journalPeriod = Invoke-RestMethod ($periodPath + "&frame=$frame") -TimeoutSec 10
     Assert-That ($journalPeriod.report.totals.accepted -eq 1 -and $journalPeriod.journalGeneration -ceq $journalSummary.journal.generation) 'PRG-003 projects journal history from the summary snapshot'
+    Assert-That ($journalPeriod.historyState -ceq 'partial' -and $journalPeriod.journalState -ceq 'readable' -and
+        $journalPeriod.coverage.accepted.complete -and !$journalPeriod.coverage.merged.complete) 'PTR-VIS-005 unavailable activity history preserves confirmed journal metrics with a partial status'
     $cardVersion = $journalSummary.tasks[0].versions[0].hash
     $journalCard = Invoke-RestMethod ($url + "card?project=journal&task=T-001&version=$cardVersion&frame=$frame") -TimeoutSec 10
     Assert-That ($journalCard.ownerDecisions[0].status -ceq 'accepted' -and
