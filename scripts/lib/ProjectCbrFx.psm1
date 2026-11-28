@@ -68,12 +68,20 @@ function Read-CbrCache([string]$Path, [DateOnly]$Today) {
     try {
         $file = Get-Item -LiteralPath $Path -Force
         if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $file.Length -gt 4KB) { return $null }
-        $data = [IO.File]::ReadAllText($Path) | ConvertFrom-Json -AsHashtable -DateKind String
-        if ($data.schemaVersion -ne 1 -or $data.source -cne 'cbr' -or $data.ratePerUsd -is [string] -or $data.ratePerUsd -le 0) { return $null }
+        $data = [IO.File]::ReadAllText($Path) | ConvertFrom-Json -AsHashtable -DateKind String -NoEnumerate
+        if ($data -isnot [Collections.IDictionary] -or $data['source'] -cne 'cbr') { return $null }
+        $version = $data['schemaVersion']
+        if (($version -isnot [int] -and $version -isnot [long]) -or $version -ne 1) { return $null }
+        $rate = $data['ratePerUsd']
+        if (($rate -isnot [int] -and $rate -isnot [long] -and $rate -isnot [double] -and $rate -isnot [decimal]) -or $rate -le 0) {
+            return $null
+        }
+        $rate = [decimal]$rate
+        if ($rate -le 0) { return $null }
         $date = [DateOnly]::ParseExact($data.effectiveDate, 'yyyy-MM-dd', $script:Invariant)
         $instant = [DateTimeOffset]::ParseExact($data.fetchedAtUtc, 'o', $script:Invariant)
         if ($date -gt $Today -or $instant -gt [DateTimeOffset]::UtcNow) { return $null }
-        $data.ratePerUsd = [decimal]$data.ratePerUsd
+        $data.ratePerUsd = $rate
         $data
     } catch { return $null }
 }

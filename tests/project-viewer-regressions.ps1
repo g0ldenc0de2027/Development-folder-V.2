@@ -144,6 +144,11 @@ CI_HEAD_SHA: $old
         $config.projects[-1].progress.baselines[0].projectId = "bad-cost-$i"
         $config.projects[-1].progress.decisions[0].projectId = "bad-cost-$i"
     }
+    $invalidProgress = $config.projects[0].progress | ConvertTo-Json -Depth 8 | ConvertFrom-Json -AsHashtable
+    $invalidProgress.schemaVersion = '1'
+    $invalidProgress.baselines[0].projectId = 'bad-progress'
+    $invalidProgress.decisions[0].projectId = 'bad-progress'
+    $config.projects += @{ id = 'bad-progress'; name = 'Invalid progress'; roots = @('other'); progress = $invalidProgress }
     $journalFixture = Join-Path $root 'owner-journal.json'
     $journalBaseline = @{ projectId = 'journal'; version = 'v1'; approvedAt = '2026-01-01T00:00:00Z'
         items = @(@{ id = 'result-a'; criteriaVersion = 'v1'; weight = 3 }, @{ id = 'result-b'; criteriaVersion = 'v1'; weight = 2 }) }
@@ -266,6 +271,17 @@ CI_HEAD_SHA: $old
     Move-Item -LiteralPath $offlineHistory -Destination $history
     $restoredPeriod = Invoke-RestMethod $periodUri -TimeoutSec 10
     Assert-That ($restoredPeriod.report.totals.accepted -eq 1) 'PTR-VIS-005 restored history does not duplicate events'
+    $validHistoryJson = [IO.File]::ReadAllText($history)
+    try {
+        foreach ($version in 'true', '"1"', '1.0', '[1]') {
+            $invalidHistoryJson = $validHistoryJson -replace '("schemaVersion"\s*:\s*)1', ('${1}' + $version)
+            [IO.File]::WriteAllText($history, $invalidHistoryJson)
+            $invalidPeriod = Invoke-RestMethod $periodUri -TimeoutSec 10
+            Assert-That ($invalidPeriod.historyState -ceq 'unavailable' -and $null -eq $invalidPeriod.report) "T-154 history rejects schemaVersion $version"
+        }
+    } finally {
+        [IO.File]::WriteAllText($history, $validHistoryJson)
+    }
     $first = Invoke-RestMethod ($url + 'summary') -TimeoutSec 10
     Assert-That ($first[0].weightedProgress.state -ceq 'available' -and $first[0].weightedProgress.percent -eq 37.5 -and
         $first[0].weightedProgress.remainingWeight -eq 5 -and $first[1].weightedProgress.state -ceq 'unconfigured') 'PRG-003 weighted progress is isolated by project'
@@ -276,6 +292,8 @@ CI_HEAD_SHA: $old
         $forecast.latestDeltaDays -eq 1) 'PRG-007 scenario range and plan deltas reach the project summary'
     Assert-That ($first[1].dateForecast.state -ceq 'not_assessed' -and
         $first[1].dateForecast.reason -ceq 'configuration_unavailable') 'PRG-008 forecast settings are isolated by project'
+    $invalidProgress = $first | Where-Object id -CEQ 'bad-progress'
+    Assert-That ($invalidProgress.weightedProgress.state -ceq 'invalid') 'T-154 progress rejects a string schema version'
     $invalidCosts = @($first | Where-Object id -Like 'bad-cost-*')
     Assert-That ($invalidCosts.Count -eq 3 -and @($invalidCosts | Where-Object { $_.cost.state -cne 'invalid' }).Count -eq 0) 'PRG-014 rejects boolean, string and floating-point JSON schema versions'
     Assert-That (@($invalidCosts | Where-Object { $_.dateForecast.reason -cne 'invalid_configuration' }).Count -eq 0) 'PRG-011 forecast rejects non-integer schema versions'
@@ -287,6 +305,18 @@ CI_HEAD_SHA: $old
         $rates.plan.source -ceq 'manual' -and $rates.forecast.rubPerUsd -eq 80 -and
         $rates.forecast.effectiveDate -ceq '2026-01-02' -and $rates.forecast.source -ceq 'manual') 'PRG-014 HTTP exposes independent plan and forecast rates'
     $view = $first[0].tasks[0].evidence
+    $validEvidenceJson = [IO.File]::ReadAllText($evidenceFile)
+    try {
+        foreach ($version in 'true', '"1"', '1.0', '[1]') {
+            $invalidEvidenceJson = $validEvidenceJson -replace '("schemaVersion"\s*:\s*)1', ('${1}' + $version)
+            [IO.File]::WriteAllText($evidenceFile, $invalidEvidenceJson)
+            $invalidEvidence = Invoke-RestMethod ($url + 'refresh') -Method Post -Headers @{Origin = $origin} -TimeoutSec 10
+            $candidate = $invalidEvidence[0].tasks[0].evidence
+            Assert-That ($candidate.state -ceq 'stale' -and $candidate.record.headSha -ceq $view.record.headSha) "T-154 evidence rejects schemaVersion $version"
+        }
+    } finally {
+        [IO.File]::WriteAllText($evidenceFile, $validEvidenceJson)
+    }
     Assert-That ($view.state -ceq 'readable' -and $view.record.ci.current -and $view.record.review.current -and
         !$view.record.ownerAcceptance -and $view.record.mergeSha -and !$first[1].tasks[0].evidence -and
         (($view | ConvertTo-Json -Depth 8) -notmatch 'evidence\.json')) 'PTR-VIS-007 isolated evidence and independent acceptance'
@@ -314,7 +344,7 @@ CI_HEAD_SHA: $old
     Assert-That ($recovered[0].tasks[0].evidence.state -ceq 'readable' -and
         $recovered[0].tasks[0].evidence.record.ownerAcceptance.status -ceq 'accepted') 'PTR-VIS-007 recovery and explicit acceptance'
     Assert-That ($first[0].historyConfigured -and !$first[1].historyConfigured) 'PTR-VIS-005 summary distinguishes history configuration by project'
-    Assert-That ($first.Count -eq (4 + [int][bool]$V2Root + $badVersions.Count) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
+    Assert-That ($first.Count -eq (5 + [int][bool]$V2Root + $badVersions.Count) -and $first[1].tasks[0].versions[0].status -eq 'merged') 'PTR-001 independent projects'
     $timeline = $first[0].timeline
     Assert-That ($timeline.startDate -ceq '2026-11-20' -and $timeline.timeZone -ceq 'UTC' -and
         $timeline.today -in @([DateTime]::UtcNow.ToString('yyyy-MM-dd'), [DateTime]::UtcNow.AddDays(-1).ToString('yyyy-MM-dd')) -and

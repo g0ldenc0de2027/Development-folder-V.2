@@ -150,8 +150,10 @@ function Read-ProjectHistory {
     $options.AllowDuplicateProperties = $false
     $document = [Text.Json.JsonDocument]::Parse($json, $options)
     $document.Dispose()
-    $data = ConvertFrom-Json -InputObject $json -AsHashtable -DateKind String
-    if ($data -isnot [Collections.IDictionary] -or $data['schemaVersion'] -cne 1 -or
+    $data = ConvertFrom-Json -InputObject $json -AsHashtable -DateKind String -NoEnumerate
+    if ($data -isnot [Collections.IDictionary] -or
+        ($data['schemaVersion'] -isnot [int] -and $data['schemaVersion'] -isnot [long]) -or
+        $data['schemaVersion'] -ne 1 -or
         $data['projectId'] -cne $ProjectId -or $data['events'] -isnot [array]) {
         throw 'PROJECT_HISTORY_INVALID_DOCUMENT'
     }

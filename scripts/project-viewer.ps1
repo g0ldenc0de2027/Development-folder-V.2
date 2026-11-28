@@ -238,8 +238,10 @@ function Read-EvidenceSnapshot($Project) {
         $stream.ReadExactly($bytes)
         if ($stream.ReadByte() -ne -1) { throw 'EVIDENCE_SIZE_CHANGED' }
     } finally { $stream.Dispose() }
-    $data = $utf8.GetString($bytes).TrimStart([char]0xFEFF) | ConvertFrom-Json -AsHashtable -DateKind String -Depth 16
-    if ($data -isnot [Collections.IDictionary] -or $data['schemaVersion'] -ne 1 -or
+    $data = $utf8.GetString($bytes).TrimStart([char]0xFEFF) | ConvertFrom-Json -AsHashtable -DateKind String -Depth 16 -NoEnumerate
+    if ($data -isnot [Collections.IDictionary] -or
+        ($data['schemaVersion'] -isnot [int] -and $data['schemaVersion'] -isnot [long]) -or
+        $data['schemaVersion'] -ne 1 -or
         $data['projectId'] -cne $Project.id -or $data['tasks'] -isnot [array]) { throw 'INVALID_EVIDENCE' }
     $items = @{}
     $sha = '\A[0-9a-f]{40}\z'
@@ -478,7 +480,9 @@ function Read-WeightedProgress($Entry) {
     if (!$Entry.Contains('progress')) { return @{ state = 'unconfigured' } }
     try {
         $data = $Entry.progress
-        if ($data -isnot [Collections.IDictionary] -or $data.schemaVersion -cne 1 -or
+        if ($data -isnot [Collections.IDictionary] -or
+            ($data['schemaVersion'] -isnot [int] -and $data['schemaVersion'] -isnot [long]) -or
+            $data['schemaVersion'] -ne 1 -or
             $data.baselines -isnot [array] -or $data.decisions -isnot [array] -or
             $data.decisionsComplete -isnot [bool]) { throw 'INVALID_PROGRESS_SNAPSHOT' }
         if (!$data.decisionsComplete) { return @{ state = 'incomplete' } }

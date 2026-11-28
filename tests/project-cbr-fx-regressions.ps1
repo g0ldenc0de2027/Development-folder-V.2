@@ -7,6 +7,25 @@ $root = Join-Path $parent ('project-fx-' + [guid]::NewGuid().ToString('N'))
 $process = $null
 try {
     $module = Import-Module (Join-Path $PSScriptRoot '../scripts/lib/ProjectCbrFx.psm1') -PassThru
+    $typeFixture = Join-Path $root 'cache-types.json'
+    $today = [DateOnly]::FromDateTime([DateTime]::UtcNow)
+    $sample = '{"schemaVersion":VERSION,"source":"cbr","ratePerUsd":RATE,"effectiveDate":"2026-01-01","fetchedAtUtc":"2026-01-01T00:00:00.0000000+00:00"}'
+    foreach ($version in 'true', '"1"', '1.0', '[1]') {
+        [IO.File]::WriteAllText($typeFixture, $sample.Replace('VERSION', $version).Replace('RATE', '80'))
+        if ($null -ne (& $module { param($Path, $Today) Read-CbrCache $Path $Today } $typeFixture $today)) {
+            throw "T-154 cache accepted schemaVersion $version"
+        }
+    }
+    foreach ($rate in 'true', '"80"', '[80]', 'null', '0', '-1') {
+        [IO.File]::WriteAllText($typeFixture, $sample.Replace('VERSION', '1').Replace('RATE', $rate))
+        if ($null -ne (& $module { param($Path, $Today) Read-CbrCache $Path $Today } $typeFixture $today)) {
+            throw "T-154 cache accepted ratePerUsd $rate"
+        }
+    }
+    [IO.File]::WriteAllText($typeFixture, $sample.Replace('VERSION', '1').Replace('RATE', '80.25'))
+    $typedCache = & $module { param($Path, $Today) Read-CbrCache $Path $Today } $typeFixture $today
+    if ($typedCache.ratePerUsd -ne [decimal]80.25) { throw 'T-154 cache rejected a decimal rate' }
+
     $server = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $server.Start()
     $address = "http://127.0.0.1:$($server.LocalEndpoint.Port)/"

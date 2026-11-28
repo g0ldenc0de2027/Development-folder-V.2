@@ -75,6 +75,8 @@ Use PowerShell 7.6 on Windows. Create a UTF-8 registry outside Git and run the c
 
 Add optional `timeline` metadata to a project as shown above. The time zone controls the Today marker. Dates use `YYYY-MM-DD` and may be omitted. Select a stage to filter tasks. The board and list share filters. The portfolio shows tasks waiting for an owner decision and the project view shows source freshness.
 
+Для истории, доказательств, взвешенной готовности и кэша курса указывайте целое число `1` в поле `schemaVersion`. Кэш курса принимает только положительные числа в поле `ratePerUsd`.
+
 ## Работа за период
 
 Добавьте в запись проекта `"historyPath": "./v2-history.json"`. Путь считается от каталога локального реестра. Файл содержит UTF-8 JSON размером до 4 МиБ.
