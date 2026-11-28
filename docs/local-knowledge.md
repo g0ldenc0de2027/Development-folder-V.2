@@ -73,7 +73,7 @@ Environment имеет приоритет; явно недоступный envir
 `not_configured`, задайте проверенный абсолютный путь для текущего сеанса PowerShell:
 
 ~~~powershell
-$env:ETALON_KNOWLEDGE_BASE = 'D:\Example\Shared KB'
+$env:ETALON_KNOWLEDGE_BASE = Read-Host 'Абсолютный путь к общей БЗ'
 pwsh -NoProfile -File scripts/kb.ps1 doctor
 ~~~
 
