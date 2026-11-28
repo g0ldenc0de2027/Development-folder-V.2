@@ -177,9 +177,24 @@ try {
         'config/github/actions-policy.json',
         'config/security/tools.json'
     )
+    # Проверяем все версионируемые конфигурации, включая вложенные.
+    $originalEncoding = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+        $trackedConfig = @(& git -C $repoRoot -c core.quotePath=false ls-files -- ':(icase,glob)config/**/*.json')
+    } finally {
+        [Console]::OutputEncoding = $originalEncoding
+    }
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate tracked JSON configuration' }
+    $jsonFiles = @($jsonFiles + $trackedConfig | Sort-Object -CaseSensitive -Unique)
     foreach ($relative in $jsonFiles) {
         $path = Join-Path $repoRoot $relative
-        $null = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        Assert-DirectoryChainWithoutReparsePoints (Split-Path -Parent $path)
+        $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
+        if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw "Invalid JSON configuration file: $relative"
+        }
+        $null = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -ErrorAction Stop
     }
 
     . (Join-Path $repoRoot 'scripts/ide-cache.ps1')
