@@ -441,7 +441,11 @@ function renderDateForecast(snapshot) {
     return;
   }
   if (snapshot?.state !== 'available') {
-    element.textContent = explanations[snapshot?.reason] ?? explanations.configuration_unavailable;
+    const reason = snapshot?.reason ?? 'configuration_unavailable';
+    const explanation = Object.hasOwn(explanations, reason)
+      ? explanations[reason]
+      : 'Причина отсутствия прогноза не указана.';
+    element.textContent = 'Прогноз не рассчитан. ' + explanation;
     return;
   }
   const delta = value => (value > 0 ? '+' : '') + value;
